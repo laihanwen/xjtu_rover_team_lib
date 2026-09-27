@@ -14,3 +14,7 @@
 *.bag binary
 *.db3 binary
 *.mcap binary
+
+# Preserve imported CubeMX/Keil/vendor source formatting. Generated files can
+# contain intentional blank padding and are reviewed separately from repo code.
+firmware/stm32/** whitespace=-trailing-space,-blank-at-eof

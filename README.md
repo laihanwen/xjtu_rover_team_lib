@@ -2,7 +2,7 @@
 
 > 面向水下机器人竞赛的自主 AUV：用 ROS 2 完成视觉、语义建图、路径规划与任务决策，用 STM32 完成实时姿态、深度、推进器和安全控制。
 
-**当前阶段：基础设施 / P1**　·　ROS 2 工作区可构建　·　公共接口已建立　·　硬件默认 `DISARM`
+**当前阶段：基础设施 / P1**　·　ROS 2 工作区可构建　·　STM32F405 八推固件已归档　·　硬件测试需人工安全确认
 
 ## 快速导航
 
@@ -38,6 +38,7 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 |---|---|---|
 | P0 | ROS 2 workspace | ✅ 可构建、可测试 |
 | P1 | `auv_interfaces` | ✅ 初始 msg/srv 已建立 |
+| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入、GCC 编译检查通过 |
 | P2 | `auv_stm32_bridge` | ⏳ 下一阶段 |
 | P3–P5 | 串口协议、failsafe、传感器 topics | 📝 已规划 |
 | P6–P11 | 相机、视觉、建图、规划、Mission FSM | 📝 已规划 |
@@ -162,7 +163,7 @@ xjtu_rover_team_lib/
 - 使用 Humble/Jazzy 的包名或默认命令替代 Lyrical
 - 在 fish 环境中默认执行 `setup.bash`
 - 向系统 Python 执行 `pip install`
-- 编造 STM32 型号、GPIO、Timer、PWM 范围或推进器方向
+- 忽略现有 STM32F405 工程，或未经实测擅自修改 GPIO、Timer、PWM 范围和推进器方向
 - 把实时 PID 放到 Linux / ROS 2 节点
 - 修改 CubeMX 下次生成时会覆盖的区域
 - 将模型权重、数据集、rosbag 或编译产物提交到 Git

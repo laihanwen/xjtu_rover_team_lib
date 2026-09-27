@@ -511,7 +511,7 @@ heave / pitch compensation
 当前已有：
 
 - Raspberry Pi 4B
-- STM32
+- STM32F405RGT6（现有八推全矢量 CubeMX / Keil 工程位于 `firmware/stm32`）
 - ESC
 - motors
 
@@ -530,7 +530,7 @@ heave / pitch compensation
 - underwater actuator / servo
 - grabbing / funnel mechanism
 
-具体 STM32 型号、ESC 型号和电机参数以后根据真实硬件更新。
+STM32 型号已由现有工程确认为 STM32F405RGT6。ESC 型号和电机参数以后根据真实硬件更新。
 
 不要自行假定 GPIO、PWM timer、ESC PWM 范围或推进方向。
 
