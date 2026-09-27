@@ -1,0 +1,4 @@
+bool armed
+---
+bool accepted
+string message

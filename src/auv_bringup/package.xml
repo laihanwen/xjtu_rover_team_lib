@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>auv_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files and shared configuration for the AUV system.</description>
+  <maintainer email="2777651780@qq.com">hanwen</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>auv_interfaces</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

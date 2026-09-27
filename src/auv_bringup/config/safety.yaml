@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    arm_on_startup: false
+    heartbeat_rate_hz: 20.0
+    heartbeat_timeout_ms: 500
+    command_timeout_ms: 500
+    leak_detection_enabled: true
