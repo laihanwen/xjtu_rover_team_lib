@@ -1,0 +1,11 @@
+std_msgs/Header header
+bool connected
+bool armed
+bool leak_detected
+float32 voltage
+float32 depth
+float32 roll
+float32 pitch
+float32 yaw
+uint32 error_flags
+float32[] thruster_outputs

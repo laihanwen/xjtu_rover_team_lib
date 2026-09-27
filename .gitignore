@@ -1,0 +1,45 @@
+# ROS 2 / colcon generated directories
+/build/
+/install/
+/log/
+
+# Runtime data (keep directory placeholders)
+/logs/*
+!/logs/.gitkeep
+/videos/*
+!/videos/.gitkeep
+/maps/*
+!/maps/.gitkeep
+/trajectory/*
+!/trajectory/.gitkeep
+/events/*
+!/events/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# C/C++ tooling
+compile_commands.json
+.cache/
+
+# Editors and operating systems
+.vscode/settings.json
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local environment overrides and secrets
+.env
+.env.*
+!.env.example
+
+# Local fallback Git metadata (used only when the managed environment mounts
+# an unusable read-only .git placeholder).
+/.git-data/
