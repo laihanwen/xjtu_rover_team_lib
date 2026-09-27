@@ -16,6 +16,9 @@
 
 详细的安装坐标、推力方向、混控矩阵、推进器极性及遥控映射见 [Move_Manual.md](MDK-ARM/Move_Manual.md)。原工程的开发说明保存在 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
+> [!IMPORTANT]
+> 这是已完成的遥控 ROV 固件基线，不是完整的自主 AUV 安全固件。源码检查确认 `Mate_Init()` 会启动推进器 PWM；当前尚未发现显式 ARM/DISARM、Pi heartbeat timeout 或漏水 failsafe。接入 ROS 控制前必须补齐并验证这些机制。
+
 ## 哪些文件是有效入口
 
 ```text

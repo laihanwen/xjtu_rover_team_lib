@@ -38,7 +38,7 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 |---|---|---|
 | P0 | ROS 2 workspace | ✅ 可构建、可测试 |
 | P1 | `auv_interfaces` | ✅ 初始 msg/srv 已建立 |
-| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入、GCC 编译检查通过 |
+| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入、GCC 编译检查通过；安全接口待升级 |
 | P2 | `auv_stm32_bridge` | ⏳ 下一阶段 |
 | P3–P5 | 串口协议、failsafe、传感器 topics | 📝 已规划 |
 | P6–P11 | 相机、视觉、建图、规划、Mission FSM | 📝 已规划 |
@@ -58,6 +58,7 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 | 构建 | colcon + CMake |
 | ROS Python | 系统 `/usr/bin/python3` |
 | 视觉训练 | uv 独立虚拟环境，不污染系统 Python |
+| 固件检查（可选） | `arm-none-eabi-gcc` + Ninja |
 
 快速检查：
 
@@ -111,6 +112,20 @@ ros2 launch auv_bringup system.launch.py
 ```
 
 启动入口当前只输出安全提示，不启动推进器或硬件节点。
+
+### 5. STM32 固件编译检查（可选）
+
+仓库中的固件是独立 CMake/Keil 工程，并通过 `COLCON_IGNORE` 与 ROS 构建隔离。安装 ARM GCC 后可以执行不生成烧录镜像的编译检查：
+
+```fish
+cmake -S firmware/stm32 -B firmware/stm32/build/gcc-check \
+  -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/gcc-arm-none-eabi.cmake \
+  -DCMAKE_BUILD_TYPE=Debug
+cmake --build firmware/stm32/build/gcc-check --target rov_ui_model
+```
+
+部署和生成可烧录固件仍以 `firmware/stm32/MDK-ARM/Copy_cup.uvprojx` 为准。详细入口和已知警告见 [STM32 固件说明](firmware/stm32/README.md)。
 
 ## 仓库地图
 
@@ -232,6 +247,17 @@ git diff --check
 - 漏水、传感器无效和通信超时必须进入安全状态
 - 未经实测不得提交真实硬件参数的“猜测值”
 
+### 当前固件的重要边界
+
+现有 STM32 工程来自已完成的遥控 ROV 基线，不等同于完整的自主 AUV 安全固件。代码当前会在初始化阶段启动推进器 PWM，且尚未发现以下机制：
+
+- 来自 Raspberry Pi 的显式 ARM / DISARM 状态机
+- Pi 通信 heartbeat timeout
+- 漏水传感器触发的 failsafe
+- ROS 运动目标对应的版本化串口协议
+
+在这些功能实现并通过无桨台架测试前，不得把 ROS 控制命令直接接入实机推进器。
+
 ## 常见问题
 
 ### CMake 选择了用户目录中的 Python
@@ -257,9 +283,9 @@ ros2 pkg prefix auv_interfaces
 
 不可以。请把文件放入 `models/artifacts/`，计算 SHA-256，并为稳定模型创建 manifest。
 
-### 为什么暂时没有完整 STM32 工程？
+### STM32 工程现在是什么状态？
 
-因为 MCU 型号、CubeMX 配置、GPIO、PWM 和推进器布局尚未确认。仓库宁可保留明确 TODO，也不提交可能损坏硬件的猜测实现。
+仓库已包含 STM32F405RGT6 的 CubeMX、Keil、八推混控、姿态 PID、遥控和 IMU 代码。它是可编译的 ROV 固件基线，但还不是满足自主 AUV 安全要求的最终固件；下一步需要加入版本化串口协议、显式 ARM/DISARM、Pi heartbeat timeout、漏水检测和故障状态上报。
 
 ---
 
