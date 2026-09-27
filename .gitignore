@@ -41,6 +41,11 @@
 /firmware/stm32/.settings/
 /firmware/stm32/.project
 /firmware/stm32/.cproject
+/firmware/stm32/MDK-ARM/Copy_cup/
+/firmware/stm32/MDK-ARM/*.uvguix.*
+/firmware/stm32/MDK-ARM/*.uvoptx
+/firmware/stm32/MDK-ARM/*.lst
+/firmware/stm32/MDK-ARM/*.log
 *.elf
 *.hex
 *.bin

@@ -7,7 +7,7 @@
 | 目录 | 内容 | 构建方式 |
 |---|---|---|
 | `src/` | Raspberry Pi / PC 上运行的 ROS 2 packages | `colcon build` |
-| `firmware/stm32/` | STM32 实时控制、安全和外设代码 | 由最终 MCU/CubeMX 工程决定 |
+| `firmware/stm32/` | STM32F405 八推实时控制、安全和外设代码 | Keil MDK-ARM；CMake/GCC 编译检查 |
 | `vision/` | YOLO 数据准备、训练、评估、导出及离线 OpenCV 实验 | 独立 uv 环境 |
 | `models/` | 模型版本清单、类别定义、部署参数和校验和 | 不参与 colcon |
 | `datasets/` | 数据集结构、来源与标注约定 | 大文件不进 Git |

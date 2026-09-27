@@ -1,0 +1,27 @@
+{
+  "version": 4,
+  "configurePresets": [
+    {
+      "name": "ui-armclang",
+      "displayName": "STM32F405 UI model (Keil ARMClang)",
+      "description": "Code model and compile-only validation matching the Keil source set.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ui-armclang",
+      "toolchainFile": "${sourceDir}/cmake/armclang-ui.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ui-armclang",
+      "displayName": "Build STM32F405 UI model",
+      "configurePreset": "ui-armclang",
+      "targets": [
+        "rov_ui_model"
+      ]
+    }
+  ]
+}
