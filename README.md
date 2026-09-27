@@ -24,15 +24,22 @@ colcon test-result --verbose
 
 当前托管环境将空 `.git` 挂载为只读目录，因此环境脚本会在必要时自动使用 `.git-data` 中的本地 Git 元数据。正常 clone 不受影响，仍使用标准 `.git`。
 
-## 当前结构
+## 仓库结构
 
 ```text
-src/
-├── auv_interfaces  # 项目公共 ROS msg/srv 接口
-└── auv_bringup     # 启动入口和安全默认参数
+auv/
+├── src/                # ROS 2 运行时 packages
+├── firmware/stm32/     # STM32 实时控制固件（独立构建边界）
+├── vision/             # 数据处理、训练、评估与模型导出
+├── models/             # 模型清单、部署配置；权重不直接进 Git
+├── datasets/           # 数据集说明和本地目录；数据不直接进 Git
+├── hardware/           # BOM、接线、机构与传感器资料
+├── docs/               # 架构、协议、任务和测试文档
+├── tools/              # 开发、构建和部署工具
+└── logs|videos|maps... # 运行输出，不提交 Git
 ```
 
-后续 package 按 [AGENTS.md](AGENTS.md) 中的优先级逐步加入。生成目录 `build/`、`install/`、`log/` 以及运行数据不会提交到 Git。
+当前可构建的 ROS packages 是 `auv_interfaces` 和 `auv_bringup`。其余模块按 [AGENTS.md](AGENTS.md) 的优先级逐步实现，完整落位规则见 [仓库布局](docs/architecture/repository-layout.md)。生成目录 `build/`、`install/`、`log/`、模型权重、数据集以及运行数据不会提交到 Git。
 
 ## 安全
 

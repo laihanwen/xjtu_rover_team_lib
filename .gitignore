@@ -15,6 +15,37 @@
 /events/*
 !/events/.gitkeep
 
+# Large ML artifacts and datasets are versioned by manifests, not Git.
+/models/artifacts/*
+!/models/artifacts/.gitkeep
+/datasets/raw/*
+!/datasets/raw/.gitkeep
+/datasets/interim/*
+!/datasets/interim/.gitkeep
+/datasets/processed/*
+!/datasets/processed/.gitkeep
+/datasets/exports/*
+!/datasets/exports/.gitkeep
+*.pt
+*.pth
+*.onnx
+*.engine
+*.ncnn.bin
+*.ncnn.param
+*.tflite
+
+# Embedded build and IDE output
+/firmware/stm32/build/
+/firmware/stm32/Debug/
+/firmware/stm32/Release/
+/firmware/stm32/.settings/
+/firmware/stm32/.project
+/firmware/stm32/.cproject
+*.elf
+*.hex
+*.bin
+*.map
+
 # Python
 __pycache__/
 *.py[cod]
