@@ -15,7 +15,7 @@ set -gx ROS_LOG_DIR $repo_root/log/ros
 # The managed development environment may expose an immutable empty .git
 # placeholder. Fall back to repository metadata stored beside it. Normal
 # clones continue using their standard .git directory.
-if not git --git-dir=$repo_root/.git rev-parse --git-dir >/dev/null 2>&1
+if not test -f $repo_root/.git/HEAD
     if test -d $repo_root/.git-data
         set -gx GIT_DIR $repo_root/.git-data
         set -gx GIT_WORK_TREE $repo_root
