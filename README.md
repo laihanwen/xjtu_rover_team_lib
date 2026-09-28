@@ -170,6 +170,7 @@ xjtu_rover_team_lib/
 环境是 Ubuntu 26.04 + ROS 2 Lyrical + fish；ROS 使用系统 Python，视觉训练使用 uv 隔离环境。
 实现后请执行与改动风险相称的构建和测试，并说明修改、运行方法和硬件风险。
 ```
+若无仓库写权限，先 Fork 本仓库，再克隆自己的 Fork。
 
 ### AI 协作检查清单
 
