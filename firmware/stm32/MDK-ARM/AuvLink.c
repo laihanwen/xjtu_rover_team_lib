@@ -7,6 +7,7 @@
 
 #include "AuvProtocol.h"
 #include "AuvSafety.h"
+#include "imu.h"
 #include "usart.h"
 
 #ifndef AUV_LINK_UART_HANDLE
@@ -15,6 +16,10 @@
 
 #define AUV_LINK_BAUD_RATE          115200U
 #define AUV_STATUS_PERIOD_MS        100U
+#define AUV_IMU_PERIOD_MS           20U
+#define AUV_DEPTH_PERIOD_MS         100U
+#define AUV_DEGREES_TO_RADIANS      0.01745329251994329577f
+#define AUV_QUIET_NAN_BITS          0x7FC00000UL
 #define AUV_ERROR_HEARTBEAT_TIMEOUT (1UL << 0)
 #define AUV_ERROR_SENSOR_INVALID    (1UL << 1)
 #define AUV_ERROR_LEAK              (1UL << 2)
@@ -28,6 +33,10 @@ static volatile uint8_t ack_result;
 static volatile uint32_t ack_sequence;
 static uint32_t status_sequence;
 static uint32_t last_status_ms;
+static uint32_t last_depth_ms;
+static uint32_t last_imu_ms;
+static uint32_t last_imu_sequence;
+static uint32_t depth_sequence;
 
 static UART_HandleTypeDef *LinkUart(void)
 {
@@ -112,8 +121,46 @@ static void SendStatus(uint32_t now_ms)
     AuvProtocol_WriteU32Le(&payload[0], status_sequence++);
     payload[4] = state_flags;
     AuvProtocol_WriteU32Le(&payload[5], error_flags);
+    AuvProtocol_WriteU32Le(&payload[9], AUV_QUIET_NAN_BITS);  /* voltage unavailable */
+    AuvProtocol_WriteU32Le(&payload[13], AUV_QUIET_NAN_BITS); /* depth unavailable */
     payload[29] = 0U; /* P5 will publish measured thruster outputs. */
     SendFrame(AUV_MSG_STATUS, payload, sizeof(payload));
+}
+
+static void SendImu(void)
+{
+    uint8_t payload[40] = {0};
+    FLOAT_Angle angle;
+    uint32_t sequence;
+
+    __disable_irq();
+    sequence = imu_sample_sequence;
+    angle = Angle_Measure;
+    __enable_irq();
+    if (sequence == last_imu_sequence) return;
+    last_imu_sequence = sequence;
+
+    AuvProtocol_WriteU32Le(&payload[0], sequence);
+    AuvProtocol_WriteF32Le(&payload[4], angle.rol * AUV_DEGREES_TO_RADIANS);
+    AuvProtocol_WriteF32Le(&payload[8], angle.pit * AUV_DEGREES_TO_RADIANS);
+    AuvProtocol_WriteF32Le(&payload[12], angle.yaw * AUV_DEGREES_TO_RADIANS);
+    /* H30 firmware currently exposes Euler angles only. NaN means unavailable. */
+    AuvProtocol_WriteU32Le(&payload[16], AUV_QUIET_NAN_BITS);
+    AuvProtocol_WriteU32Le(&payload[20], AUV_QUIET_NAN_BITS);
+    AuvProtocol_WriteU32Le(&payload[24], AUV_QUIET_NAN_BITS);
+    AuvProtocol_WriteU32Le(&payload[28], AUV_QUIET_NAN_BITS);
+    AuvProtocol_WriteU32Le(&payload[32], AUV_QUIET_NAN_BITS);
+    AuvProtocol_WriteU32Le(&payload[36], AUV_QUIET_NAN_BITS);
+    SendFrame(AUV_MSG_IMU, payload, sizeof(payload));
+}
+
+static void SendDepthUnavailable(void)
+{
+    uint8_t payload[9] = {0};
+    AuvProtocol_WriteU32Le(&payload[0], depth_sequence++);
+    AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
+    payload[8] = 0U;
+    SendFrame(AUV_MSG_DEPTH, payload, sizeof(payload));
 }
 
 void AuvLink_Init(void)
@@ -124,6 +171,10 @@ void AuvLink_Init(void)
     ack_pending = 0U;
     status_sequence = 0U;
     last_status_ms = HAL_GetTick();
+    last_depth_ms = last_status_ms;
+    last_imu_ms = last_status_ms;
+    last_imu_sequence = imu_sample_sequence;
+    depth_sequence = 0U;
 
     (void)HAL_UART_DeInit(uart);
     uart->Init.BaudRate = AUV_LINK_BAUD_RATE;
@@ -151,9 +202,17 @@ void AuvLink_Task(void)
     uint32_t now_ms = HAL_GetTick();
     AuvSafety_Tick(now_ms);
     SendPendingAck();
+    if ((uint32_t)(now_ms - last_imu_ms) >= AUV_IMU_PERIOD_MS) {
+        last_imu_ms = now_ms;
+        SendImu();
+    }
     if ((uint32_t)(now_ms - last_status_ms) >= AUV_STATUS_PERIOD_MS) {
         last_status_ms = now_ms;
         SendStatus(now_ms);
+    }
+    if ((uint32_t)(now_ms - last_depth_ms) >= AUV_DEPTH_PERIOD_MS) {
+        last_depth_ms = now_ms;
+        SendDepthUnavailable();
     }
 }
 

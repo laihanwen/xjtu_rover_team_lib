@@ -22,6 +22,7 @@
 FLOAT_Angle Angle_Measure;
 FLOAT_Angle preangle;
 uint8_t imu_data_ready = 0;
+volatile uint32_t imu_sample_sequence = 0U;
 
 // 陀螺仪漂移补偿相关
 FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // 存储第一次有效数据的偏移量
@@ -189,6 +190,7 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
 			if(Angle_Measure.rol>=180&&Angle_Measure.rol<=360)Angle_Measure.rol-=360.0f;
             
             imu_data_ready = 1;
+            imu_sample_sequence++;
             break;
         }
         

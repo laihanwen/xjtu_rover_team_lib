@@ -42,7 +42,7 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 | P2 | `auv_stm32_bridge` | ✅ 串口 transport、状态与安全服务入口已建立 |
 | P3 | Pi ↔ STM32 串口协议 | ✅ v1 帧、CRC、消息、解析器和黄金向量已冻结 |
 | P4 | STM32 heartbeat + failsafe | ✅ 软件实现与主机测试通过；实机台架待验证 |
-| P5 | IMU / depth ROS topics | ⏳ 下一阶段 |
+| P5 | IMU / depth ROS topics | ✅ 串口遥测与 ROS topics 已接通；真实深度传感器驱动待硬件定型 |
 | P6–P11 | 相机、视觉、建图、规划、Mission FSM | 📝 已规划 |
 | P12–P14 | YOLO、抓取、转盘 | 📝 已规划 |
 
@@ -114,7 +114,16 @@ ros2 interface show auv_interfaces/msg/Stm32Status
 ros2 launch auv_bringup system.launch.py
 ```
 
-启动入口当前只输出安全提示，不启动推进器或硬件节点。
+默认串口设备为空，不启动推进器。连接 STM32 后可在另一个 fish 终端验收 P5：
+
+```fish
+source /opt/ros/lyrical/setup.fish
+source install/setup.fish
+ros2 topic echo /imu/data --once
+ros2 topic echo /depth --once
+```
+
+`/imu/data` 中的姿态来自 H30 欧拉角，bridge 输出四元数。当前 H30 代码未提供角速度和线加速度，因此这些值为 NaN，对应 covariance 首项为 `-1`。未选定并接入真实深度传感器前，`/depth` 必须显示 `valid: false` 和 `depth: nan`；这是预期的安全状态，STM32 仍拒绝 ARM。
 
 ### 5. STM32 固件编译检查（可选）
 

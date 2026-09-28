@@ -122,6 +122,8 @@ Firmware error flags：
 | 16/20/24 | `float32` | rad/s | gyro X/Y/Z |
 | 28/32/36 | `float32` | m/s² | acceleration X/Y/Z |
 
+当前 H30 接入仅提供欧拉角；未提供的角速度和线加速度字段必须发送 quiet NaN，bridge 同时把对应 covariance 首项设为 `-1`，不得用零伪装测量值。
+
 ### DEPTH `0x82`
 
 | Offset | 类型 | 单位 | 字段 |
@@ -129,6 +131,8 @@ Firmware error flags：
 | 0 | `uint32` | — | sequence |
 | 4 | `float32` | m | depth |
 | 8 | `uint8` | — | valid：0/1 |
+
+深度传感器未接入或读数失效时发送 `valid=0` 和 quiet NaN；只有 `valid=1` 且深度为有限值时才是可用测量。
 
 ## 黄金测试向量
 
