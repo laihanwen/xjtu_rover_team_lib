@@ -28,6 +28,7 @@ typedef struct {
 // 全局变量
 extern FLOAT_Angle Angle_Measure;
 extern uint8_t imu_data_ready;
+extern volatile uint32_t imu_sample_sequence;
 
 // 陀螺仪漂移补偿相关
 extern FLOAT_Angle imu_offset;  // 存储第一次有效数据的偏移量

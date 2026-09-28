@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <chrono>
 #include <array>
 #include <atomic>
-#include <cstdint>
+#include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -27,10 +27,13 @@
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
 #include "auv_stm32_bridge/stream_parser.hpp"
+#include "auv_stm32_bridge/telemetry_decoder.hpp"
+#include "auv_interfaces/msg/depth.hpp"
 #include "auv_interfaces/msg/stm32_status.hpp"
 #include "auv_interfaces/srv/set_armed.hpp"
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 
 namespace auv_stm32_bridge
 {
@@ -46,6 +49,8 @@ public:
     const double reconnect_rate_hz = declare_parameter<double>("reconnect_rate_hz", 1.0);
     const double heartbeat_rate_hz = declare_parameter<double>("heartbeat_rate_hz", 20.0);
     connection_timeout_ms_ = declare_parameter<int>("connection_timeout_ms", 500);
+    imu_frame_id_ = declare_parameter<std::string>("imu_frame_id", "imu_link");
+    depth_frame_id_ = declare_parameter<std::string>("depth_frame_id", "depth_link");
     const bool arm_on_startup = declare_parameter<bool>("arm_on_startup", false);
 
     if (reconnect_rate_hz <= 0.0) {
@@ -64,6 +69,9 @@ public:
 
     status_publisher_ = create_publisher<auv_interfaces::msg::Stm32Status>(
       "/stm32/status", rclcpp::QoS(10));
+    imu_publisher_ = create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::SensorDataQoS());
+    depth_publisher_ = create_publisher<auv_interfaces::msg::Depth>(
+      "/depth", rclcpp::SensorDataQoS());
     armed_service_ = create_service<auv_interfaces::srv::SetArmed>(
       "/stm32/set_armed",
       std::bind(
@@ -142,6 +150,10 @@ private:
         decode_status(frame.payload);
       } else if (frame.message_type == AUV_PROTOCOL_MSG_ACK) {
         receive_ack(frame.payload);
+      } else if (frame.message_type == AUV_PROTOCOL_MSG_IMU) {
+        publish_imu(frame.payload);
+      } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH) {
+        publish_depth(frame.payload);
       }
     }
     if (connected_ &&
@@ -209,6 +221,49 @@ private:
       const auto raw = auv_protocol_read_i16_le(&payload[kFixedSize + index * 2U]);
       status_.thruster_outputs.push_back(static_cast<float>(raw) / 1000.0F);
     }
+  }
+
+  void publish_imu(const std::vector<uint8_t> & payload)
+  {
+    ImuTelemetry telemetry;
+    if (!decode_imu_telemetry(payload, telemetry)) {
+      return;
+    }
+
+    sensor_msgs::msg::Imu message;
+    message.header.stamp = now();
+    message.header.frame_id = imu_frame_id_;
+    message.orientation.x = telemetry.orientation[0];
+    message.orientation.y = telemetry.orientation[1];
+    message.orientation.z = telemetry.orientation[2];
+    message.orientation.w = telemetry.orientation[3];
+    message.angular_velocity.x = telemetry.angular_velocity[0];
+    message.angular_velocity.y = telemetry.angular_velocity[1];
+    message.angular_velocity.z = telemetry.angular_velocity[2];
+    message.linear_acceleration.x = telemetry.linear_acceleration[0];
+    message.linear_acceleration.y = telemetry.linear_acceleration[1];
+    message.linear_acceleration.z = telemetry.linear_acceleration[2];
+    if (!telemetry.angular_velocity_available) {
+      message.angular_velocity_covariance[0] = -1.0;
+    }
+    if (!telemetry.linear_acceleration_available) {
+      message.linear_acceleration_covariance[0] = -1.0;
+    }
+    imu_publisher_->publish(message);
+  }
+
+  void publish_depth(const std::vector<uint8_t> & payload)
+  {
+    DepthTelemetry telemetry;
+    if (!decode_depth_telemetry(payload, telemetry)) {
+      return;
+    }
+    auv_interfaces::msg::Depth message;
+    message.header.stamp = now();
+    message.header.frame_id = depth_frame_id_;
+    message.depth = telemetry.depth;
+    message.valid = telemetry.valid;
+    depth_publisher_->publish(message);
   }
 
   void publish_status()
@@ -287,6 +342,8 @@ private:
   static constexpr uint32_t kProtocolTimeout = 1U << 1;
 
   std::string device_;
+  std::string imu_frame_id_;
+  std::string depth_frame_id_;
   int baud_rate_{115200};
   int connection_timeout_ms_{500};
   std::atomic<uint32_t> transmit_sequence_{0};
@@ -297,6 +354,8 @@ private:
   StreamParser parser_;
   auv_interfaces::msg::Stm32Status status_;
   rclcpp::Publisher<auv_interfaces::msg::Stm32Status>::SharedPtr status_publisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_publisher_;
+  rclcpp::Publisher<auv_interfaces::msg::Depth>::SharedPtr depth_publisher_;
   rclcpp::Service<auv_interfaces::srv::SetArmed>::SharedPtr armed_service_;
   rclcpp::TimerBase::SharedPtr reconnect_timer_;
   rclcpp::TimerBase::SharedPtr io_timer_;

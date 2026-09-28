@@ -4,6 +4,7 @@ project(auv_stm32_bridge)
 find_package(ament_cmake REQUIRED)
 find_package(auv_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 add_library(serial_port src/serial_port.cpp)
 target_compile_features(serial_port PUBLIC cxx_std_17)
@@ -12,7 +13,7 @@ target_include_directories(serial_port PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-add_library(protocol src/protocol.c src/stream_parser.cpp)
+add_library(protocol src/protocol.c src/stream_parser.cpp src/telemetry_decoder.cpp)
 target_compile_features(protocol PUBLIC c_std_11 cxx_std_17)
 target_include_directories(protocol PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -27,6 +28,7 @@ target_link_libraries(stm32_bridge_node
   auv_interfaces::auv_interfaces__rosidl_generator_cpp
   auv_interfaces::auv_interfaces__rosidl_typesupport_cpp
   rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
 )
 
 install(TARGETS protocol serial_port stm32_bridge_node
@@ -54,6 +56,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_stream_parser test/test_stream_parser.cpp)
   if(TARGET test_stream_parser)
     target_link_libraries(test_stream_parser protocol)
+  endif()
+
+  ament_add_gtest(test_telemetry_decoder test/test_telemetry_decoder.cpp)
+  if(TARGET test_telemetry_decoder)
+    target_link_libraries(test_telemetry_decoder protocol)
   endif()
 endif()
 

@@ -10,6 +10,7 @@ find_package(std_msgs REQUIRED)
 set(msg_files
   "msg/ConeDetection.msg"
   "msg/Detection2D.msg"
+  "msg/Depth.msg"
   "msg/MissionState.msg"
   "msg/SemanticCell.msg"
   "msg/SemanticMap.msg"

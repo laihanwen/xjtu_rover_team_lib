@@ -7,3 +7,5 @@ stm32_bridge:
     heartbeat_rate_hz: 20.0
     connection_timeout_ms: 500
     arm_on_startup: false
+    imu_frame_id: imu_link
+    depth_frame_id: depth_link
