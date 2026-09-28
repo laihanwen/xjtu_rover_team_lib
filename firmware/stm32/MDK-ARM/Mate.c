@@ -11,6 +11,7 @@
 #include "RC.h"
 #include "tim.h"
 #include "iwdg.h"
+#include "AuvSafety.h"
 #include <math.h>
 
 /* 现场可调系数：保留原有数值和外部可见性。 */
@@ -56,14 +57,23 @@ extern IWDG_HandleTypeDef hiwdg;
  */
 static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
 {
-    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_1, pwm[0]); /* T1 */
-    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_4, pwm[1]); /* T2 */
-    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_3, pwm[2]); /* T3 */
-    __HAL_TIM_SET_COMPARE(&htim2,  TIM_CHANNEL_3, pwm[3]); /* T4 */
-    __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_2, pwm[4]); /* T5 */
-    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_2, pwm[5]); /* T6 */
-    __HAL_TIM_SET_COMPARE(&htim4,  TIM_CHANNEL_3, pwm[6]); /* T7 */
-    __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, pwm[7]); /* T8 */
+    const float *safe_pwm = pwm;
+    float neutral_pwm[VECTOR_THRUSTER_COUNT];
+    uint32_t i;
+
+    if (AuvSafety_IsArmed() == 0U) {
+        for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
+            neutral_pwm[i] = midvalue;
+        safe_pwm = neutral_pwm;
+    }
+    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_1, safe_pwm[0]); /* T1 */
+    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_4, safe_pwm[1]); /* T2 */
+    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_3, safe_pwm[2]); /* T3 */
+    __HAL_TIM_SET_COMPARE(&htim2,  TIM_CHANNEL_3, safe_pwm[3]); /* T4 */
+    __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_2, safe_pwm[4]); /* T5 */
+    __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_2, safe_pwm[5]); /* T6 */
+    __HAL_TIM_SET_COMPARE(&htim4,  TIM_CHANNEL_3, safe_pwm[6]); /* T7 */
+    __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, safe_pwm[7]); /* T8 */
 }
 
 /** @brief 公共缩放整个向量，保留其在六维空间中的方向。 */

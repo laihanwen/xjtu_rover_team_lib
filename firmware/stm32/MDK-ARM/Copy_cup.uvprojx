@@ -441,6 +441,36 @@
               <FilePath>.\Move.h</FilePath>
             </File>
             <File>
+              <FileName>AuvProtocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvProtocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvProtocol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvProtocol.h</FilePath>
+            </File>
+            <File>
+              <FileName>AuvSafety.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvSafety.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvSafety.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvSafety.h</FilePath>
+            </File>
+            <File>
+              <FileName>AuvLink.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvLink.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvLink.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvLink.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>

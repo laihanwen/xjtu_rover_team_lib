@@ -17,18 +17,40 @@ Top-level AUV launch entry point.
 Nodes are added here only after their packages have standalone tests.
 """
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import LogInfo
+from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
+    bridge_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'stm32_bridge.yaml'
+    )
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                'start_stm32_bridge',
+                default_value='false',
+                description='Start the safe STM32 serial transport bridge.',
+            ),
             LogInfo(
                 msg=(
                     'AUV base workspace is ready. System remains DISARMED; '
                     'no hardware nodes are started.'
                 )
-            )
+            ),
+            Node(
+                package='auv_stm32_bridge',
+                executable='stm32_bridge_node',
+                name='stm32_bridge',
+                parameters=[bridge_config],
+                condition=IfCondition(LaunchConfiguration('start_stm32_bridge')),
+                output='screen',
+            ),
         ]
     )

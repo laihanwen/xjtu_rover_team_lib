@@ -271,6 +271,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
+#include "AuvLink.h"
 // 定义正确的帧长度（根据协议最大262字节）
 #define IMU229_MAX_FRAME_LEN 262
 #define RPI_MAX_FRAME_LEN 11
@@ -316,6 +317,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				}
 		    HAL_UART_Receive_IT(&huart2, &usart2_rx_buf[usart2_rx_cnt], 1);	
 	  }
+		if (huart->Instance == USART3){
+			AuvLink_RxComplete(huart);
+		}
 }
 
 // 初始化接收
