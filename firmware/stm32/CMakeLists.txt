@@ -16,6 +16,9 @@ set(ROV_CONTROL_SOURCES
     MDK-ARM/PID.c
     MDK-ARM/RC.c
     MDK-ARM/Move.c
+    MDK-ARM/AuvProtocol.c
+    MDK-ARM/AuvSafety.c
+    MDK-ARM/AuvLink.c
 )
 
 set(ROV_GENERATED_SOURCES

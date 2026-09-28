@@ -2,7 +2,7 @@
 
 > 面向水下机器人竞赛的自主 AUV：用 ROS 2 完成视觉、语义建图、路径规划与任务决策，用 STM32 完成实时姿态、深度、推进器和安全控制。
 
-**当前阶段：基础设施 / P1**　·　ROS 2 工作区可构建　·　STM32F405 八推固件已归档　·　硬件测试需人工安全确认
+**当前阶段：STM32 安全 / P4**　·　heartbeat/failsafe/PWM 门控已实现　·　实机台架验证待人工安全确认
 
 ## 快速导航
 
@@ -38,9 +38,11 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 |---|---|---|
 | P0 | ROS 2 workspace | ✅ 可构建、可测试 |
 | P1 | `auv_interfaces` | ✅ 初始 msg/srv 已建立 |
-| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入、GCC 编译检查通过；安全接口待升级 |
-| P2 | `auv_stm32_bridge` | ⏳ 下一阶段 |
-| P3–P5 | 串口协议、failsafe、传感器 topics | 📝 已规划 |
+| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入；P4 安全门已接入，实机待验证 |
+| P2 | `auv_stm32_bridge` | ✅ 串口 transport、状态与安全服务入口已建立 |
+| P3 | Pi ↔ STM32 串口协议 | ✅ v1 帧、CRC、消息、解析器和黄金向量已冻结 |
+| P4 | STM32 heartbeat + failsafe | ✅ 软件实现与主机测试通过；实机台架待验证 |
+| P5 | IMU / depth ROS topics | ⏳ 下一阶段 |
 | P6–P11 | 相机、视觉、建图、规划、Mission FSM | 📝 已规划 |
 | P12–P14 | YOLO、抓取、转盘 | 📝 已规划 |
 
@@ -96,12 +98,13 @@ colcon test
 colcon test-result --verbose
 ```
 
-预期能看到两个 packages：
+预期能看到三个 packages：
 
 ```fish
 colcon list
 # auv_bringup
 # auv_interfaces
+# auv_stm32_bridge
 ```
 
 ### 4. 最小运行验证
@@ -134,6 +137,7 @@ xjtu_rover_team_lib/
 ├── AGENTS.md              # 项目事实、技术决策和 AI 必读约束
 ├── src/                   # Raspberry Pi / PC 的 ROS 2 packages
 │   ├── auv_interfaces/    # 公共 msg / srv
+│   ├── auv_stm32_bridge/  # 安全串口 transport 与 STM32 bridge 节点
 │   └── auv_bringup/       # 启动入口和共享安全配置
 ├── firmware/stm32/        # STM32 固件的独立构建边界
 ├── vision/                # 数据处理、训练、评估和模型导出
@@ -151,8 +155,9 @@ xjtu_rover_team_lib/
 进一步阅读：
 
 - [仓库布局与模块边界](docs/architecture/repository-layout.md)
-- [串口协议草案](docs/protocol/serial-protocol.md)
+- [串口协议 v1](docs/protocol/serial-protocol.md)
 - [测试策略](docs/testing/strategy.md)
+- [P4 heartbeat 与 failsafe 验收](docs/testing/p4-safety.md)
 - [STM32 固件约束](firmware/stm32/README.md)
 - [视觉研发约定](vision/README.md)
 - [模型注册规则](models/README.md)

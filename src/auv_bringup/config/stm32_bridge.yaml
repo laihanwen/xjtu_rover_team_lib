@@ -1,0 +1,9 @@
+stm32_bridge:
+  ros__parameters:
+    # Keep empty until the actual serial device has been identified on the robot.
+    serial_device: ""
+    baud_rate: 115200
+    reconnect_rate_hz: 1.0
+    heartbeat_rate_hz: 20.0
+    connection_timeout_ms: 500
+    arm_on_startup: false

@@ -31,6 +31,7 @@
 #include "Move.h"
 #include "imu.h"
 #include "RC.h"
+#include "AuvLink.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -110,6 +111,7 @@ int main(void)
   // 启动串口接收中断
 	USART1_Receive_IT_Init();
 	USART2_Receive_IT_Init();
+	AuvLink_Init();
 	Mate_Init();
 
   /* USER CODE END 2 */
@@ -119,6 +121,7 @@ int main(void)
   while (1)
   {
 		//进入主循环
+    AuvLink_Task();
     Mate_Task();
     /* USER CODE END WHILE */
 

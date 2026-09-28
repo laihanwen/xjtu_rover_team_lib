@@ -17,7 +17,7 @@
 详细的安装坐标、推力方向、混控矩阵、推进器极性及遥控映射见 [Move_Manual.md](MDK-ARM/Move_Manual.md)。原工程的开发说明保存在 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 > [!IMPORTANT]
-> 这是已完成的遥控 ROV 固件基线，不是完整的自主 AUV 安全固件。源码检查确认 `Mate_Init()` 会启动推进器 PWM；当前尚未发现显式 ARM/DISARM、Pi heartbeat timeout 或漏水 failsafe。接入 ROS 控制前必须补齐并验证这些机制。
+> P4 已加入显式 ARM/DISARM、Pi heartbeat timeout、故障状态机和八推进器 PWM 门控。软件测试通过不等于实机安全验证完成；漏水、kill 和传感器有效信号仍需在 P5/硬件接线阶段调用 `AuvLink_SetSafetyInputs()` 接入。
 
 ## 哪些文件是有效入口
 
@@ -33,6 +33,9 @@ firmware/stm32/
 │   ├── PID.c                # 位置式 PID
 │   ├── RC.c                 # 遥控数据映射
 │   ├── imu.c                # IMU 接收和解析
+│   ├── AuvProtocol.c/.h     # 固定缓冲区 P3 协议与 CRC
+│   ├── AuvSafety.c/.h       # ARM/DISARM/heartbeat/failsafe 状态机
+│   ├── AuvLink.c/.h         # USART、ACK 和 STATUS 集成
 │   └── Move_Manual.md       # 安装和控制说明
 ├── CMakeLists.txt           # 编辑器代码模型 / 编译检查
 ├── COLCON_IGNORE            # 防止 ROS colcon 误构建固件
@@ -57,12 +60,36 @@ cmake --build firmware/stm32/build/gcc-check --target rov_ui_model
 
 导入时该检查成功编译 30 个源文件；GCC 在 `MDK-ARM/imu.c` 报告 1 个 `-Wtype-limits` 警告。为保持原始固件基线，本次导入没有改动其逻辑。
 
+P4 后编译检查覆盖 33 个源文件；新增 P4 文件无警告，`imu.c` 的同一个导入基线警告仍保留。
+
+P4 安全核心的无硬件测试：
+
+```fish
+cmake -S firmware/stm32/test -B /tmp/auv-firmware-test -G Ninja
+cmake --build /tmp/auv-firmware-test
+ctest --test-dir /tmp/auv-firmware-test --output-on-failure
+```
+
+## P4 串口与安全行为
+
+- Pi link 当前通过 `AUV_LINK_UART_HANDLE` 配置，默认使用未被原基线占用的 `huart3`。
+- 当前 CubeMX 映射为 USART3 TX=PC10、RX=PC11；`AuvLink_Init()` 将其配置为 115200 8N1。
+- 上电默认 DISARMED，传感器有效标志默认 false，因此 P5 接入前 ARM 会返回 unsafe。
+- 只有 CRC、version、type 和长度均合法的 HEARTBEAT 才更新时间。
+- 超过 500 ms 无合法 heartbeat，状态进入 FAILSAFE。
+- heartbeat 恢复后只回到 DISARMED，不自动重新 ARM。
+- 漏水、kill 或传感器无效立即进入 FAILSAFE。
+- `VectorThrusterPwm_Write()` 是 T1–T8 唯一硬件写入口；非 ARMED 状态强制使用原固件已确认的 `midvalue=1488`。
+- SET_ARMED 通过 ACK 返回实际接受/拒绝结果；运动和执行器命令在对应控制阶段完成前返回 unsupported。
+
+连接实机前必须核对 PC10/PC11 是否确实接到 Pi/USB-UART、双方为兼容的 3.3 V UART 电平且共地。不得把 RS-232 电平直接接入 STM32。
+
 ## 修改规则
 
 - CubeMX 生成文件中的手工修改只放在 `USER CODE` 区域。
 - 修改 `MDK-ARM/Move.c` 后同步更新 `Move_Manual.md`。
 - 不提交 `MDK-ARM/Copy_cup/`、HEX/AXF、日志或 IDE 用户状态。
-- ROS 串口接入前，先确定协议字节序、CRC16 变体和黄金测试向量。
+- 协议修改必须同步更新 `docs/protocol/serial-protocol.md` 和两侧黄金测试向量。
 - 未完成单推进器低功率方向确认前，不执行多自由度水下测试。
 
 > [!CAUTION]
