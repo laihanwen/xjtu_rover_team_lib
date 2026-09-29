@@ -20,3 +20,11 @@ add_executable(test_auv_safety
 target_include_directories(test_auv_safety PRIVATE ../MDK-ARM)
 target_compile_options(test_auv_safety PRIVATE -Wall -Wextra -Werror -pedantic)
 add_test(NAME auv_safety COMMAND test_auv_safety)
+
+add_executable(test_auv_rc_input
+    test_auv_rc_input.c
+    ../MDK-ARM/AuvRcInput.c
+)
+target_include_directories(test_auv_rc_input PRIVATE ../MDK-ARM)
+target_compile_options(test_auv_rc_input PRIVATE -Wall -Wextra -Werror -pedantic)
+add_test(NAME auv_rc_input COMMAND test_auv_rc_input)
