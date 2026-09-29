@@ -31,6 +31,9 @@ def generate_launch_description() -> LaunchDescription:
     bridge_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'stm32_bridge.yaml'
     )
+    camera_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'cameras.yaml'
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -38,10 +41,15 @@ def generate_launch_description() -> LaunchDescription:
                 default_value='false',
                 description='Start the safe STM32 serial transport bridge.',
             ),
+            DeclareLaunchArgument(
+                'start_cameras',
+                default_value='false',
+                description='Start the down and front camera acquisition nodes.',
+            ),
             LogInfo(
                 msg=(
-                    'AUV base workspace is ready. System remains DISARMED; '
-                    'no hardware nodes are started.'
+                    'AUV base workspace is ready. Only requested nodes are started; '
+                    'the propulsion system remains DISARMED.'
                 )
             ),
             Node(
@@ -50,6 +58,22 @@ def generate_launch_description() -> LaunchDescription:
                 name='stm32_bridge',
                 parameters=[bridge_config],
                 condition=IfCondition(LaunchConfiguration('start_stm32_bridge')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='camera_node',
+                name='auv_camera_down',
+                parameters=[camera_config],
+                condition=IfCondition(LaunchConfiguration('start_cameras')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='camera_node',
+                name='auv_camera_front',
+                parameters=[camera_config],
+                condition=IfCondition(LaunchConfiguration('start_cameras')),
                 output='screen',
             ),
         ]

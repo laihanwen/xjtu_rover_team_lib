@@ -1,0 +1,25 @@
+auv_camera_down:
+  ros__parameters:
+    # Set to a stable /dev/v4l/by-id/... path after identifying the real camera.
+    source: ""
+    topic: /camera/down/image_raw
+    frame_id: camera_down_optical_frame
+    width: 640
+    height: 480
+    frame_rate: 30.0
+    pixel_format: MJPG
+    reconnect_interval_ms: 1000
+    loop: false
+
+auv_camera_front:
+  ros__parameters:
+    # Set to a stable /dev/v4l/by-id/... path after identifying the real camera.
+    source: ""
+    topic: /camera/front/image_raw
+    frame_id: camera_front_optical_frame
+    width: 640
+    height: 480
+    frame_rate: 30.0
+    pixel_format: MJPG
+    reconnect_interval_ms: 1000
+    loop: false
