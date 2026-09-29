@@ -72,7 +72,7 @@ void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -272,18 +272,13 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 /* USER CODE BEGIN 1 */
 #include "AuvLink.h"
+#include "AuvRcInput.h"
 // 定义正确的帧长度（根据协议最大262字节）
 #define IMU229_MAX_FRAME_LEN 262
-#define RPI_MAX_FRAME_LEN 11
 
-UART_HandleTypeDef huart1;
 uint8_t usart1_rx_buf[IMU229_MAX_FRAME_LEN] = {0};
 uint16_t usart1_rx_cnt = 0;
-uint8_t usart2_rx_buf[RPI_MAX_FRAME_LEN] = {0};
-uint16_t usart2_rx_cnt = 0;
-extern uint8_t RCflag;
-extern uint8_t RcData[11];
-extern uint32_t RC_Disconnecttimes;
+uint8_t usart2_rx_byte = 0;
 
 //**回调函数**//
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -299,23 +294,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[usart1_rx_cnt], 1);
     }
 		if (huart->Instance == USART2){
-			  // 遥控器接收回调：等待帧头，完整收齐11字节后再解析
-				if (usart2_rx_cnt == 0){
-					if (usart2_rx_buf[0] == 0xA5){
-						usart2_rx_cnt = 1;
-					}
-				}
-				else{
-					usart2_rx_cnt++;
-					if (usart2_rx_cnt >= RPI_MAX_FRAME_LEN){
-						for(int i = 0; i < RPI_MAX_FRAME_LEN; i++){
-							RcData[i] = usart2_rx_buf[i];
-						}
-						RC_Translate(RcData);
-						usart2_rx_cnt = 0;
-					}
-				}
-		    HAL_UART_Receive_IT(&huart2, &usart2_rx_buf[usart2_rx_cnt], 1);	
+			AuvRcInput_PushByte(usart2_rx_byte, HAL_GetTick());
+		    HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1);
 	  }
 		if (huart->Instance == USART3){
 			AuvLink_RxComplete(huart);
@@ -328,7 +308,8 @@ void USART1_Receive_IT_Init(void) {
     HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[usart1_rx_cnt], 1);
 }
 void USART2_Receive_IT_Init(void) {
-  HAL_UART_Receive_IT(&huart2, &usart2_rx_buf[0], 1);
+  AuvRcInput_Init();
+  HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1);
 }
 
 void USART1_SetBaudRate_460800(void) {
@@ -347,4 +328,3 @@ void USART1_SetBaudRate_460800(void) {
     }
 }
 /* USER CODE END 1 */
-

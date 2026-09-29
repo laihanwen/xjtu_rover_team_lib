@@ -12,6 +12,7 @@
 #include "tim.h"
 #include "iwdg.h"
 #include "AuvSafety.h"
+#include "AuvRcInput.h"
 #include <math.h>
 
 /* 现场可调系数：保留原有数值和外部可见性。 */
@@ -167,15 +168,32 @@ void Mate_Init(void)
  */
 void Mate_Task(void)
 {
+    uint8_t rc_frame[AUV_RC_FRAME_SIZE];
+    uint8_t rc_fresh;
+
     HAL_IWDG_Refresh(&hiwdg);
 
     if (imu_data_ready) imu_data_ready = 0;
     HAL_Delay(10);
 
+    /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
+    __disable_irq();
+    rc_fresh = AuvRcInput_CopyFreshFrame(HAL_GetTick(), rc_frame);
+    __enable_irq();
+    if (rc_fresh != 0U) {
+        RC_Translate(rc_frame);
+    } else {
+        /* A stale command source may never retain its last thrust command. */
+        for (uint32_t i = 1U; i < MyRcLength; ++i) MyRCKey[i] = 0U;
+        if (AuvSafety_IsArmed() != 0U)
+            (void)AuvSafety_RequestArm(0U, HAL_GetTick());
+    }
+
     // ===== 1. 遥控器先形成六维动力层指令，不在此处进行电机分配 =====
     VectorWrenchCommand rc_wrench;
     RCWrench_Calc(&rc_wrench, MyRCKey);
-    RCServo_Calc(MyRCKey);
+    if ((rc_fresh != 0U) && (AuvSafety_IsArmed() != 0U))
+        RCServo_Calc(MyRCKey);
 
     // ===== 2. RcData[9]独立控制YAW PID，上升沿锁定当前航向 =====
     if (MyRCKey[YAW_PID_SWITCH] == 1U && last_yaw_pid_state == 0U)

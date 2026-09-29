@@ -36,6 +36,7 @@ firmware/stm32/
 │   ├── AuvProtocol.c/.h     # 固定缓冲区 P3 协议与 CRC
 │   ├── AuvSafety.c/.h       # ARM/DISARM/heartbeat/failsafe 状态机
 │   ├── AuvLink.c/.h         # USART、ACK 和 STATUS 集成
+│   ├── AuvRcInput.c/.h      # 0xA5 遥控帧接收、快照与掉线超时
 │   └── Move_Manual.md       # 安装和控制说明
 ├── CMakeLists.txt           # 编辑器代码模型 / 编译检查
 ├── COLCON_IGNORE            # 防止 ROS colcon 误构建固件
@@ -70,9 +71,25 @@ cmake --build /tmp/auv-firmware-test
 ctest --test-dir /tmp/auv-firmware-test --output-on-failure
 ```
 
+## 遥控代码合并状态
+
+已对照“八推全矢量 ROVER”参考工程完成核验：`RC.c`、`Move.c`、`Motor.c`
+中的通道转换、六维遥控量和八推进器控制基础原本已存在于当前固件，因此没有用旧工程
+覆盖 P4/P5 代码。本次补入的是参考链路中缺少的安全接收层：
+
+- USART2 使用参考通信程序约定的 PA2/PA3、115200 8N1；
+- 控制帧固定为 11 字节：`0xA5 + 10 字节通道数据`；
+- 中断只组帧并发布一致快照，主循环负责转换和控制；
+- 250 ms 没有完整帧即将所有遥控运动通道清零；若当时已 ARM，同时转为 DISARMED；
+- DISARM 或遥控超时期间不更新舵机目标，推进器仍由 P4 输出门控保持中位。
+
+参考帧本身没有 CRC，现阶段只能依靠固定长度、帧头和超时保护。正式自主控制将继续走
+USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任务主链路。
+
 ## P4 串口与安全行为
 
 - Pi link 当前通过 `AUV_LINK_UART_HANDLE` 配置，默认使用未被原基线占用的 `huart3`。
+- 遥控兼容链路使用 `huart2`（PA2/PA3）115200 8N1，与 Pi CRC 链路相互独立。
 - 当前 CubeMX 映射为 USART3 TX=PC10、RX=PC11；`AuvLink_Init()` 将其配置为 115200 8N1。
 - 上电默认 DISARMED，传感器有效标志默认 false，因此 P5 接入前 ARM 会返回 unsafe。
 - 只有 CRC、version、type 和长度均合法的 HEARTBEAT 才更新时间。

@@ -471,6 +471,16 @@
               <FilePath>.\AuvLink.h</FilePath>
             </File>
             <File>
+              <FileName>AuvRcInput.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvRcInput.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvRcInput.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvRcInput.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>
