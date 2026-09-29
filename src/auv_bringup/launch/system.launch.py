@@ -34,6 +34,9 @@ def generate_launch_description() -> LaunchDescription:
     camera_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'cameras.yaml'
     )
+    apriltag_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'apriltag.yaml'
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -45,6 +48,11 @@ def generate_launch_description() -> LaunchDescription:
                 'start_cameras',
                 default_value='false',
                 description='Start the down and front camera acquisition nodes.',
+            ),
+            DeclareLaunchArgument(
+                'start_apriltag',
+                default_value='false',
+                description='Start AprilTag detection on the down-camera topic.',
             ),
             LogInfo(
                 msg=(
@@ -74,6 +82,14 @@ def generate_launch_description() -> LaunchDescription:
                 name='auv_camera_front',
                 parameters=[camera_config],
                 condition=IfCondition(LaunchConfiguration('start_cameras')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='apriltag_detector_node',
+                name='auv_apriltag_detector',
+                parameters=[apriltag_config],
+                condition=IfCondition(LaunchConfiguration('start_apriltag')),
                 output='screen',
             ),
         ]

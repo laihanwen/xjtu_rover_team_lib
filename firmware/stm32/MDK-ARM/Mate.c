@@ -13,6 +13,8 @@
 #include "iwdg.h"
 #include "AuvSafety.h"
 #include "AuvRcInput.h"
+#include "AuvMotionTarget.h"
+#include "AuvControlSource.h"
 #include <math.h>
 
 /* 现场可调系数：保留原有数值和外部可见性。 */
@@ -35,6 +37,7 @@ static const float PIT_HOLD_DEG = 25.0f;
 /* 俯仰目标斜率和主任务周期。 */
 static const float PIT_SLEW_DPS = 45.0f;
 static const float TASK_DT_S = 0.01f;
+static const float RADIANS_TO_DEGREES = 57.29577951308232f;
 
 // PITCH 平滑目标
 static float pit_target = 0.0f;
@@ -47,6 +50,7 @@ static const int8_t motor_polarity[VECTOR_THRUSTER_COUNT] = {
     Motor_1Polarity, Motor_2Polarity, Motor_3Polarity, Motor_4Polarity,
     Motor_5Polarity, Motor_6Polarity, Motor_7Polarity, Motor_8Polarity
 };
+static volatile float last_thruster_outputs[VECTOR_THRUSTER_COUNT];
 
 // 外部引用
 extern PID_TYPE PID_pit, PID_yaw, PID_rol;
@@ -67,6 +71,9 @@ static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
             neutral_pwm[i] = midvalue;
         safe_pwm = neutral_pwm;
     }
+    for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
+        last_thruster_outputs[i] =
+            (safe_pwm[i] - midvalue) / MOTOR_COMMAND_LIMIT;
     __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_1, safe_pwm[0]); /* T1 */
     __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_4, safe_pwm[1]); /* T2 */
     __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_3, safe_pwm[2]); /* T3 */
@@ -75,6 +82,16 @@ static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
     __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_2, safe_pwm[5]); /* T6 */
     __HAL_TIM_SET_COMPARE(&htim4,  TIM_CHANNEL_3, safe_pwm[6]); /* T7 */
     __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, safe_pwm[7]); /* T8 */
+}
+
+void Mate_GetThrusterOutputs(float output[VECTOR_THRUSTER_COUNT])
+{
+    uint32_t i;
+    if (output == NULL) return;
+    __disable_irq();
+    for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
+        output[i] = last_thruster_outputs[i];
+    __enable_irq();
 }
 
 /** @brief 公共缩放整个向量，保留其在六维空间中的方向。 */
@@ -122,6 +139,7 @@ float constrain(float a)
  */
 void Mate_Init(void)
 {
+    AuvControlSource_Init();
     PID_Init(&PID_yaw, 3.0f, 0.0f, 0.02f, -100, 100);
     PID_Init(&PID_pit, 5.5f, 0.0f, 0.01f, -400, 400);
     PID_Init(&PID_rol, 5.0f, 0.0f, 0.0f,  -200, 200);
@@ -170,6 +188,9 @@ void Mate_Task(void)
 {
     uint8_t rc_frame[AUV_RC_FRAME_SIZE];
     uint8_t rc_fresh;
+    uint8_t pi_fresh;
+    AuvMotionTarget pi_target;
+    AuvControlSourceDecision source;
 
     HAL_IWDG_Refresh(&hiwdg);
 
@@ -179,24 +200,52 @@ void Mate_Task(void)
     /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
     __disable_irq();
     rc_fresh = AuvRcInput_CopyFreshFrame(HAL_GetTick(), rc_frame);
+    pi_fresh = AuvMotionTarget_CopyFresh(HAL_GetTick(), &pi_target);
     __enable_irq();
+
+    /*
+     * Lock one command source for the complete armed interval.  A missing
+     * frame from that source disarms instead of silently switching to the
+     * other source, which could otherwise contain an unrelated command.
+     */
+    source = AuvControlSource_Update(AuvSafety_IsArmed(), pi_fresh, rc_fresh);
+    if (source.disarm_required != 0U)
+        (void)AuvSafety_RequestArm(0U, HAL_GetTick());
+    pi_fresh = ((source.active == AUV_CONTROL_SOURCE_PI) &&
+                (pi_fresh != 0U)) ? 1U : 0U;
+    rc_fresh = ((source.active == AUV_CONTROL_SOURCE_RC) &&
+                (rc_fresh != 0U)) ? 1U : 0U;
+
     if (rc_fresh != 0U) {
         RC_Translate(rc_frame);
     } else {
         /* A stale command source may never retain its last thrust command. */
         for (uint32_t i = 1U; i < MyRcLength; ++i) MyRCKey[i] = 0U;
-        if (AuvSafety_IsArmed() != 0U)
-            (void)AuvSafety_RequestArm(0U, HAL_GetTick());
     }
 
     // ===== 1. 遥控器先形成六维动力层指令，不在此处进行电机分配 =====
     VectorWrenchCommand rc_wrench;
-    RCWrench_Calc(&rc_wrench, MyRCKey);
-    if ((rc_fresh != 0U) && (AuvSafety_IsArmed() != 0U))
+    if (pi_fresh != 0U) {
+        rc_wrench.Fx = pi_target.vx * AUV_SURGE_PWM_PER_MPS;
+        rc_wrench.Fy = pi_target.vy * AUV_SWAY_PWM_PER_MPS;
+        /* Depth output stays zero until a validated depth driver is integrated. */
+        rc_wrench.Fz = 0.0f;
+        rc_wrench.Mx = 0.0f;
+        rc_wrench.My = 0.0f;
+        rc_wrench.Mz = 0.0f;
+    } else {
+        RCWrench_Calc(&rc_wrench, MyRCKey);
+    }
+    if ((pi_fresh == 0U) && (rc_fresh != 0U) &&
+        (AuvSafety_IsArmed() != 0U))
         RCServo_Calc(MyRCKey);
 
     // ===== 2. RcData[9]独立控制YAW PID，上升沿锁定当前航向 =====
-    if (MyRCKey[YAW_PID_SWITCH] == 1U && last_yaw_pid_state == 0U)
+    if (pi_fresh != 0U) {
+        yaw_target = pi_target.yaw * RADIANS_TO_DEGREES;
+        yaw_xishu = 1.0f;
+        last_yaw_pid_state = 0U;
+    } else if (MyRCKey[YAW_PID_SWITCH] == 1U && last_yaw_pid_state == 0U)
     {
         yaw_target = Yaw_Wrap180(Angle_Measure.yaw);
         PID_yaw.PreError = 0.0f;
@@ -204,23 +253,27 @@ void Mate_Task(void)
     }
 
     // PID开启后，原左右自旋摇杆用于缓慢增减YAW目标角
-    if (MyRCKey[YAW_PID_SWITCH] == 1U)
+    if ((pi_fresh == 0U) && (MyRCKey[YAW_PID_SWITCH] == 1U))
     {
         // 符号方向与PID关闭时的直接自旋方向保持一致
         float yaw_stick = ((float)MyRCKey[2] - (float)MyRCKey[1]) / 255.0f;
         yaw_target += yaw_stick * yaw_micro_rate_dps * TASK_DT_S;
         yaw_target = Yaw_Wrap180(yaw_target);
     }
-    yaw_xishu = (MyRCKey[YAW_PID_SWITCH] == 1U) ? 1.00f : 0.00f;
-    last_yaw_pid_state = MyRCKey[YAW_PID_SWITCH];
+    if (pi_fresh == 0U) {
+        yaw_xishu = (MyRCKey[YAW_PID_SWITCH] == 1U) ? 1.00f : 0.00f;
+        last_yaw_pid_state = MyRCKey[YAW_PID_SWITCH];
+    }
 
     // ===== 2.1 SD仍然独立控制PITCH 25度姿态 =====
-    if (MyRCKey[SD] == 1U && last_pitch_hold_state == 0U)
+    if ((pi_fresh == 0U) && (MyRCKey[SD] == 1U) &&
+        (last_pitch_hold_state == 0U))
     {
         pit_target = Angle_Measure.pit;
     }
-    last_pitch_hold_state = MyRCKey[SD];
-    pit_target_cmd = (MyRCKey[SD] == 1U) ? PIT_HOLD_DEG : 0.0f;
+    last_pitch_hold_state = (pi_fresh != 0U) ? 0U : MyRCKey[SD];
+    pit_target_cmd = ((pi_fresh == 0U) && (MyRCKey[SD] == 1U))
+        ? PIT_HOLD_DEG : 0.0f;
 
     // ===== 2.2 让 PITCH 目标平滑变化，避免突变 =====
     {
@@ -256,7 +309,8 @@ void Mate_Task(void)
     dynamics_wrench.Fz = rc_xishu * rc_wrench.Fz;
     dynamics_wrench.Mx = roll_xishu * PID_rol.OutPut;
     dynamics_wrench.My = pit_xishu * PID_pit.OutPut;
-    dynamics_wrench.Mz = (MyRCKey[YAW_PID_SWITCH] == 1U)
+    dynamics_wrench.Mz = ((pi_fresh != 0U) ||
+                          (MyRCKey[YAW_PID_SWITCH] == 1U))
         ? yaw_xishu * PID_yaw.OutPut
         : rc_xishu * rc_wrench.Mz;
 

@@ -3,8 +3,10 @@ project(auv_stm32_bridge)
 
 find_package(ament_cmake REQUIRED)
 find_package(auv_interfaces REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 add_library(serial_port src/serial_port.cpp)
 target_compile_features(serial_port PUBLIC cxx_std_17)
@@ -20,18 +22,29 @@ target_include_directories(protocol PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_library(motion_target src/motion_target.cpp)
+target_compile_features(motion_target PUBLIC cxx_std_17)
+target_include_directories(motion_target PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(motion_target PUBLIC protocol)
+
 add_executable(stm32_bridge_node src/stm32_bridge_node.cpp)
 target_compile_features(stm32_bridge_node PUBLIC cxx_std_17)
 target_link_libraries(stm32_bridge_node
   serial_port
   protocol
+  motion_target
   auv_interfaces::auv_interfaces__rosidl_generator_cpp
   auv_interfaces::auv_interfaces__rosidl_typesupport_cpp
   rclcpp::rclcpp
+  ${geometry_msgs_TARGETS}
   ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
 )
 
-install(TARGETS protocol serial_port stm32_bridge_node
+install(TARGETS motion_target protocol serial_port stm32_bridge_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -62,8 +75,13 @@ if(BUILD_TESTING)
   if(TARGET test_telemetry_decoder)
     target_link_libraries(test_telemetry_decoder protocol)
   endif()
+
+  ament_add_gtest(test_motion_target test/test_motion_target.cpp)
+  if(TARGET test_motion_target)
+    target_link_libraries(test_motion_target motion_target)
+  endif()
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(protocol serial_port)
+ament_export_libraries(motion_target protocol serial_port)
 ament_package()

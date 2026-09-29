@@ -61,5 +61,6 @@ void AuvProtocol_WriteU32Le(uint8_t *output, uint32_t value);
 void AuvProtocol_WriteF32Le(uint8_t *output, float value);
 uint16_t AuvProtocol_ReadU16Le(const uint8_t *input);
 uint32_t AuvProtocol_ReadU32Le(const uint8_t *input);
+float AuvProtocol_ReadF32Le(const uint8_t *input);
 
 #endif

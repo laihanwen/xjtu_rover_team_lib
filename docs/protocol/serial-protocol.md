@@ -1,6 +1,7 @@
 # Raspberry Pi ↔ STM32 串口协议 v1
 
-状态：P3 已冻结并由 P4 固件接入。MCU 为 STM32F405RGT6；实机接线和台架安全测试仍需人工确认。
+状态：v1 已冻结，heartbeat、ARM、MOTION_TARGET 和状态遥测均已接入。
+MCU 为 STM32F405RGT6；实机接线和台架安全测试仍需人工确认。
 
 ## 传输约定
 
@@ -72,6 +73,11 @@ ARM 必须显式请求；运动指令不能隐式 ARM。STM32 必须用 ACK 报�
 | 16 | `float32` | rad | yaw target，右手系 |
 
 值必须有限；STM32 必须再次限幅并拒绝 NaN/Inf。
+
+当前平移控制在尚无 DVL 的条件下使用可标定的前馈增益，不能宣称为真实速度闭环；
+`yaw target` 使用 H30 IMU 闭环。深度目标会被完整传输和校验，但在真实深度驱动接入前
+不会产生垂向推力。DISARM 时合法目标只会被缓存且 ACK 返回 disarmed，绝不会产生输出；
+显式 ARM 时锁定当前新鲜控制源。锁定源 250 ms 未收到新目标即撤销 ARM。
 
 ### ACTUATOR_COMMAND `0x04`
 
@@ -159,3 +165,7 @@ STM32 P4 接入时必须逐 byte 复用这些权威向量。
 - 漏水、无效关键传感器或 kill 状态下拒绝 ARM。
 - 串口断开或合法状态帧超时后，bridge 发布 `connected=false`、`armed=false`。
 - heartbeat 不携带运动目标，不能改变 ARM 状态。
+- `/cmd_vel`、`/cmd_depth`、`/cmd_yaw` 任一输入超过 250 ms 未更新时，Pi bridge
+  停止发送 MOTION_TARGET；STM32 的独立 250 ms 超时随后撤销 ARM。
+- ARM 时若 Pi 和兼容遥控输入都新鲜则锁定 Pi；锁定源超时后不会自动切换来源，
+  必须重新显式 ARM。

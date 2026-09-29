@@ -481,6 +481,26 @@
               <FilePath>.\AuvRcInput.h</FilePath>
             </File>
             <File>
+              <FileName>AuvMotionTarget.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvMotionTarget.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvMotionTarget.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvMotionTarget.h</FilePath>
+            </File>
+            <File>
+              <FileName>AuvControlSource.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvControlSource.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvControlSource.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvControlSource.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>

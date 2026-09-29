@@ -28,3 +28,20 @@ add_executable(test_auv_rc_input
 target_include_directories(test_auv_rc_input PRIVATE ../MDK-ARM)
 target_compile_options(test_auv_rc_input PRIVATE -Wall -Wextra -Werror -pedantic)
 add_test(NAME auv_rc_input COMMAND test_auv_rc_input)
+
+add_executable(test_auv_motion_target
+    test_auv_motion_target.c
+    ../MDK-ARM/AuvMotionTarget.c
+    ../MDK-ARM/AuvProtocol.c
+)
+target_include_directories(test_auv_motion_target PRIVATE ../MDK-ARM)
+target_compile_options(test_auv_motion_target PRIVATE -Wall -Wextra -Werror -pedantic)
+add_test(NAME auv_motion_target COMMAND test_auv_motion_target)
+
+add_executable(test_auv_control_source
+    test_auv_control_source.c
+    ../MDK-ARM/AuvControlSource.c
+)
+target_include_directories(test_auv_control_source PRIVATE ../MDK-ARM)
+target_compile_options(test_auv_control_source PRIVATE -Wall -Wextra -Werror -pedantic)
+add_test(NAME auv_control_source COMMAND test_auv_control_source)

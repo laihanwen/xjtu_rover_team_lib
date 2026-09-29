@@ -41,6 +41,37 @@ ros2 run auv_stm32_bridge stm32_bridge_node --ros-args \
 ros2 launch auv_bringup system.launch.py start_stm32_bridge:=true
 ```
 
+## PC 经有线网络发送运动目标
+
+PC 和树莓派必须使用相同 ROS 2 Lyrical、`ROS_DOMAIN_ID` 和 `auv_interfaces`。
+bridge 同时要求以下三个 topic 在 250 ms 内持续更新：
+
+- `/cmd_vel` (`geometry_msgs/msg/Twist`)：只使用 `linear.x` 和 `linear.y`，单位 m/s；
+- `/cmd_depth` (`std_msgs/msg/Float32`)：目标深度，向下为正，单位 m；
+- `/cmd_yaw` (`std_msgs/msg/Float32`)：目标航向，范围 `[-pi, pi]`，单位 rad。
+
+任一 topic 停止更新后，bridge 停止下发运动帧，STM32 也会在 250 ms 后撤销 ARM。
+命令不会隐式 ARM。首次联调必须断开电机电源或拆桨，并以 20 Hz 连续发布三项：
+
+```fish
+ros2 topic pub -r 20 /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}'
+ros2 topic pub -r 20 /cmd_depth std_msgs/msg/Float32 '{data: 0.0}'
+ros2 topic pub -r 20 /cmd_yaw std_msgs/msg/Float32 '{data: 0.0}'
+```
+
+确认 `/stm32/status` 已连接且所有硬件安全输入有效后，才可显式请求 ARM：
+
+```fish
+ros2 service call /stm32/set_armed auv_interfaces/srv/SetArmed '{armed: true}'
+ros2 topic echo /stm32/status
+```
+
+`thruster_outputs` 返回经过安全门控后的 T1–T8 归一化输出；DISARM 时八路均应为零。
+当前 `vx/vy` 是没有 DVL 时的开环前馈，最终艇体必须在约束水池内重新标定
+`AUV_SURGE_PWM_PER_MPS` 和 `AUV_SWAY_PWM_PER_MPS`。深度驱动尚未接入，因此当前版本不会
+根据 `/cmd_depth` 产生垂向推力。
+
 ## 验证
 
 ```fish

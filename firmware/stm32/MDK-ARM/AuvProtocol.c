@@ -181,3 +181,11 @@ uint32_t AuvProtocol_ReadU32Le(const uint8_t *input)
         ((uint32_t)input[2] << 16U) |
         ((uint32_t)input[3] << 24U);
 }
+
+float AuvProtocol_ReadF32Le(const uint8_t *input)
+{
+    uint32_t bits = AuvProtocol_ReadU32Le(input);
+    float value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
