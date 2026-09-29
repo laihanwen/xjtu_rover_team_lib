@@ -8,6 +8,8 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
 set(msg_files
+  "msg/AprilTagDetection.msg"
+  "msg/AprilTagDetectionArray.msg"
   "msg/ConeDetection.msg"
   "msg/Detection2D.msg"
   "msg/Depth.msg"

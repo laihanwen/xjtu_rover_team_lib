@@ -20,10 +20,12 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "auv_stm32_bridge/motion_target.hpp"
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
 #include "auv_stm32_bridge/stream_parser.hpp"
@@ -31,9 +33,11 @@
 #include "auv_interfaces/msg/depth.hpp"
 #include "auv_interfaces/msg/stm32_status.hpp"
 #include "auv_interfaces/srv/set_armed.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "std_msgs/msg/float32.hpp"
 
 namespace auv_stm32_bridge
 {
@@ -51,6 +55,9 @@ public:
     connection_timeout_ms_ = declare_parameter<int>("connection_timeout_ms", 500);
     imu_frame_id_ = declare_parameter<std::string>("imu_frame_id", "imu_link");
     depth_frame_id_ = declare_parameter<std::string>("depth_frame_id", "depth_link");
+    const int command_timeout_ms = declare_parameter<int>("command_timeout_ms", 250);
+    const double max_velocity_mps = declare_parameter<double>("max_velocity_mps", 2.0);
+    const double max_depth_m = declare_parameter<double>("max_depth_m", 20.0);
     const bool arm_on_startup = declare_parameter<bool>("arm_on_startup", false);
 
     if (reconnect_rate_hz <= 0.0) {
@@ -59,6 +66,12 @@ public:
     if (heartbeat_rate_hz <= 0.0 || connection_timeout_ms_ <= 0) {
       throw std::invalid_argument("heartbeat_rate_hz and connection_timeout_ms must be positive");
     }
+    if (command_timeout_ms <= 0) {
+      throw std::invalid_argument("command_timeout_ms must be positive");
+    }
+    motion_gate_ = std::make_unique<MotionTargetGate>(
+      static_cast<uint64_t>(command_timeout_ms), static_cast<float>(max_velocity_mps),
+      static_cast<float>(max_depth_m));
     if (arm_on_startup) {
       RCLCPP_ERROR(get_logger(), "arm_on_startup=true rejected: bridge always starts DISARMED");
     }
@@ -78,6 +91,34 @@ public:
         &Stm32BridgeNode::handle_set_armed, this, std::placeholders::_1,
         std::placeholders::_2),
       rclcpp::ServicesQoS(), service_callback_group_);
+    const auto command_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
+    velocity_subscription_ = create_subscription<geometry_msgs::msg::Twist>(
+      "/cmd_vel", command_qos,
+      [this](const geometry_msgs::msg::Twist::ConstSharedPtr message) {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        if (!motion_gate_->update_velocity(steady_now_ms(), message->linear.x, message->linear.y)) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000, "rejected invalid /cmd_vel target");
+        }
+      });
+    depth_command_subscription_ = create_subscription<std_msgs::msg::Float32>(
+      "/cmd_depth", command_qos,
+      [this](const std_msgs::msg::Float32::ConstSharedPtr message) {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        if (!motion_gate_->update_depth(steady_now_ms(), message->data)) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000, "rejected invalid /cmd_depth target");
+        }
+      });
+    yaw_command_subscription_ = create_subscription<std_msgs::msg::Float32>(
+      "/cmd_yaw", command_qos,
+      [this](const std_msgs::msg::Float32::ConstSharedPtr message) {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        if (!motion_gate_->update_yaw(steady_now_ms(), message->data)) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000, "rejected invalid /cmd_yaw target");
+        }
+      });
 
     reconnect_timer_ = create_wall_timer(
       to_nanoseconds(1.0 / reconnect_rate_hz), std::bind(&Stm32BridgeNode::connect, this),
@@ -102,6 +143,12 @@ private:
       std::chrono::duration<double>(seconds));
   }
 
+  static uint64_t steady_now_ms()
+  {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+  }
+
   void connect()
   {
     if (serial_port_.is_open() || device_.empty()) {
@@ -124,6 +171,7 @@ private:
       try {
         receive_frames();
         send_heartbeat();
+        send_motion_target();
       } catch (const std::exception & error) {
         RCLCPP_ERROR(get_logger(), "serial I/O failed: %s", error.what());
         std::lock_guard<std::mutex> serial_lock(serial_mutex_);
@@ -179,6 +227,27 @@ private:
     std::lock_guard<std::mutex> serial_lock(serial_mutex_);
     if (serial_port_.write(frame.data(), frame_size) != frame_size) {
       throw std::runtime_error("partial heartbeat write");
+    }
+  }
+
+  void send_motion_target()
+  {
+    std::optional<MotionTarget> target;
+    if (!connected_.load()) {return;}
+    {
+      std::lock_guard<std::mutex> command_lock(command_mutex_);
+      target = motion_gate_->fresh_target(steady_now_ms());
+    }
+    if (!target.has_value()) {return;}
+
+    const uint32_t sequence = transmit_sequence_.fetch_add(1U);
+    const auto payload = encode_motion_target_payload(sequence, *target);
+    std::array<uint8_t, AUV_PROTOCOL_MAX_FRAME_SIZE> frame{};
+    const std::size_t frame_size = auv_protocol_encode_frame(
+      AUV_PROTOCOL_MSG_MOTION_TARGET, payload.data(), payload.size(), frame.data(), frame.size());
+    std::lock_guard<std::mutex> serial_lock(serial_mutex_);
+    if (serial_port_.write(frame.data(), frame_size) != frame_size) {
+      throw std::runtime_error("partial MOTION_TARGET write");
     }
   }
 
@@ -357,12 +426,17 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_publisher_;
   rclcpp::Publisher<auv_interfaces::msg::Depth>::SharedPtr depth_publisher_;
   rclcpp::Service<auv_interfaces::srv::SetArmed>::SharedPtr armed_service_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocity_subscription_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr depth_command_subscription_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr yaw_command_subscription_;
   rclcpp::TimerBase::SharedPtr reconnect_timer_;
   rclcpp::TimerBase::SharedPtr io_timer_;
   rclcpp::CallbackGroup::SharedPtr io_callback_group_;
   rclcpp::CallbackGroup::SharedPtr service_callback_group_;
   std::mutex serial_mutex_;
   std::mutex ack_mutex_;
+  std::mutex command_mutex_;
+  std::unique_ptr<MotionTargetGate> motion_gate_;
   std::condition_variable ack_condition_;
   bool ack_waiting_{false};
   bool ack_received_{false};

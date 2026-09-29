@@ -6,6 +6,11 @@ stm32_bridge:
     reconnect_rate_hz: 1.0
     heartbeat_rate_hz: 20.0
     connection_timeout_ms: 500
+    # All three command topics must update within this interval. If any becomes
+    # stale, bridge transmission stops and STM32 withdraws ARM after 250 ms.
+    command_timeout_ms: 250
+    max_velocity_mps: 2.0
+    max_depth_m: 20.0
     arm_on_startup: false
     imu_frame_id: imu_link
     depth_frame_id: depth_link

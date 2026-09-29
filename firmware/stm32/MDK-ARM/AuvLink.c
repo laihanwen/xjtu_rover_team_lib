@@ -7,7 +7,9 @@
 
 #include "AuvProtocol.h"
 #include "AuvSafety.h"
+#include "AuvMotionTarget.h"
 #include "imu.h"
+#include "Mate.h"
 #include "usart.h"
 
 #ifndef AUV_LINK_UART_HANDLE
@@ -64,8 +66,14 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
             result = AuvSafety_RequestArm(frame->payload[4], now_ms);
         }
         QueueAck(AUV_MSG_SET_ARMED, (uint8_t)result, sequence);
-    } else if ((frame->message_type == AUV_MSG_MOTION_TARGET) ||
-               (frame->message_type == AUV_MSG_ACTUATOR_COMMAND)) {
+    } else if (frame->message_type == AUV_MSG_MOTION_TARGET) {
+        uint32_t sequence = (frame->payload_length >= 4U)
+            ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
+        AuvArmResult result = AuvMotionTarget_Accept(
+            frame->payload, frame->payload_length, now_ms,
+            AuvSafety_IsArmed());
+        QueueAck(AUV_MSG_MOTION_TARGET, (uint8_t)result, sequence);
+    } else if (frame->message_type == AUV_MSG_ACTUATOR_COMMAND) {
         uint32_t sequence = (frame->payload_length >= 4U)
             ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
         QueueAck(frame->message_type, AUV_ARM_UNSUPPORTED, sequence);
@@ -104,7 +112,8 @@ static void SendPendingAck(void)
 static void SendStatus(uint32_t now_ms)
 {
     const AuvSafetyContext *context = AuvSafety_GetContext();
-    uint8_t payload[30] = {0};
+    uint8_t payload[46] = {0};
+    float thruster_outputs[VECTOR_THRUSTER_COUNT];
     uint8_t state_flags = 0U;
     uint32_t error_flags = 0U;
 
@@ -123,7 +132,16 @@ static void SendStatus(uint32_t now_ms)
     AuvProtocol_WriteU32Le(&payload[5], error_flags);
     AuvProtocol_WriteU32Le(&payload[9], AUV_QUIET_NAN_BITS);  /* voltage unavailable */
     AuvProtocol_WriteU32Le(&payload[13], AUV_QUIET_NAN_BITS); /* depth unavailable */
-    payload[29] = 0U; /* P5 will publish measured thruster outputs. */
+    Mate_GetThrusterOutputs(thruster_outputs);
+    payload[29] = VECTOR_THRUSTER_COUNT;
+    for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; ++i) {
+        float normalized = thruster_outputs[i];
+        int16_t encoded;
+        if (normalized > 1.0f) normalized = 1.0f;
+        if (normalized < -1.0f) normalized = -1.0f;
+        encoded = (int16_t)(normalized * 1000.0f);
+        AuvProtocol_WriteI16Le(&payload[30U + 2U * i], encoded);
+    }
     SendFrame(AUV_MSG_STATUS, payload, sizeof(payload));
 }
 
@@ -167,6 +185,7 @@ void AuvLink_Init(void)
 {
     UART_HandleTypeDef *uart = LinkUart();
     AuvSafety_Init(HAL_GetTick());
+    AuvMotionTarget_Init();
     AuvProtocolParser_Init(&parser);
     ack_pending = 0U;
     status_sequence = 0U;

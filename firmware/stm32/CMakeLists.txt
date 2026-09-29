@@ -20,6 +20,8 @@ set(ROV_CONTROL_SOURCES
     MDK-ARM/AuvSafety.c
     MDK-ARM/AuvLink.c
     MDK-ARM/AuvRcInput.c
+    MDK-ARM/AuvMotionTarget.c
+    MDK-ARM/AuvControlSource.c
 )
 
 set(ROV_GENERATED_SOURCES

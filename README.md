@@ -1,147 +1,220 @@
-# XJTU AUV · 水下具身智能机器人
+# XJTU AUV
 
-> 面向水下机器人竞赛的自主 AUV：用 ROS 2 完成视觉、语义建图、路径规划与任务决策，用 STM32 完成实时姿态、深度、推进器和安全控制。
+> 面向水下机器人竞赛的自主 AUV 软件与 STM32 固件。
+> ROS 2 负责视觉、语义地图、规划和任务决策；STM32 负责实时姿态、推力分配与安全保护。
 
-**当前阶段：双摄像头接入 / P6**　·　down/front 图像采集已实现　·　硬件统一联调待进行
+![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
+![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
+![STM32F405](https://img.shields.io/badge/MCU-STM32F405-03234B?logo=stmicroelectronics)
+![Stage P7](https://img.shields.io/badge/Stage-P7_AprilTag-2E8B57)
 
-## 快速导航
+当前软件已完成 **P0–P7**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
+heartbeat/failsafe、IMU/depth 遥测、双摄像头和 AprilTag。PC 可通过有线 ROS 2 网络
+接收视频与状态并发送运动目标；下一阶段是 **P8 九宫格语义建图**。
 
-- [5 分钟开始开发](#5-分钟开始开发)
-- [先理解系统](#先理解系统)
-- [仓库地图](#仓库地图)
-- [使用 AI 开发工具](#使用-ai-开发工具)
-- [开发与提交](#开发与提交)
-- [安全红线](#安全红线)
+> [!CAUTION]
+> 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
+> 或可靠固定推进器。真实漏水、急停和传感器有效输入接入前，STM32 会拒绝 ARM。
+
+## 导航
+
+- [系统架构](#系统架构)
+- [当前进度](#当前进度)
+- [快速开始](#快速开始)
+- [运行与验收](#运行与验收)
+- [仓库结构](#仓库结构)
+- [安全边界](#安全边界)
+- [开发约定](#开发约定)
 - [常见问题](#常见问题)
 
-## 先理解系统
-
-项目采用清晰的双层控制架构：
+## 系统架构
 
 ```text
-┌──────────────── Raspberry Pi / PC ────────────────┐
-│ ROS 2 · OpenCV · AprilTag · YOLO · Semantic Map  │
-│ Path Planning · Mission FSM · Logging            │
-└──────────────────────┬────────────────────────────┘
-                       │ UART：运动目标 / 状态 / 心跳
-┌──────────────────────▼────────────────────────────┐
-│ STM32：IMU · Depth · PID · Thruster Mixer        │
-│ ESC PWM · Actuator · Leak Detection · Failsafe   │
-└───────────────────────────────────────────────────┘
+┌──────────────────── PC ────────────────────┐
+│ rqt / RViz · 视频监看 · 运动目标 · 调试   │
+└───────────────────┬────────────────────────┘
+                    │ Gigabit Ethernet / ROS 2 DDS
+┌───────────────────▼────────────────────────┐
+│ Raspberry Pi                              │
+│ Camera · AprilTag · Mapping · Planning    │
+│ Mission FSM · Logging · STM32 Bridge      │
+└───────────────────┬────────────────────────┘
+                    │ UART / CRC16 / heartbeat
+┌───────────────────▼────────────────────────┐
+│ STM32F405                                 │
+│ IMU · Depth · PID · Thruster Mixer · PWM  │
+│ ARM/DISARM · timeout · leak/kill failsafe │
+└────────────────────────────────────────────┘
 ```
 
-Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速姿态和深度闭环必须留在 STM32。项目优先实现稳定、可比赛的结构化场景方案，不以复杂通用 SLAM 为第一目标。
+Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高速姿态控制、
+推力分配和最终 PWM 必须留在 STM32，不由 ROS 2 调度承担。
 
-### 当前进度
+### 关键数据流
 
-| 优先级 | 模块 | 状态 |
+| 方向 | 接口 | 用途 |
 |---|---|---|
+| Camera → Pi/PC | `/camera/down/image_raw`、`/camera/front/image_raw` | 视频与视觉输入 |
+| Vision → Pi/PC | `/apriltag/detections`、`/apriltag/debug_image` | 标签检测与调试画面 |
+| PC/Pi → STM32 | `/cmd_vel`、`/cmd_depth`、`/cmd_yaw` | 完整运动目标 |
+| STM32 → Pi/PC | `/imu/data`、`/depth`、`/stm32/status` | 遥测、安全状态和八路输出 |
+| Operator → STM32 | `/stm32/set_armed` | 显式 ARM/DISARM |
+
+Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
+[串口协议 v1](docs/protocol/serial-protocol.md)。
+
+## 当前进度
+
+| 阶段 | 能力 | 状态 |
+|---:|---|---|
 | P0 | ROS 2 workspace | ✅ 可构建、可测试 |
-| P1 | `auv_interfaces` | ✅ 初始 msg/srv 已建立 |
-| 固件基线 | STM32F405 八推全矢量控制 | ✅ 已导入；P4 安全门已接入，实机待验证 |
-| P2 | `auv_stm32_bridge` | ✅ 串口 transport、状态与安全服务入口已建立 |
-| P3 | Pi ↔ STM32 串口协议 | ✅ v1 帧、CRC、消息、解析器和黄金向量已冻结 |
-| P4 | STM32 heartbeat + failsafe | ✅ 软件实现与主机测试通过；实机台架待验证 |
-| P5 | IMU / depth ROS topics | ✅ 串口遥测与 ROS topics 已接通；真实深度传感器驱动待硬件定型 |
-| P6 | 双摄像头 ROS nodes | ✅ down/front、断线重连与离线输入已实现；硬件待统一联调 |
-| P7–P11 | AprilTag、建图、检测、规划、Mission FSM | 📝 已规划 |
+| P1 | `auv_interfaces` | ✅ msg/srv 已建立 |
+| P2 | `auv_stm32_bridge` | ✅ 串口传输、状态发布与 ARM 服务 |
+| P3 | Pi ↔ STM32 protocol | ✅ v1 帧、CRC、解析器与黄金向量 |
+| P4 | heartbeat + failsafe | ✅ 软件实现；实机安全输入待接线 |
+| P5 | IMU / depth topics | ✅ 遥测链路；真实深度驱动待定型 |
+| P6 | 双摄像头 | ✅ down/front、重连与离线输入 |
+| P7 | AprilTag | ✅ 二维检测与标定位姿；待水下实测 |
+| P8 | 九宫格 Semantic Map | ⏭️ 下一阶段 |
+| P9–P11 | Cone、规划、Mission FSM | 📝 已规划 |
 | P12–P14 | YOLO、抓取、转盘 | 📝 已规划 |
 
-完整优先级和技术约束请阅读 [AGENTS.md](AGENTS.md)。
+### 当前控制能力边界
 
-## 5 分钟开始开发
+- `vx/vy` 已打通 PC → ROS 2 → UART → STM32 → Mixer，但当前是开环 PWM 前馈，
+  不是 DVL 速度闭环。
+- `yaw` 使用现有 IMU 航向 PID。
+- `/cmd_depth` 已完成协议校验和超时联锁；真实深度传感器接入前，固件强制
+  `Fz=0`，不会产生垂向推力。
+- ARM 周期会锁定 Pi 或遥控器控制源。锁定源超过 250 ms 未更新时自动 DISARM，
+  不会静默切换到另一控制源。
 
-### 1. 环境要求
+## 快速开始
+
+### 环境
 
 | 组件 | 项目基线 |
 |---|---|
 | OS | Ubuntu 26.04 `resolute` |
-| ROS | ROS 2 `Lyrical`，安装于 `/opt/ros/lyrical` |
+| ROS | ROS 2 `Lyrical`，位于 `/opt/ros/lyrical` |
 | Shell | fish 4.x |
-| 构建 | colcon + CMake |
 | ROS Python | 系统 `/usr/bin/python3` |
-| 视觉训练 | uv 独立虚拟环境，不污染系统 Python |
-| 固件检查（可选） | `arm-none-eabi-gcc` + Ninja |
+| 视觉训练 | 独立 uv 环境 |
+| MCU | STM32F405RGT6 |
 
-快速检查：
+不要向系统 Python 执行 `pip install`；YOLO 训练环境与 ROS Python 必须隔离。
 
-```fish
-test -f /opt/ros/lyrical/setup.fish; and echo "ROS 2 Lyrical: OK"
-fish --version
-colcon --help >/dev/null; and echo "colcon: OK"
-python3 --version
-```
-
-### 2. 克隆并加载环境
+### 获取和构建
 
 ```fish
 git clone https://github.com/laihanwen/xjtu_rover_team_lib.git
 cd xjtu_rover_team_lib
+
+source /opt/ros/lyrical/setup.fish
+colcon build --symlink-install
+source install/setup.fish
+```
+
+也可以使用仓库环境脚本：
+
+```fish
+source tools/setup_dev.fish
+colcon build --symlink-install
 source tools/setup_dev.fish
 ```
 
-环境脚本会：
+该脚本会固定使用系统 Python，并将 ROS 日志写入 `log/ros/`。
 
-- 加载 `/opt/ros/lyrical/setup.fish`
-- 固定 colcon 使用系统 Python，避免误用 uv Python
-- 自动加载已经构建的 workspace packages
-- 将 ROS 日志写入仓库的 `log/ros/`
-
-### 3. 构建与测试
+### 测试
 
 ```fish
-colcon build
-
-# 首次构建后重新加载，使 ROS 发现新生成的 packages
-source tools/setup_dev.fish
-
 colcon test
 colcon test-result --verbose
+git diff --check
 ```
 
-预期能看到四个 packages：
+当前工作区包含四个 ROS packages：
 
-```fish
-colcon list
-# auv_bringup
-# auv_interfaces
-# auv_stm32_bridge
-# auv_vision
+```text
+auv_interfaces    auv_stm32_bridge    auv_vision    auv_bringup
 ```
 
-### 4. 最小运行验证
+## 运行与验收
 
-```fish
-ros2 interface show auv_interfaces/msg/Stm32Status
-ros2 launch auv_bringup system.launch.py
-```
-
-默认串口设备为空，不启动推进器。连接 STM32 后可在另一个 fish 终端验收 P5：
+### 1. 安全启动
 
 ```fish
 source /opt/ros/lyrical/setup.fish
 source install/setup.fish
+ros2 launch auv_bringup system.launch.py
+```
+
+所有硬件节点默认关闭，推进系统保持 DISARM。按需显式启用：
+
+```fish
+ros2 launch auv_bringup system.launch.py \
+  start_stm32_bridge:=true \
+  start_cameras:=true \
+  start_apriltag:=true
+```
+
+启动前需填写实际硬件路径：
+
+- 摄像头：`src/auv_bringup/config/cameras.yaml`
+- STM32 串口：`src/auv_bringup/config/stm32_bridge.yaml`
+- AprilTag 标定：`src/auv_bringup/config/apriltag.yaml`
+
+这些字段默认留空，避免误连 `/dev/videoN` 或未知串口。
+
+### 2. 视频与 AprilTag
+
+```fish
+ros2 topic hz /camera/down/image_raw
+ros2 topic hz /camera/front/image_raw
+ros2 topic echo /apriltag/detections
+rqt_image_view /camera/down/image_raw
+```
+
+相机节点也支持视频文件和 OpenCV 图像序列，可在无硬件时离线复现。详细配置见
+[auv_vision 使用说明](src/auv_vision/README.md)。
+
+### 3. PC—树莓派有线联调
+
+两端使用同一 ROS 2 Lyrical、工作区接口和 `ROS_DOMAIN_ID`。完整静态 IP、DDS 发现、
+视频查看、拆桨控制和拔网线验收步骤见：
+
+> [PC 与树莓派有线联调手册](docs/wired-network.md)
+
+最小网络环境示例：
+
+```fish
+source /opt/ros/lyrical/setup.fish
+source install/setup.fish
+set -gx ROS_DOMAIN_ID 42
+set -gx ROS_LOCALHOST_ONLY 0
+```
+
+### 4. STM32 状态
+
+```fish
+ros2 topic echo /stm32/status
 ros2 topic echo /imu/data --once
 ros2 topic echo /depth --once
 ```
 
-`/imu/data` 中的姿态来自 H30 欧拉角，bridge 输出四元数。当前 H30 代码未提供角速度和线加速度，因此这些值为 NaN，对应 covariance 首项为 `-1`。未选定并接入真实深度传感器前，`/depth` 必须显示 `valid: false` 和 `depth: nan`；这是预期的安全状态，STM32 仍拒绝 ARM。
+预期安全状态：
 
-P6 双摄像头默认不绑定未知的 `/dev/videoN`。识别真实设备并填写
-`src/auv_bringup/config/cameras.yaml` 后启动：
+- 未配置串口：`connected: false`、`armed: false`
+- 未接深度传感器：`valid: false`、`depth: nan`
+- DISARM：`thruster_outputs` 八路均为零
+- 命令或 heartbeat 超时：自动撤销 ARM
 
-```fish
-ros2 launch auv_bringup system.launch.py start_cameras:=true
-ros2 topic hz /camera/down/image_raw
-ros2 topic hz /camera/front/image_raw
-```
+H30 当前只提供欧拉角。`/imu/data` 的角速度和线加速度为 NaN，对应 covariance
+首项为 `-1`，表示数据不可用，不应被下游当作零值使用。
 
-也可将 `source` 参数设为视频文件或 OpenCV 图像序列，在没有相机硬件时离线复现。
-详细参数见 [auv_vision 使用说明](src/auv_vision/README.md)。
+### 5. 固件检查
 
-### 5. STM32 固件编译检查（可选）
-
-仓库中的固件是独立 CMake/Keil 工程，并通过 `COLCON_IGNORE` 与 ROS 构建隔离。安装 ARM GCC 后可以执行不生成烧录镜像的编译检查：
+固件与 ROS 构建隔离。ARM GCC 可进行不链接、不烧写的对象编译检查：
 
 ```fish
 cmake -S firmware/stm32 -B firmware/stm32/build/gcc-check \
@@ -151,172 +224,153 @@ cmake -S firmware/stm32 -B firmware/stm32/build/gcc-check \
 cmake --build firmware/stm32/build/gcc-check --target rov_ui_model
 ```
 
-部署和生成可烧录固件仍以 `firmware/stm32/MDK-ARM/Copy_cup.uvprojx` 为准。详细入口和已知警告见 [STM32 固件说明](firmware/stm32/README.md)。
+主机单元测试：
 
-## 仓库地图
+```fish
+cmake -S firmware/stm32/test -B firmware/stm32/build/host-tests
+cmake --build firmware/stm32/build/host-tests
+ctest --test-dir firmware/stm32/build/host-tests --output-on-failure
+```
+
+可烧录固件仍以 `firmware/stm32/MDK-ARM/Copy_cup.uvprojx` 的 Keil 构建结果为准。
+
+## 仓库结构
 
 ```text
 xjtu_rover_team_lib/
-├── AGENTS.md              # 项目事实、技术决策和 AI 必读约束
-├── src/                   # Raspberry Pi / PC 的 ROS 2 packages
-│   ├── auv_interfaces/    # 公共 msg / srv
-│   ├── auv_stm32_bridge/  # 安全串口 transport 与 STM32 bridge 节点
-│   ├── auv_vision/        # 双摄像头采集与后续视觉节点
-│   └── auv_bringup/       # 启动入口和共享安全配置
-├── firmware/stm32/        # STM32 固件的独立构建边界
-├── vision/                # 数据处理、训练、评估和模型导出
-├── models/                # 模型清单与部署元数据
-├── datasets/              # 本地数据集目录和管理约定
-├── hardware/              # BOM、接线、坐标系和机构资料
-├── docs/
-│   ├── architecture/      # 仓库和系统架构
-│   ├── protocol/          # Pi ↔ STM32 通信协议
-│   └── testing/           # 无硬件、台架和水池测试策略
-├── tools/                 # 开发、构建与部署辅助工具
-└── logs|videos|maps...    # 运行输出，不提交 Git
+├── AGENTS.md                 # 项目事实、硬件边界与 AI 必读约束
+├── src/
+│   ├── auv_interfaces/       # 公共 msg / srv
+│   ├── auv_stm32_bridge/     # ROS 2 ↔ STM32 安全串口桥
+│   ├── auv_vision/           # 相机与 AprilTag
+│   └── auv_bringup/          # launch 与共享参数
+├── firmware/stm32/           # STM32F405 CubeMX / Keil 工程与测试
+├── vision/                   # 数据处理、训练、评估和导出
+├── models/                   # 模型 manifest 与部署元数据
+├── datasets/                 # 本地数据集管理约定
+├── hardware/                 # BOM、接线、坐标系与机构资料
+├── docs/                     # 架构、协议、联调与测试文档
+└── tools/                    # 开发、构建和部署辅助脚本
 ```
 
-进一步阅读：
+推荐阅读顺序：
 
-- [仓库布局与模块边界](docs/architecture/repository-layout.md)
-- [串口协议 v1](docs/protocol/serial-protocol.md)
-- [测试策略](docs/testing/strategy.md)
-- [P4 heartbeat 与 failsafe 验收](docs/testing/p4-safety.md)
-- [STM32 固件约束](firmware/stm32/README.md)
-- [视觉研发约定](vision/README.md)
-- [模型注册规则](models/README.md)
-- [数据集管理](datasets/README.md)
+1. [项目约束与路线图](AGENTS.md)
+2. [仓库布局与模块边界](docs/architecture/repository-layout.md)
+3. [串口协议 v1](docs/protocol/serial-protocol.md)
+4. [测试策略](docs/testing/strategy.md)
+5. [P4 安全验收](docs/testing/p4-safety.md)
+6. [STM32 固件说明](firmware/stm32/README.md)
 
-## 使用 AI 开发工具
+## 安全边界
 
-项目预计大量使用 Claude Code、Codex 等 AI 编程助手。无论使用哪一种工具，每个新会话都应先让它读取仓库事实，而不是凭经验猜测 ROS 版本或硬件参数。
+> [!IMPORTANT]
+> DISARM、heartbeat timeout、通信超时、输出限幅和显式 ARM 已在软件中实现并有测试，
+> 但真实漏水、kill 和传感器有效信号仍需按最终硬件接线。不得用常量绕过这些安全输入。
 
-### 推荐的首条指令
+上机必须遵守：
+
+- 上电默认 DISARM；任何恢复连接都不得自动 ARM。
+- 首次测试断开电机动力、拆桨或可靠固定推进器。
+- ARM 前确认漏水、急停、传感器有效和 heartbeat 状态。
+- 先验证零目标，再逐台、单轴、低输出验证方向。
+- 拔网线、停止任一命令 topic 或停止 heartbeat 后，必须在规定时间内归零并 DISARM。
+- 不得猜测 GPIO、Timer、PWM 范围、推进器极性或安装方向。
+- 不得把 Linux/ROS 2 作为高速姿态 PID 的执行层。
+
+## 开发约定
+
+### 分支与提交
 
 ```text
-请先完整阅读 AGENTS.md、README.md，以及本任务涉及目录中的 README。
-检查当前仓库内容和 git status 后再行动，不要假设尚不存在的硬件参数或文件。
-环境是 Ubuntu 26.04 + ROS 2 Lyrical + fish；ROS 使用系统 Python，视觉训练使用 uv 隔离环境。
-实现后请执行与改动风险相称的构建和测试，并说明修改、运行方法和硬件风险。
+feature/<module>-<name>    新功能
+fix/<module>-<name>        缺陷修复
+docs/<name>                文档
 ```
-若无仓库写权限，先 Fork 本仓库，再克隆自己的 Fork。
 
-### AI 协作检查清单
-
-在接受 AI 生成的改动前，确认它没有：
-
-- 使用 Humble/Jazzy 的包名或默认命令替代 Lyrical
-- 在 fish 环境中默认执行 `setup.bash`
-- 向系统 Python 执行 `pip install`
-- 忽略现有 STM32F405 工程，或未经实测擅自修改 GPIO、Timer、PWM 范围和推进器方向
-- 把实时 PID 放到 Linux / ROS 2 节点
-- 修改 CubeMX 下次生成时会覆盖的区域
-- 将模型权重、数据集、rosbag 或编译产物提交到 Git
-- 绕过 DISARM、heartbeat、漏水检测或 failsafe
-
-让 AI 修改代码时，建议一次只完成一个可验证目标，例如“定义串口帧解析器并添加黄金测试向量”，而不是笼统要求“完成 STM32 通信”。
-
-## 开发与提交
-
-### 分支建议
+推荐使用小而可验证的提交：
 
 ```text
-feature/<module>-<short-name>  新功能
-fix/<module>-<short-name>      缺陷修复
-docs/<short-name>              文档
+feat(bridge): add motion target timeout gate
+test(firmware): cover control source locking
+docs(network): add wired bench checklist
 ```
 
-保持提交单一、可构建，例如：
-
-```text
-feat(bridge): add heartbeat frame decoder
-test(protocol): add CRC golden vectors
-docs(hardware): document thruster coordinate convention
-```
-
-### 提交前检查
-
-ROS 代码变更至少运行：
+提交前至少执行：
 
 ```fish
 source tools/setup_dev.fish
-colcon build
+colcon build --symlink-install
 source tools/setup_dev.fish
 colcon test
 colcon test-result --verbose
 git diff --check
 ```
 
-不同模块还需要对应验证：
+视觉改动还应提供固定视频回归；协议改动应同步 ROS/STM32 黄金向量；固件改动必须经过
+host 测试、交叉编译、无桨台架和 failsafe 故障注入。
 
-- 视觉：固定输入视频或数据集上的离线回归结果
-- 串口协议：ROS 与 STM32 共用的黄金帧测试
-- STM32：host 单元测试、无桨台架测试和 failsafe 验证
-- Mission：状态转换、超时和故障注入测试
+### 模型与数据
 
-## 模型与数据
+- 模型权重放入本地 `models/artifacts/`，不直接提交普通 Git。
+- 模型版本、类别、输入尺寸、SHA-256 和下载地址记录在 `models/manifests/`。
+- 数据遵循 `datasets/raw → interim → processed → exports`。
+- rosbag、视频、数据集、权重和编译产物均不得混入源码提交。
 
-模型权重和数据集不直接进入普通 Git：
+### 使用 AI 编程助手
 
-- 权重放在本地 `models/artifacts/`
-- 模型版本、类别、输入尺寸、SHA-256 和下载地址写入 `models/manifests/`
-- 数据遵循 `datasets/raw → interim → processed → exports` 流程
-- 稳定模型通过 GitHub Release、对象存储或团队约定位置分发
+新会话先要求工具读取 `AGENTS.md`、本 README 和任务目录内的说明。接受改动前确认：
 
-当前机器未统一安装 Git LFS/DVC，因此仓库暂不强制依赖它们；确定团队工作流后再引入。
-
-## 安全红线
-
-> [!CAUTION]
-> 推进器、电调、电池和机械执行器可能造成人身伤害或设备损坏。任何首次测试必须断开电机电源、拆桨，或可靠固定推进器。
-
-- 默认状态必须是 `DISARM`
-- ARM 必须由显式命令触发
-- STM32 必须独立执行 heartbeat timeout 和 failsafe
-- Linux 程序退出或通信中断不能让推进器保持危险输出
-- 漏水、传感器无效和通信超时必须进入安全状态
-- 未经实测不得提交真实硬件参数的“猜测值”
-
-### 当前固件的重要边界
-
-现有 STM32 工程来自已完成的遥控 ROV 基线，不等同于完整的自主 AUV 安全固件。代码当前会在初始化阶段启动推进器 PWM，且尚未发现以下机制：
-
-- 来自 Raspberry Pi 的显式 ARM / DISARM 状态机
-- Pi 通信 heartbeat timeout
-- 漏水传感器触发的 failsafe
-- ROS 运动目标对应的版本化串口协议
-
-在这些功能实现并通过无桨台架测试前，不得把 ROS 控制命令直接接入实机推进器。
+- 没有把 Humble/Jazzy 的命令当作 Lyrical 默认命令；
+- 没有在 fish 指令中默认使用 `setup.bash`；
+- 没有污染系统 Python 或 CUDA/YOLO 环境；
+- 没有猜测硬件参数或修改会被 CubeMX 覆盖的区域；
+- 没有绕过 DISARM、heartbeat、漏水、kill 或传感器有效检查。
 
 ## 常见问题
 
-### CMake 选择了用户目录中的 Python
+### `ros2 launch` 提示找不到文件
 
-项目的 [colcon.defaults.yaml](colcon.defaults.yaml) 已固定：
-
-```text
--DPython3_EXECUTABLE=/usr/bin/python3
-```
-
-请先 `source tools/setup_dev.fish`，不要通过修改系统 Python 或向 uv Python 安装 ROS 包来绕过问题。
-
-### 构建后 ROS 找不到 package
-
-重新加载环境：
+正确文件名是 `system.launch.py`，修改源码后需要重新构建并加载：
 
 ```fish
-source tools/setup_dev.fish
+colcon build --symlink-install --packages-select auv_bringup
+source install/setup.fish
+ros2 launch auv_bringup system.launch.py
+```
+
+### Git 提示“不是 Git 仓库”
+
+先进入仓库目录：
+
+```fish
+cd ~/auv
+git status
+```
+
+本开发副本可能使用 `.git-data` 保存元数据；这种情况下普通 Git 命令需由项目工具或
+`git --git-dir=.git-data --work-tree=.` 调用。不要在其他目录直接执行 `git push`。
+
+### 构建后找不到 ROS package
+
+```fish
+source /opt/ros/lyrical/setup.fish
+source install/setup.fish
 ros2 pkg prefix auv_interfaces
 ```
 
-### 可以直接提交 `.pt` 或 `.onnx` 吗？
+### 为什么 ARM 被拒绝？
 
-不可以。请把文件放入 `models/artifacts/`，计算 SHA-256，并为稳定模型创建 manifest。
+ARM 需要有效串口协议、近期 heartbeat、无漏水、kill 未触发且传感器有效。当前实机
+安全输入尚未全部接线时，拒绝 ARM 是预期行为，不应通过删除检查来解决。
 
-### STM32 工程现在是什么状态？
+### PC 能否同时接收视频并控制推进器？
 
-仓库已包含 STM32F405RGT6 的 CubeMX、Keil、八推混控、姿态 PID、遥控和 IMU 代码。它是可编译的 ROV 固件基线，但还不是满足自主 AUV 安全要求的最终固件；下一步需要加入版本化串口协议、显式 ARM/DISARM、Pi heartbeat timeout、漏水检测和故障状态上报。
+可以。千兆以太网承载 ROS 2 DDS，树莓派再通过 UART 与 STM32 通信。控制命令不会
+隐式 ARM，网络中断会使目标超时并由 STM32 撤销 ARM。请按
+[有线联调手册](docs/wired-network.md)逐项验收。
 
 ---
 
-如果你第一次加入项目，建议按顺序阅读：**本 README → [AGENTS.md](AGENTS.md) → [仓库架构](docs/architecture/repository-layout.md) → 当前任务所属模块文档**。
+第一次加入项目建议依次阅读：**README → [AGENTS.md](AGENTS.md) →
+[仓库架构](docs/architecture/repository-layout.md) → 当前任务所属模块文档**。
