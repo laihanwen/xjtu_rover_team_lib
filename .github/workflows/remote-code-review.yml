@@ -1,0 +1,107 @@
+name: Remote Code Review
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  models: read
+
+concurrency:
+  group: remote-code-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review changed code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build review diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+            git fetch --no-tags origin \
+              "pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER"
+            git diff --no-ext-diff --unified=40 \
+              "$BASE_SHA...refs/remotes/origin/pr-$PR_NUMBER" > review.diff
+          elif [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            git diff --no-ext-diff --unified=40 "$AFTER_SHA^" "$AFTER_SHA" > review.diff
+          else
+            git diff --no-ext-diff --unified=40 "$BEFORE_SHA" "$AFTER_SHA" > review.diff
+          fi
+
+          if [[ ! -s review.diff ]]; then
+            printf 'No source changes require review.\n' > review.md
+            exit 0
+          fi
+
+          python3 .github/scripts/remote_review.py \
+            --diff review.diff \
+            --output review.md
+
+      - name: Publish review to GitHub
+        uses: actions/github-script@v7
+        env:
+          REVIEW_FILE: review.md
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(process.env.REVIEW_FILE, 'utf8');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let pullRequest = context.payload.pull_request;
+            if (!pullRequest && context.payload.after) {
+              const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: context.payload.after,
+              });
+              pullRequest = response.data[0];
+            }
+
+            if (pullRequest) {
+              await github.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: pullRequest.number,
+                body,
+                event: 'COMMENT',
+              });
+            } else {
+              await github.rest.checks.create({
+                owner,
+                repo,
+                name: 'Remote Code Review',
+                head_sha: context.payload.after || context.sha,
+                status: 'completed',
+                conclusion: 'neutral',
+                output: {
+                  title: 'Remote code review',
+                  summary: body.slice(0, 65000),
+                },
+              });
+            }
