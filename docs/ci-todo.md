@@ -2,9 +2,9 @@
 
 > 此文件由 GitHub Actions 自动生成。优先处理未勾选项目；不要手工删除历史依据。
 
-## 最近一次检查
+## 最近一次检查（2026-09-29 08:09 UTC，`c4f45fc28d72`）
 
-- [ ] 等待下一次 CI 构建检查生成结果。
+- **P1** Remote review could not be completed: `GITHUB_TOKEN is not available`
 
 ## 处理规则
 
