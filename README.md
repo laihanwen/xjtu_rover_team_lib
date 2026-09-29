@@ -20,12 +20,14 @@ heartbeat/failsafe、IMU/depth 遥测、双摄像头和 AprilTag。PC 可通过�
 
 - [系统架构](#系统架构)
 - [当前进度](#当前进度)
+- [远程代码审查](#远程代码审查)
 - [快速开始](#快速开始)
 - [运行与验收](#运行与验收)
 - [仓库结构](#仓库结构)
 - [安全边界](#安全边界)
 - [开发约定](#开发约定)
 - [常见问题](#常见问题)
+- [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md)
 
 ## 系统架构
 
@@ -88,6 +90,23 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
   `Fz=0`，不会产生垂向推力。
 - ARM 周期会锁定 Pi 或遥控器控制源。锁定源超过 250 ms 未更新时自动 DISARM，
   不会静默切换到另一控制源。
+
+## 远程代码审查
+
+仓库包含 [Remote Code Review](.github/workflows/remote-code-review.yml) 工作流。
+每次向 `main`、`feature/**` 或 `fix/**` push，以及每次 PR 更新时，它会：
+
+1. 计算本次提交的 diff。
+2. 执行 STM32 host 构建和 CTest 检查。
+3. 通过 GitHub Models 检查安全、并发、串口协议、failsafe 和测试缺口。
+4. 将构建失败和审查发现写入 [`docs/ci-todo.md`](docs/ci-todo.md)。
+5. 有 PR 时发布 review；没有 PR 时发布 commit check。
+
+工作流使用 GitHub Actions 自带的 `GITHUB_TOKEN`，并需要 `contents: write` 以提交生成的
+TODO；仓库设置中还需要允许 Actions 使用 GitHub Models，并保留 `models: read` 权限。
+只有 push 会自动回写 TODO，PR 只展示结果。`docs/ci-todo.md` 已加入 push 忽略规则，
+不会因为机器人更新 TODO 无限触发 CI。模型不可用时，工作流会明确发布“审查未完成”，
+不会伪装成通过。
 
 ## 快速开始
 
@@ -256,11 +275,12 @@ xjtu_rover_team_lib/
 推荐阅读顺序：
 
 1. [项目约束与路线图](AGENTS.md)
-2. [仓库布局与模块边界](docs/architecture/repository-layout.md)
-3. [串口协议 v1](docs/protocol/serial-protocol.md)
-4. [测试策略](docs/testing/strategy.md)
-5. [P4 安全验收](docs/testing/p4-safety.md)
-6. [STM32 固件说明](firmware/stm32/README.md)
+2. [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md)
+3. [仓库布局与模块边界](docs/architecture/repository-layout.md)
+4. [串口协议 v1](docs/protocol/serial-protocol.md)
+5. [测试策略](docs/testing/strategy.md)
+6. [P4 安全验收](docs/testing/p4-safety.md)
+7. [STM32 固件说明](firmware/stm32/README.md)
 
 ## 安全边界
 
@@ -373,4 +393,5 @@ ARM 需要有效串口协议、近期 heartbeat、无漏水、kill 未触发且�
 ---
 
 第一次加入项目建议依次阅读：**README → [AGENTS.md](AGENTS.md) →
+[新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md) →
 [仓库架构](docs/architecture/repository-layout.md) → 当前任务所属模块文档**。
