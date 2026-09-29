@@ -2,7 +2,7 @@
 
 > 面向水下机器人竞赛的自主 AUV：用 ROS 2 完成视觉、语义建图、路径规划与任务决策，用 STM32 完成实时姿态、深度、推进器和安全控制。
 
-**当前阶段：STM32 安全 / P4**　·　heartbeat/failsafe/PWM 门控已实现　·　实机台架验证待人工安全确认
+**当前阶段：双摄像头接入 / P6**　·　down/front 图像采集已实现　·　硬件统一联调待进行
 
 ## 快速导航
 
@@ -43,7 +43,8 @@ Linux 端发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标；高速�
 | P3 | Pi ↔ STM32 串口协议 | ✅ v1 帧、CRC、消息、解析器和黄金向量已冻结 |
 | P4 | STM32 heartbeat + failsafe | ✅ 软件实现与主机测试通过；实机台架待验证 |
 | P5 | IMU / depth ROS topics | ✅ 串口遥测与 ROS topics 已接通；真实深度传感器驱动待硬件定型 |
-| P6–P11 | 相机、视觉、建图、规划、Mission FSM | 📝 已规划 |
+| P6 | 双摄像头 ROS nodes | ✅ down/front、断线重连与离线输入已实现；硬件待统一联调 |
+| P7–P11 | AprilTag、建图、检测、规划、Mission FSM | 📝 已规划 |
 | P12–P14 | YOLO、抓取、转盘 | 📝 已规划 |
 
 完整优先级和技术约束请阅读 [AGENTS.md](AGENTS.md)。
@@ -98,13 +99,14 @@ colcon test
 colcon test-result --verbose
 ```
 
-预期能看到三个 packages：
+预期能看到四个 packages：
 
 ```fish
 colcon list
 # auv_bringup
 # auv_interfaces
 # auv_stm32_bridge
+# auv_vision
 ```
 
 ### 4. 最小运行验证
@@ -124,6 +126,18 @@ ros2 topic echo /depth --once
 ```
 
 `/imu/data` 中的姿态来自 H30 欧拉角，bridge 输出四元数。当前 H30 代码未提供角速度和线加速度，因此这些值为 NaN，对应 covariance 首项为 `-1`。未选定并接入真实深度传感器前，`/depth` 必须显示 `valid: false` 和 `depth: nan`；这是预期的安全状态，STM32 仍拒绝 ARM。
+
+P6 双摄像头默认不绑定未知的 `/dev/videoN`。识别真实设备并填写
+`src/auv_bringup/config/cameras.yaml` 后启动：
+
+```fish
+ros2 launch auv_bringup system.launch.py start_cameras:=true
+ros2 topic hz /camera/down/image_raw
+ros2 topic hz /camera/front/image_raw
+```
+
+也可将 `source` 参数设为视频文件或 OpenCV 图像序列，在没有相机硬件时离线复现。
+详细参数见 [auv_vision 使用说明](src/auv_vision/README.md)。
 
 ### 5. STM32 固件编译检查（可选）
 
@@ -147,6 +161,7 @@ xjtu_rover_team_lib/
 ├── src/                   # Raspberry Pi / PC 的 ROS 2 packages
 │   ├── auv_interfaces/    # 公共 msg / srv
 │   ├── auv_stm32_bridge/  # 安全串口 transport 与 STM32 bridge 节点
+│   ├── auv_vision/        # 双摄像头采集与后续视觉节点
 │   └── auv_bringup/       # 启动入口和共享安全配置
 ├── firmware/stm32/        # STM32 固件的独立构建边界
 ├── vision/                # 数据处理、训练、评估和模型导出
