@@ -71,7 +71,24 @@ def request_review(diff: str) -> str:
     )
     try:
         with urllib.request.urlopen(request, timeout=300) as response:
-            result = json.load(response)
+            raw_response = response.read()
+            response_text = raw_response.decode("utf-8", errors="replace")
+            if not response_text.strip():
+                raise RuntimeError(
+                    "GitHub Models returned an empty response "
+                    f"(HTTP {response.status}, Content-Type: "
+                    f"{response.headers.get('Content-Type', 'unknown')})"
+                )
+            try:
+                result = json.loads(response_text)
+            except json.JSONDecodeError as error:
+                preview = response_text[:500].replace("\n", " ")
+                raise RuntimeError(
+                    "GitHub Models returned non-JSON data "
+                    f"(HTTP {response.status}, Content-Type: "
+                    f"{response.headers.get('Content-Type', 'unknown')}, "
+                    f"body: {preview!r})"
+                ) from error
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"GitHub Models request failed ({error.code}): {details}") from error
