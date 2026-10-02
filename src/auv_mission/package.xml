@@ -1,24 +1,15 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>auv_vision</name>
+  <name>auv_mission</name>
   <version>0.1.0</version>
-  <description>Camera acquisition and vision nodes for the AUV.</description>
+  <description>Safety-gated mission state machine for the autonomous AUV.</description>
   <maintainer email="2777651780@qq.com">hanwen</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>cv_bridge</depend>
   <depend>auv_interfaces</depend>
-  <depend>geometry_msgs</depend>
-  <depend>image_transport</depend>
-  <depend>libopencv-dev</depend>
   <depend>rclcpp</depend>
-  <depend>sensor_msgs</depend>
-  <depend>std_msgs</depend>
-
-  <!-- Enables low-bandwidth /compressed topics for high-rate camera preview. -->
-  <exec_depend>compressed_image_transport</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>

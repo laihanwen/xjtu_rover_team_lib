@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <utility>
 
 #include "auv_vision/camera_source.hpp"
 #include "cv_bridge/cv_bridge.hpp"
@@ -39,20 +44,34 @@ public:
     topic_ = declare_parameter<std::string>("topic", "image_raw");
     frame_id_ = declare_parameter<std::string>("frame_id", "camera_optical_frame");
     reconnect_interval_ms_ = declare_parameter<int>("reconnect_interval_ms", 1000);
-    if (topic_.empty() || frame_id_.empty() || reconnect_interval_ms_ <= 0) {
-      throw std::invalid_argument("topic, frame_id and reconnect_interval_ms must be valid");
+    publish_frame_rate_ = declare_parameter<double>(
+      "publish_frame_rate", source_.config().frame_rate);
+    if (
+      topic_.empty() || frame_id_.empty() || reconnect_interval_ms_ <= 0 ||
+      publish_frame_rate_ <= 0.0)
+    {
+      throw std::invalid_argument(
+              "topic, frame_id, reconnect_interval_ms and publish_frame_rate must be valid");
     }
 
     publisher_ = image_transport::create_publisher(*this, topic_, rclcpp::SensorDataQoS());
     const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double>(1.0 / source_.config().frame_rate));
-    timer_ = create_wall_timer(period, std::bind(&CameraNode::capture_once, this));
+      std::chrono::duration<double>(1.0 / publish_frame_rate_));
+    timer_ = create_wall_timer(period, std::bind(&CameraNode::publish_latest, this));
 
     if (source_.config().source.empty()) {
       RCLCPP_WARN(
         get_logger(), "camera source is empty; %s remains idle", get_fully_qualified_name());
     } else {
-      open_source();
+      capture_thread_ = std::thread(&CameraNode::capture_loop, this);
+    }
+  }
+
+  ~CameraNode() override
+  {
+    stop_requested_.store(true);
+    if (capture_thread_.joinable()) {
+      capture_thread_.join();
     }
   }
 
@@ -69,56 +88,82 @@ private:
     return config;
   }
 
-  void open_source()
+  bool open_source()
   {
-    last_open_attempt_ = std::chrono::steady_clock::now();
     if (source_.open()) {
+      const auto format = source_.negotiated_pixel_format();
       RCLCPP_INFO(
-        get_logger(), "camera source opened: %s -> %s", source_.config().source.c_str(),
-        topic_.c_str());
-      open_failure_reported_ = false;
-      read_failure_reported_ = false;
-      return;
+        get_logger(),
+        "camera source opened: %s -> %s; negotiated=%dx%d %.3f FPS %.4s; publish=%.3f FPS",
+        source_.config().source.c_str(), topic_.c_str(), source_.negotiated_width(),
+        source_.negotiated_height(), source_.negotiated_frame_rate(), format.c_str(),
+        publish_frame_rate_);
+      return true;
     }
-    if (!open_failure_reported_) {
-      RCLCPP_WARN(
-        get_logger(), "unable to open camera source: %s", source_.config().source.c_str());
-      open_failure_reported_ = true;
-    }
+    RCLCPP_WARN(
+      get_logger(), "unable to open camera source: %s; retrying",
+      source_.config().source.c_str());
+    return false;
   }
 
-  void capture_once()
+  void capture_loop()
   {
-    if (source_.config().source.empty() || source_finished_) {
-      return;
-    }
-    if (!source_.is_open()) {
-      const auto elapsed = std::chrono::steady_clock::now() - last_open_attempt_;
-      if (elapsed >= std::chrono::milliseconds(reconnect_interval_ms_)) {
-        open_source();
+    auto next_file_frame = std::chrono::steady_clock::now();
+    while (!stop_requested_.load()) {
+      if (!source_.is_open()) {
+        if (!open_source()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(reconnect_interval_ms_));
+          continue;
+        }
+        next_file_frame = std::chrono::steady_clock::now();
       }
-      return;
-    }
 
-    cv::Mat frame;
-    if (!source_.read(frame)) {
-      if (!source_.is_live() && !source_.config().loop) {
-        RCLCPP_INFO(get_logger(), "camera file or image sequence reached the end");
-        source_.close();
-        source_finished_ = true;
-        return;
-      }
-      if (!read_failure_reported_) {
+      cv::Mat frame;
+      if (!source_.read(frame)) {
+        if (!source_.is_live() && !source_.config().loop) {
+          RCLCPP_INFO(get_logger(), "camera file or image sequence reached the end");
+          source_.close();
+          return;
+        }
         RCLCPP_WARN(
           get_logger(), "camera read failed; reconnecting: %s",
           source_.config().source.c_str());
-        read_failure_reported_ = true;
+        source_.close();
+        std::this_thread::sleep_for(std::chrono::milliseconds(reconnect_interval_ms_));
+        continue;
       }
-      source_.close();
-      last_open_attempt_ = std::chrono::steady_clock::now();
-      return;
+
+      {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        latest_frame_ = std::move(frame);
+        latest_stamp_ = now();
+        ++captured_sequence_;
+      }
+
+      // File and image-sequence sources are not clocked by a device. Preserve
+      // their configured playback rate while live V4L2 capture runs freely.
+      if (!source_.is_live()) {
+        next_file_frame += std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double>(1.0 / source_.config().frame_rate));
+        std::this_thread::sleep_until(next_file_frame);
+      }
     }
-    read_failure_reported_ = false;
+    source_.close();
+  }
+
+  void publish_latest()
+  {
+    cv::Mat frame;
+    rclcpp::Time stamp;
+    {
+      std::lock_guard<std::mutex> lock(frame_mutex_);
+      if (latest_frame_.empty() || published_sequence_ == captured_sequence_) {
+        return;
+      }
+      frame = latest_frame_.clone();
+      stamp = latest_stamp_;
+      published_sequence_ = captured_sequence_;
+    }
 
     std::string encoding;
     if (frame.type() == CV_8UC3) {
@@ -133,7 +178,7 @@ private:
     }
 
     std_msgs::msg::Header header;
-    header.stamp = now();
+    header.stamp = stamp;
     header.frame_id = frame_id_;
     publisher_.publish(*cv_bridge::CvImage(header, encoding, frame).toImageMsg());
   }
@@ -142,12 +187,16 @@ private:
   std::string topic_;
   std::string frame_id_;
   int reconnect_interval_ms_{1000};
+  double publish_frame_rate_{30.0};
   image_transport::Publisher publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::chrono::steady_clock::time_point last_open_attempt_{};
-  bool read_failure_reported_{false};
-  bool open_failure_reported_{false};
-  bool source_finished_{false};
+  std::thread capture_thread_;
+  std::atomic<bool> stop_requested_{false};
+  std::mutex frame_mutex_;
+  cv::Mat latest_frame_;
+  rclcpp::Time latest_stamp_;
+  std::uint64_t captured_sequence_{0U};
+  std::uint64_t published_sequence_{0U};
 };
 
 }  // namespace auv_vision

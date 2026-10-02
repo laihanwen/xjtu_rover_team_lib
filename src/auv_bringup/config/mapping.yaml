@@ -1,0 +1,28 @@
+auv_semantic_mapper:
+  ros__parameters:
+    image_topic: /camera/down/image_raw
+    map_topic: /semantic_map
+    rectified_topic: /mapping/rectified_image
+    debug_topic: /mapping/debug_image
+    publish_debug_image: false
+    cone_detections_topic: /cones/detections
+    cone_detection_timeout_sec: 1.0
+
+    # Real underwater mapping must use calibrated down-camera intrinsics.
+    # Set false only for generated images and controlled offline experiments.
+    require_calibration: true
+
+    hsv_lower: [15, 60, 60]
+    hsv_upper: [40, 255, 255]
+    clahe_clip_limit: 2.0
+    morphology_kernel: 5
+    minimum_area_ratio: 0.15
+    maximum_area_ratio: 0.95
+    polygon_epsilon_ratio: 0.03
+    minimum_corner_angle_degrees: 20.0
+    maximum_corner_angle_degrees: 160.0
+    output_size: 600
+    line_band_ratio: 0.035
+    minimum_line_support: 0.45
+    stable_frames: 3
+    maximum_corner_jitter_ratio: 0.02

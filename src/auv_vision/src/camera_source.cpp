@@ -117,10 +117,9 @@ bool CameraSource::is_device_path(const std::string & source)
 
 void CameraSource::apply_device_settings()
 {
-  capture_.set(cv::CAP_PROP_FRAME_WIDTH, config_.width);
-  capture_.set(cv::CAP_PROP_FRAME_HEIGHT, config_.height);
-  capture_.set(cv::CAP_PROP_FPS, config_.frame_rate);
-  capture_.set(cv::CAP_PROP_BUFFERSIZE, 1.0);
+  // V4L2 validates resolution and frame rate against the active pixel format.
+  // Select the format first or high-rate MJPEG modes may be rejected while the
+  // device is still using its default (often YUYV) format.
   if (!config_.pixel_format.empty()) {
     capture_.set(
       cv::CAP_PROP_FOURCC,
@@ -128,6 +127,35 @@ void CameraSource::apply_device_settings()
         config_.pixel_format[0], config_.pixel_format[1], config_.pixel_format[2],
         config_.pixel_format[3]));
   }
+  capture_.set(cv::CAP_PROP_FRAME_WIDTH, config_.width);
+  capture_.set(cv::CAP_PROP_FRAME_HEIGHT, config_.height);
+  capture_.set(cv::CAP_PROP_FPS, config_.frame_rate);
+  capture_.set(cv::CAP_PROP_BUFFERSIZE, 1.0);
+}
+
+int CameraSource::negotiated_width() const
+{
+  return static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_WIDTH));
+}
+
+int CameraSource::negotiated_height() const
+{
+  return static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_HEIGHT));
+}
+
+double CameraSource::negotiated_frame_rate() const
+{
+  return capture_.get(cv::CAP_PROP_FPS);
+}
+
+std::string CameraSource::negotiated_pixel_format() const
+{
+  const auto fourcc = static_cast<unsigned int>(capture_.get(cv::CAP_PROP_FOURCC));
+  std::string format(4U, '\0');
+  for (std::size_t index = 0; index < format.size(); ++index) {
+    format[index] = static_cast<char>((fourcc >> (8U * index)) & 0xFFU);
+  }
+  return format;
 }
 
 }  // namespace auv_vision

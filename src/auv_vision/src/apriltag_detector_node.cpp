@@ -86,12 +86,15 @@ public:
       declare_parameter<bool>("refine_edges", true))
   {
     image_topic_ = declare_parameter<std::string>("image_topic", "/camera/down/image_raw");
+    image_transport_ = declare_parameter<std::string>("image_transport", "raw");
     detections_topic_ = declare_parameter<std::string>(
       "detections_topic", "/apriltag/detections");
     debug_topic_ = declare_parameter<std::string>(
       "debug_topic", "/apriltag/debug_image");
     publish_debug_image_ = declare_parameter<bool>("publish_debug_image", false);
     tag_size_ = declare_parameter<double>("tag_size", 0.16);
+    const bool calibration_configured = declare_parameter<bool>(
+      "calibration_configured", false);
     const auto intrinsics = declare_parameter<std::vector<double>>(
       "camera_matrix", std::vector<double>{});
     const auto distortion = declare_parameter<std::vector<double>>(
@@ -99,6 +102,10 @@ public:
 
     if (image_topic_.empty() || detections_topic_.empty() || tag_size_ <= 0.0) {
       throw std::invalid_argument("image_topic, detections_topic and tag_size must be valid");
+    }
+    if (calibration_configured && intrinsics.empty()) {
+      throw std::invalid_argument(
+              "calibration_configured is true but camera_matrix is empty");
     }
     if (!intrinsics.empty()) {
       if (intrinsics.size() != 9U) {
@@ -117,17 +124,19 @@ public:
 
     publisher_ = create_publisher<auv_interfaces::msg::AprilTagDetectionArray>(
       detections_topic_, rclcpp::SensorDataQoS());
-    subscription_ = create_subscription<sensor_msgs::msg::Image>(
-      image_topic_, rclcpp::SensorDataQoS(),
-      [this](sensor_msgs::msg::Image::ConstSharedPtr message) {process_image(message);});
+    subscription_ = image_transport::create_subscription(
+      *this, image_topic_,
+      [this](sensor_msgs::msg::Image::ConstSharedPtr message) {process_image(message);},
+      image_transport_, rclcpp::SensorDataQoS());
     if (publish_debug_image_) {
       debug_publisher_ = image_transport::create_publisher(
         *this, debug_topic_, rclcpp::SensorDataQoS());
     }
 
     RCLCPP_INFO(
-      get_logger(), "AprilTag detector ready: family=%s input=%s pose=%s",
-      detector_.family().c_str(), image_topic_.c_str(), pose_enabled_ ? "enabled" : "disabled");
+      get_logger(), "AprilTag detector ready: family=%s input=%s transport=%s pose=%s",
+      detector_.family().c_str(), image_topic_.c_str(), image_transport_.c_str(),
+      pose_enabled_ ? "enabled" : "disabled");
   }
 
 private:
@@ -210,6 +219,7 @@ private:
 
   AprilTagDetector detector_;
   std::string image_topic_;
+  std::string image_transport_;
   std::string detections_topic_;
   std::string debug_topic_;
   bool publish_debug_image_{false};
@@ -218,7 +228,7 @@ private:
   cv::Mat camera_matrix_;
   cv::Mat distortion_coefficients_;
   rclcpp::Publisher<auv_interfaces::msg::AprilTagDetectionArray>::SharedPtr publisher_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
+  image_transport::Subscriber subscription_;
   image_transport::Publisher debug_publisher_;
 };
 

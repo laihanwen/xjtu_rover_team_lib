@@ -6,11 +6,11 @@
 ![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
 ![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
 ![STM32F405](https://img.shields.io/badge/MCU-STM32F405-03234B?logo=stmicroelectronics)
-![Stage P7](https://img.shields.io/badge/Stage-P7_AprilTag-2E8B57)
+![Stage P11](https://img.shields.io/badge/Stage-P11_Mission_FSM-2E8B57)
 
-当前软件已完成 **P0–P7**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
-heartbeat/failsafe、IMU/depth 遥测、双摄像头和 AprilTag。PC 可通过有线 ROS 2 网络
-接收视频与状态并发送运动目标；下一阶段是 **P8 九宫格语义建图**。
+当前软件已完成 **P0–P11**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
+heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建图、交通锥识别和
+确定性格子路径规划，以及安全任务状态机。下一阶段是 **P12 海参 YOLO**。
 
 > [!CAUTION]
 > 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
@@ -57,6 +57,10 @@ Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高�
 |---|---|---|
 | Camera → Pi/PC | `/camera/down/image_raw`、`/camera/front/image_raw` | 视频与视觉输入 |
 | Vision → Pi/PC | `/apriltag/detections`、`/apriltag/debug_image` | 标签检测与调试画面 |
+| Vision → Mapping | `/cones/detections`、`/cones/debug_image` | 稳定锥体分类与调试画面 |
+| Mapping → Pi/PC | `/semantic_map`、`/mapping/rectified_image` | 3×3 地图与标准俯视图 |
+| Planning → Mission | `/planning/route` | 目标顺序与逐格最短路线 |
+| Mission → Pi/PC | `/mission/state`、`/mission/command` | 状态、故障与人工控制 |
 | PC/Pi → STM32 | `/cmd_vel`、`/cmd_depth`、`/cmd_yaw` | 完整运动目标 |
 | STM32 → Pi/PC | `/imu/data`、`/depth`、`/stm32/status` | 遥测、安全状态和八路输出 |
 | Operator → STM32 | `/stm32/set_armed` | 显式 ARM/DISARM |
@@ -76,9 +80,12 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
 | P5 | IMU / depth topics | ✅ 遥测链路；真实深度驱动待定型 |
 | P6 | 双摄像头 | ✅ down/front、重连与离线输入 |
 | P7 | AprilTag | ✅ 二维检测与标定位姿；待水下实测 |
-| P8 | 九宫格 Semantic Map | ⏭️ 下一阶段 |
-| P9–P11 | Cone、规划、Mission FSM | 📝 已规划 |
-| P12–P14 | YOLO、抓取、转盘 | 📝 已规划 |
+| P8 | 九宫格 Semantic Map | ✅ 几何建图已实现；待水下录像回归 |
+| P9 | Cone detection | ✅ OpenCV 分类、时序稳定与地图融合；待水下调参 |
+| P10 | Path planning | ✅ 四邻域 A*、目标排列枚举与确定性路线 |
+| P11 | Mission FSM | ✅ 安全编排、超时、暂停/恢复/终止及虚拟全流程 |
+| P12 | Sea cucumber YOLO | ⏭️ 下一阶段 |
+| P13–P14 | 抓取、转盘 | 📝 已规划 |
 
 ### 当前控制能力边界
 
@@ -134,10 +141,11 @@ colcon test-result --verbose
 git diff --check
 ```
 
-当前工作区包含四个 ROS packages：
+当前工作区包含七个 ROS packages：
 
 ```text
-auv_interfaces    auv_stm32_bridge    auv_vision    auv_bringup
+auv_interfaces    auv_stm32_bridge    auv_vision
+auv_mapping       auv_planning        auv_mission       auv_bringup
 ```
 
 ## 运行与验收
@@ -156,7 +164,11 @@ ros2 launch auv_bringup system.launch.py
 ros2 launch auv_bringup system.launch.py \
   start_stm32_bridge:=true \
   start_cameras:=true \
-  start_apriltag:=true
+  start_apriltag:=true \
+  start_mapping:=true \
+  start_cones:=true \
+  start_planning:=true \
+  start_mission:=true
 ```
 
 启动前需填写实际硬件路径：
@@ -164,6 +176,11 @@ ros2 launch auv_bringup system.launch.py \
 - 摄像头：`src/auv_bringup/config/cameras.yaml`
 - STM32 串口：`src/auv_bringup/config/stm32_bridge.yaml`
 - AprilTag 标定：`src/auv_bringup/config/apriltag.yaml`
+- 九宫格参数：`src/auv_bringup/config/mapping.yaml`
+- 交通锥阈值：`src/auv_bringup/config/cones.yaml`
+- 路径规划起点与障碍类型：`src/auv_bringup/config/planning.yaml`
+- Mission 状态超时：`src/auv_bringup/config/mission.yaml`
+- 下视相机内参与畸变：`src/auv_bringup/config/down_camera_calibration.yaml`
 
 这些字段默认留空，避免误连 `/dev/videoN` 或未知串口。
 
@@ -179,7 +196,54 @@ rqt_image_view /camera/down/image_raw
 相机节点也支持视频文件和 OpenCV 图像序列，可在无硬件时离线复现。详细配置见
 [auv_vision 使用说明](src/auv_vision/README.md)。
 
-### 3. PC—树莓派有线联调
+### 3. 九宫格语义建图
+
+生产模式必须先在 `down_camera_calibration.yaml` 填入真实水下标定结果。启动后验证：
+
+```fish
+ros2 topic echo /semantic_map
+ros2 topic hz /mapping/rectified_image
+rqt_image_view /mapping/debug_image
+```
+
+网格连续稳定 3 帧后，`complete` 才会变为 `true`，并发布 600×600 标准俯视图。
+P9 将稳定检测融合为 `circle_cone` 或 `square_cone`，没有新鲜检测的单元保持
+`unknown`。图像行方向对应 row 递增，列方向对应 col 递增。算法参数和离线运行方法见
+[auv_mapping 使用说明](src/auv_mapping/README.md)。
+
+### 4. 路径规划
+
+先在 `planning.yaml` 配置已确认的起始格；默认 `-1/-1` 会安全地输出无效路线，
+不会猜测场地入口。启动后验证：
+
+```fish
+ros2 topic echo /planning/route
+```
+
+有效路线包含目标访问顺序、从起点开始的每个相邻格和总步数。规划器只计算路线，
+不会发布运动指令或 ARM。详细说明见
+[auv_planning 使用说明](src/auv_planning/README.md)。
+
+### 5. Mission FSM
+
+Mission 默认不会自动启动，也不会 ARM。确认 `/stm32/status` 安全后手动启动：
+
+```fish
+ros2 service call /mission/command auv_interfaces/srv/MissionCommand \
+  "{command: 1}"
+ros2 topic echo /mission/state
+```
+
+虚拟全流程验收：
+
+```fish
+ros2 run auv_mission mission_virtual_test
+```
+
+结果必须以 `VIRTUAL_MISSION_RESULT=PASS` 结束。详见
+[auv_mission 使用说明](src/auv_mission/README.md)。
+
+### 6. PC—树莓派有线联调
 
 两端使用同一 ROS 2 Lyrical、工作区接口和 `ROS_DOMAIN_ID`。完整静态 IP、DDS 发现、
 视频查看、拆桨控制和拔网线验收步骤见：
@@ -195,7 +259,7 @@ set -gx ROS_DOMAIN_ID 42
 set -gx ROS_LOCALHOST_ONLY 0
 ```
 
-### 4. STM32 状态
+### 7. STM32 状态
 
 ```fish
 ros2 topic echo /stm32/status
@@ -213,7 +277,7 @@ ros2 topic echo /depth --once
 H30 当前只提供欧拉角。`/imu/data` 的角速度和线加速度为 NaN，对应 covariance
 首项为 `-1`，表示数据不可用，不应被下游当作零值使用。
 
-### 5. 固件检查
+### 8. 固件检查
 
 固件与 ROS 构建隔离。ARM GCC 可进行不链接、不烧写的对象编译检查：
 
@@ -243,7 +307,10 @@ xjtu_rover_team_lib/
 ├── src/
 │   ├── auv_interfaces/       # 公共 msg / srv
 │   ├── auv_stm32_bridge/     # ROS 2 ↔ STM32 安全串口桥
-│   ├── auv_vision/           # 相机与 AprilTag
+│   ├── auv_vision/           # 相机、AprilTag 与交通锥识别
+│   ├── auv_mapping/          # 九宫格检测、Homography 与语义地图
+│   ├── auv_planning/         # A*、目标排序与格子路线
+│   ├── auv_mission/          # 安全任务状态机与阶段超时
 │   └── auv_bringup/          # launch 与共享参数
 ├── firmware/stm32/           # STM32F405 CubeMX / Keil 工程与测试
 ├── vision/                   # 数据处理、训练、评估和导出

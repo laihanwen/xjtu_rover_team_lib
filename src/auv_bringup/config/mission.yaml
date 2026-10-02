@@ -1,0 +1,19 @@
+auv_mission_manager:
+  ros__parameters:
+    state_topic: /mission/state
+    command_service: /mission/command
+    status_topic: /stm32/status
+    apriltag_topic: /apriltag/detections
+    map_topic: /semantic_map
+    route_topic: /planning/route
+
+    # Production startup always waits for an explicit START request.
+    auto_start: false
+    tick_period_ms: 100
+
+    self_check_timeout_sec: 10.0
+    apriltag_timeout_sec: 30.0
+    map_timeout_sec: 30.0
+    planning_timeout_sec: 10.0
+    cone_visit_timeout_sec: 120.0
+    status_timeout_sec: 1.0

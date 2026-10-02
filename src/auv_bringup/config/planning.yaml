@@ -1,0 +1,12 @@
+auv_planner:
+  ros__parameters:
+    map_topic: /semantic_map
+    route_topic: /planning/route
+
+    # Do not guess the field entry cell. Set both after confirming the layout.
+    start_row: -1
+    start_col: -1
+
+    target_object_types: [circle_cone, square_cone]
+    blocked_object_types: [obstacle, forbidden]
+    maximum_targets: 8
