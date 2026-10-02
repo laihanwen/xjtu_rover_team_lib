@@ -58,6 +58,7 @@ Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高�
 | Camera → Pi/PC | `/camera/down/image_raw`、`/camera/front/image_raw` | 视频与视觉输入 |
 | Vision → Pi/PC | `/apriltag/detections`、`/apriltag/debug_image` | 标签检测与调试画面 |
 | Vision → Mapping | `/cones/detections`、`/cones/debug_image` | 稳定锥体分类与调试画面 |
+| Front Vision → Mission | `/cucumber/detections` | 海参、海龟、海星检测 |
 | Mapping → Pi/PC | `/semantic_map`、`/mapping/rectified_image` | 3×3 地图与标准俯视图 |
 | Planning → Mission | `/planning/route` | 目标顺序与逐格最短路线 |
 | Mission → Pi/PC | `/mission/state`、`/mission/command` | 状态、故障与人工控制 |
@@ -84,7 +85,7 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
 | P9 | Cone detection | ✅ OpenCV 分类、时序稳定与地图融合；待水下调参 |
 | P10 | Path planning | ✅ 四邻域 A*、目标排列枚举与确定性路线 |
 | P11 | Mission FSM | ✅ 安全编排、超时、暂停/恢复/终止及虚拟全流程 |
-| P12 | Sea cucumber YOLO | ⏭️ 下一阶段 |
+| P12 | Sea cucumber YOLO | 🚧 训练环境与 ROS 推理已实现；等待真实标注数据/权重 |
 | P13–P14 | 抓取、转盘 | 📝 已规划 |
 
 ### 当前控制能力边界
@@ -168,7 +169,8 @@ ros2 launch auv_bringup system.launch.py \
   start_mapping:=true \
   start_cones:=true \
   start_planning:=true \
-  start_mission:=true
+  start_mission:=true \
+  start_cucumber:=true
 ```
 
 启动前需填写实际硬件路径：
@@ -180,6 +182,7 @@ ros2 launch auv_bringup system.launch.py \
 - 交通锥阈值：`src/auv_bringup/config/cones.yaml`
 - 路径规划起点与障碍类型：`src/auv_bringup/config/planning.yaml`
 - Mission 状态超时：`src/auv_bringup/config/mission.yaml`
+- 海参模型与推理参数：`src/auv_bringup/config/cucumber.yaml`
 - 下视相机内参与畸变：`src/auv_bringup/config/down_camera_calibration.yaml`
 
 这些字段默认留空，避免误连 `/dev/videoN` 或未知串口。

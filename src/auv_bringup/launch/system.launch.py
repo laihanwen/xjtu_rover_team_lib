@@ -49,6 +49,9 @@ def generate_launch_description() -> LaunchDescription:
     mission_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'mission.yaml'
     )
+    cucumber_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'cucumber.yaml'
+    )
     calibration_config = os.path.join(
         get_package_share_directory('auv_bringup'),
         'config',
@@ -91,6 +94,11 @@ def generate_launch_description() -> LaunchDescription:
                 default_value='false',
                 description='Start the safety-gated autonomous mission FSM.',
             ),
+            DeclareLaunchArgument(
+                'start_cucumber',
+                default_value='false',
+                description='Start front-camera YOLO sea-cucumber detection.',
+            ),
             LogInfo(
                 msg=(
                     'AUV base workspace is ready. Only requested nodes are started; '
@@ -127,6 +135,14 @@ def generate_launch_description() -> LaunchDescription:
                 name='auv_mission_manager',
                 parameters=[mission_config],
                 condition=IfCondition(LaunchConfiguration('start_mission')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='cucumber_detector_node',
+                name='auv_cucumber_detector',
+                parameters=[cucumber_config],
+                condition=IfCondition(LaunchConfiguration('start_cucumber')),
                 output='screen',
             ),
             Node(

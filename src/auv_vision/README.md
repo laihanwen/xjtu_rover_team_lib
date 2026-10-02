@@ -15,6 +15,11 @@ P9 adds `cone_detector_node`. It consumes the stable 600×600 rectified grid,
 segments configured cone colours, classifies circle/square contours, and
 publishes temporally stable per-cell results on `/cones/detections`.
 
+P12 adds the deployment side of `cucumber_detector_node`. It consumes the
+front camera, verifies a published ONNX model by SHA-256, and publishes
+`sea_cucumber`, `turtle`, and `starfish` detections on
+`/cucumber/detections`. Training remains isolated under `vision/`.
+
 The `source` parameter accepts a V4L2 device index (`"0"`), a stable device path
 such as `/dev/v4l/by-id/...`, a video file, or an OpenCV image-sequence pattern.
 Live V4L2 sources reconnect after read failures. File and image-sequence inputs
@@ -122,3 +127,23 @@ the debug publisher. The default red/orange HSV ranges are placeholders: record
 real underwater footage, tune the YAML thresholds, and keep the C++ algorithm
 unchanged. A detection must win three of the latest five frames by default;
 small blobs and contours touching a cell margin are rejected.
+
+## Sea-cucumber YOLO deployment
+
+After real training and ONNX verification, copy the model into the ignored
+`models/artifacts/` directory and fill both `model_path` and `model_sha256` in
+`src/auv_bringup/config/cucumber.yaml`. The node intentionally refuses to start
+with an absent model, blank hash, or hash mismatch.
+
+```fish
+source /opt/ros/lyrical/setup.fish
+source install/setup.fish
+ros2 launch auv_bringup system.launch.py \
+  start_cameras:=true start_cucumber:=true
+
+ros2 topic echo /cucumber/detections
+```
+
+Inference uses C++ OpenCV-DNN with a static YOLO11 ONNX model. It samples the
+front-camera stream at `inference_rate` without reducing the camera publisher's
+rate. Debug images are disabled by default.
