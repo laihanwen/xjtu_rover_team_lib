@@ -37,6 +37,23 @@ def generate_launch_description() -> LaunchDescription:
     apriltag_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'apriltag.yaml'
     )
+    mapping_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'mapping.yaml'
+    )
+    cones_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'cones.yaml'
+    )
+    planning_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'planning.yaml'
+    )
+    mission_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'mission.yaml'
+    )
+    calibration_config = os.path.join(
+        get_package_share_directory('auv_bringup'),
+        'config',
+        'down_camera_calibration.yaml',
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -53,6 +70,26 @@ def generate_launch_description() -> LaunchDescription:
                 'start_apriltag',
                 default_value='false',
                 description='Start AprilTag detection on the down-camera topic.',
+            ),
+            DeclareLaunchArgument(
+                'start_mapping',
+                default_value='false',
+                description='Start calibrated 3x3 semantic grid mapping.',
+            ),
+            DeclareLaunchArgument(
+                'start_cones',
+                default_value='false',
+                description='Start 3x3 traffic-cone detection on rectified images.',
+            ),
+            DeclareLaunchArgument(
+                'start_planning',
+                default_value='false',
+                description='Start deterministic 3x3 grid route planning.',
+            ),
+            DeclareLaunchArgument(
+                'start_mission',
+                default_value='false',
+                description='Start the safety-gated autonomous mission FSM.',
             ),
             LogInfo(
                 msg=(
@@ -77,6 +114,22 @@ def generate_launch_description() -> LaunchDescription:
                 output='screen',
             ),
             Node(
+                package='auv_planning',
+                executable='planner_node',
+                name='auv_planner',
+                parameters=[planning_config],
+                condition=IfCondition(LaunchConfiguration('start_planning')),
+                output='screen',
+            ),
+            Node(
+                package='auv_mission',
+                executable='mission_manager_node',
+                name='auv_mission_manager',
+                parameters=[mission_config],
+                condition=IfCondition(LaunchConfiguration('start_mission')),
+                output='screen',
+            ),
+            Node(
                 package='auv_vision',
                 executable='camera_node',
                 name='auv_camera_front',
@@ -88,8 +141,24 @@ def generate_launch_description() -> LaunchDescription:
                 package='auv_vision',
                 executable='apriltag_detector_node',
                 name='auv_apriltag_detector',
-                parameters=[apriltag_config],
+                parameters=[apriltag_config, calibration_config],
                 condition=IfCondition(LaunchConfiguration('start_apriltag')),
+                output='screen',
+            ),
+            Node(
+                package='auv_mapping',
+                executable='semantic_mapper_node',
+                name='auv_semantic_mapper',
+                parameters=[mapping_config, calibration_config],
+                condition=IfCondition(LaunchConfiguration('start_mapping')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='cone_detector_node',
+                name='auv_cone_detector',
+                parameters=[cones_config],
+                condition=IfCondition(LaunchConfiguration('start_cones')),
                 output='screen',
             ),
         ]

@@ -7,6 +7,7 @@ auv_camera_down:
     width: 640
     height: 480
     frame_rate: 30.0
+    publish_frame_rate: 30.0
     pixel_format: MJPG
     reconnect_interval_ms: 1000
     loop: false
@@ -20,6 +21,7 @@ auv_camera_front:
     width: 640
     height: 480
     frame_rate: 30.0
+    publish_frame_rate: 30.0
     pixel_format: MJPG
     reconnect_interval_ms: 1000
     loop: false

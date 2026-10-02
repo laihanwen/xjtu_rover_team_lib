@@ -10,6 +10,7 @@ find_package(OpenCV REQUIRED COMPONENTS aruco calib3d core imgcodecs imgproc vid
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(Threads REQUIRED)
 
 add_library(camera_source src/camera_source.cpp)
 target_compile_features(camera_source PUBLIC cxx_std_17)
@@ -29,6 +30,30 @@ target_include_directories(apriltag_detector PUBLIC
 )
 target_link_libraries(apriltag_detector PUBLIC ${OpenCV_LIBS})
 
+add_library(cone_detector src/cone_detector.cpp)
+target_compile_features(cone_detector PUBLIC cxx_std_17)
+target_include_directories(cone_detector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(cone_detector PUBLIC ${OpenCV_LIBS})
+
+add_library(cone_detector_node src/cone_detector_node.cpp)
+target_compile_features(cone_detector_node PUBLIC cxx_std_17)
+target_include_directories(cone_detector_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(cone_detector_node PUBLIC
+  cone_detector
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  ${auv_interfaces_TARGETS}
+  ${sensor_msgs_TARGETS}
+)
+
 add_executable(camera_node src/camera_node.cpp)
 target_compile_features(camera_node PUBLIC cxx_std_17)
 target_link_libraries(camera_node
@@ -36,6 +61,7 @@ target_link_libraries(camera_node
   cv_bridge::cv_bridge
   image_transport::image_transport
   rclcpp::rclcpp
+  Threads::Threads
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
 )
@@ -52,7 +78,14 @@ target_link_libraries(apriltag_detector_node
   ${sensor_msgs_TARGETS}
 )
 
-install(TARGETS camera_source apriltag_detector camera_node apriltag_detector_node
+add_executable(cone_detector_node_executable src/cone_detector_main.cpp)
+set_target_properties(cone_detector_node_executable PROPERTIES OUTPUT_NAME cone_detector_node)
+target_compile_features(cone_detector_node_executable PUBLIC cxx_std_17)
+target_link_libraries(cone_detector_node_executable cone_detector_node rclcpp::rclcpp)
+
+install(TARGETS
+  camera_source apriltag_detector cone_detector cone_detector_node
+  camera_node apriltag_detector_node cone_detector_node_executable
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -73,8 +106,18 @@ if(BUILD_TESTING)
   if(TARGET test_apriltag_detector)
     target_link_libraries(test_apriltag_detector apriltag_detector)
   endif()
+
+  ament_add_gtest(test_cone_detector test/test_cone_detector.cpp)
+  if(TARGET test_cone_detector)
+    target_link_libraries(test_cone_detector cone_detector)
+  endif()
+
+  ament_add_gtest(test_cone_detector_node test/test_cone_detector_node.cpp)
+  if(TARGET test_cone_detector_node)
+    target_link_libraries(test_cone_detector_node cone_detector_node rclcpp::rclcpp)
+  endif()
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(camera_source apriltag_detector)
+ament_export_libraries(camera_source apriltag_detector cone_detector cone_detector_node)
 ament_package()

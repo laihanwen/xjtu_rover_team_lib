@@ -44,6 +44,10 @@ public:
   bool read(cv::Mat & frame);
   bool is_live() const;
   const CameraSourceConfig & config() const;
+  int negotiated_width() const;
+  int negotiated_height() const;
+  double negotiated_frame_rate() const;
+  std::string negotiated_pixel_format() const;
 
 private:
   static bool parse_device_index(const std::string & source, int & index);

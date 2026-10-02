@@ -6,3 +6,5 @@ Detection2D detection
 uint8 shape
 int8 row
 int8 col
+float32 area
+float32 circularity

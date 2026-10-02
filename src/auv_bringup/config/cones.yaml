@@ -1,0 +1,33 @@
+auv_cone_detector:
+  ros__parameters:
+    image_topic: /mapping/rectified_image
+    image_transport: raw
+    detections_topic: /cones/detections
+    debug_topic: /cones/debug_image
+    publish_debug_image: false
+
+    # Placeholder red/orange thresholds. Tune these from real underwater recordings.
+    hsv_lower_1: [0, 80, 50]
+    hsv_upper_1: [20, 255, 255]
+    use_second_hsv_range: true
+    hsv_lower_2: [165, 80, 50]
+    hsv_upper_2: [179, 255, 255]
+    use_lab_mask: false
+    lab_lower: [0, 0, 0]
+    lab_upper: [255, 255, 255]
+
+    clahe_clip_limit: 2.0
+    morphology_kernel: 5
+    cell_margin_ratio: 0.12
+    minimum_area_ratio: 0.025
+    maximum_area_ratio: 0.65
+    polygon_epsilon_ratio: 0.035
+    minimum_solidity: 0.80
+    minimum_aspect_score: 0.70
+    circle_minimum_circularity: 0.80
+    square_minimum_extent: 0.62
+    minimum_confidence: 0.72
+
+    history_size: 5
+    required_votes: 3
+    clear_votes: 3

@@ -59,7 +59,10 @@ STM32F405（底层、实时）
 | `AGENTS.md` | 项目事实、版本和安全约束 | 通常只读 |
 | `src/auv_interfaces/` | 公共 msg/srv | 接口变化时改 |
 | `src/auv_stm32_bridge/` | ROS 2 与 STM32 串口桥 | 通信任务时改 |
-| `src/auv_vision/` | 相机和 AprilTag；后续 OpenCV 视觉 | 视觉任务常改 |
+| `src/auv_vision/` | 相机、AprilTag 和交通锥视觉 | 视觉任务常改 |
+| `src/auv_mapping/` | 九宫格矫正与语义地图 | 建图任务时改 |
+| `src/auv_planning/` | A* 与目标访问顺序 | 规划任务时改 |
+| `src/auv_mission/` | 安全任务状态机 | 任务流程变化时改 |
 | `src/auv_bringup/` | launch 和共享 YAML 参数 | 新节点完成后改 |
 | `firmware/stm32/` | STM32F405 CubeMX/Keil 工程 | 仅固件任务改 |
 | `vision/` | YOLO 训练、数据处理、实验 | P12 阶段常改 |
@@ -69,14 +72,17 @@ STM32F405（底层、实时）
 | `tools/setup_dev.fish` | 加载项目开发环境 | 使用，不随意改 |
 | `build/ install/ log/` | 自动生成的构建和日志文件 | 不手工编辑、不提交 |
 
-当前已有四个 ROS package：
+当前已有七个 ROS package：
 
 - `auv_interfaces`
 - `auv_stm32_bridge`
 - `auv_vision`
+- `auv_mapping`
+- `auv_planning`
+- `auv_mission`
 - `auv_bringup`
 
-计划中的 `auv_mapping`、`auv_planning`、`auv_mission` 等包，应在真正开始实现且能独立测试时再创建。
+后续 package 仍应在真正开始实现且能独立测试时再创建。
 
 ## 3. 第一次打开终端
 

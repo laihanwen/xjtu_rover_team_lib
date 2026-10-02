@@ -11,15 +11,19 @@ set(msg_files
   "msg/AprilTagDetection.msg"
   "msg/AprilTagDetectionArray.msg"
   "msg/ConeDetection.msg"
+  "msg/ConeDetectionArray.msg"
   "msg/Detection2D.msg"
   "msg/Depth.msg"
+  "msg/GridCell.msg"
   "msg/MissionState.msg"
+  "msg/PlannedRoute.msg"
   "msg/SemanticCell.msg"
   "msg/SemanticMap.msg"
   "msg/Stm32Status.msg"
 )
 
 set(srv_files
+  "srv/MissionCommand.srv"
   "srv/SetArmed.srv"
 )
 
