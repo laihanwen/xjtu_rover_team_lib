@@ -1,0 +1,21 @@
+model: yolo11n.pt
+dataset_root: ../datasets/processed/sea_cucumber_v1
+classes: configs/classes.yaml
+output_dir: runs/sea_cucumber_yolo11n
+experiment_name: baseline_v1
+
+image_size: 640
+epochs: 100
+batch: 8
+patience: 20
+workers: 4
+seed: 42
+device: 0
+cache: false
+
+export:
+  format: onnx
+  opset: 17
+  dynamic: false
+  simplify: true
+  batch: 1

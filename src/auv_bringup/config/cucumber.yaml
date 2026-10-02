@@ -1,0 +1,17 @@
+auv_cucumber_detector:
+  ros__parameters:
+    image_topic: /camera/front/image_raw
+    image_transport: raw
+    detections_topic: /cucumber/detections
+    debug_topic: /cucumber/debug_image
+    publish_debug_image: false
+
+    # Fill both values only after a real model has been trained and exported.
+    model_path: ""
+    model_sha256: ""
+    class_names: [sea_cucumber, turtle, starfish]
+    input_width: 640
+    input_height: 640
+    confidence_threshold: 0.5
+    nms_threshold: 0.45
+    inference_rate: 5.0

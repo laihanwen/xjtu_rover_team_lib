@@ -16,6 +16,7 @@ set(msg_files
   "msg/Depth.msg"
   "msg/GridCell.msg"
   "msg/MissionState.msg"
+  "msg/ObjectDetectionArray.msg"
   "msg/PlannedRoute.msg"
   "msg/SemanticCell.msg"
   "msg/SemanticMap.msg"
