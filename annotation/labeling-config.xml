@@ -1,0 +1,10 @@
+<View>
+  <Header value="AUV 水下目标检测（请紧贴目标绘制矩形框）"/>
+  <Image name="image" value="$image" zoom="true"
+         brightnessControl="true" contrastControl="true" gammaControl="true"/>
+  <RectangleLabels name="label" toName="image" showInline="true">
+    <Label value="sea_cucumber" background="#FF9800"/>
+    <Label value="turtle" background="#4CAF50"/>
+    <Label value="starfish" background="#2196F3"/>
+  </RectangleLabels>
+</View>

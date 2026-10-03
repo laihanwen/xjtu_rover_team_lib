@@ -61,6 +61,8 @@ __pycache__/
 venv/
 /vision/runs/
 *.ses
+/annotation/.venv/
+/annotation/data/
 
 # C/C++ tooling
 compile_commands.json
