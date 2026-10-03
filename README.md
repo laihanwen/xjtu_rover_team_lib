@@ -13,24 +13,25 @@ heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建�
 确定性格子路径规划，以及安全任务状态机。**P12 海参 YOLO** 的训练环境、数据工具和
 ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶段。**P13 单舵机抓取链路**
 已完成 ROS 接口、串口协议和 STM32 安全状态机，等待机械端点标定与实机验收。
+**P14 转盘视觉基础**已具备可配置 OpenCV 节点、ROS 接口和调试图，尚未进入执行器闭环。
 
 > [!CAUTION]
 > 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
 > 或可靠固定推进器。真实漏水、急停和传感器有效输入接入前，STM32 会拒绝 ARM。
 
-## 导航
+## 从这里开始
 
-- [系统架构](#系统架构)
-- [当前进度](#当前进度)
-- [快速开始](#快速开始)
-- [运行与验收](#运行与验收)
-- [P12 数据标注](#6-p12-数据标注)
-- [仓库结构](#仓库结构)
-- [安全边界](#安全边界)
-- [开发约定](#开发约定)
-- [常见问题](#常见问题)
-- [项目压缩状态](docs/project-status.md)
-- [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md)
+| 你要做什么 | 入口 |
+|---|---|
+| 了解当前完成度、硬件门槛和下一步 | [项目压缩状态](docs/project-status.md) |
+| 第一次构建和启动 | [快速开始](#快速开始) |
+| 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
+| 查找架构、协议、网络和测试文档 | [文档中心](docs/README.md) |
+| 理解目录职责和 ROS package 边界 | [仓库布局](docs/architecture/repository-layout.md) |
+| 配置 P12 数据标注环境 | [P12 打标教程](docs/p12-annotation-guide.md) |
+| 标定 P13 单舵机夹爪 | [P13 夹爪验收](docs/testing/p13-gripper.md) |
+| 试用 P14 转盘视觉 | [P14 视觉验收](docs/testing/p14-valve-foundation.md) |
+| 使用 AI 继续开发 | [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md) |
 
 ## 系统架构
 
@@ -184,7 +185,8 @@ ros2 launch auv_bringup system.launch.py \
   start_cones:=true \
   start_planning:=true \
   start_mission:=true \
-  start_cucumber:=true
+  start_cucumber:=true \
+  start_valve:=true
 ```
 
 启动前需填写实际硬件路径：
@@ -197,6 +199,7 @@ ros2 launch auv_bringup system.launch.py \
 - 路径规划起点与障碍类型：`src/auv_bringup/config/planning.yaml`
 - Mission 状态超时：`src/auv_bringup/config/mission.yaml`
 - 海参模型与推理参数：`src/auv_bringup/config/cucumber.yaml`
+- 转盘视觉参数：`src/auv_bringup/config/valve.yaml`
 - 下视相机内参与畸变：`src/auv_bringup/config/down_camera_calibration.yaml`
 
 这些字段默认留空，避免误连 `/dev/videoN` 或未知串口。
@@ -350,7 +353,7 @@ xjtu_rover_team_lib/
 ├── src/
 │   ├── auv_interfaces/       # 公共 msg / srv
 │   ├── auv_stm32_bridge/     # ROS 2 ↔ STM32 安全串口桥
-│   ├── auv_vision/           # 相机、AprilTag 与交通锥识别
+│   ├── auv_vision/           # 相机、AprilTag、锥体、海参与转盘视觉
 │   ├── auv_mapping/          # 九宫格检测、Homography 与语义地图
 │   ├── auv_planning/         # A*、目标排序与格子路线
 │   ├── auv_mission/          # 安全任务状态机与阶段超时
@@ -361,20 +364,21 @@ xjtu_rover_team_lib/
 ├── models/                   # 模型 manifest 与部署元数据
 ├── datasets/                 # 本地数据集管理约定
 ├── hardware/                 # BOM、接线、坐标系与机构资料
-├── docs/                     # 架构、协议、联调与测试文档
-└── tools/                    # 开发、构建和部署辅助脚本
+├── docs/
+│   ├── architecture/         # 仓库和系统架构
+│   ├── protocol/             # Pi ↔ STM32 协议
+│   ├── reviews/              # 代码审查与可行性边界
+│   └── testing/              # 分阶段验收手册
+├── tools/                    # 开发、构建和部署辅助脚本
+└── logs|videos|maps|events/  # 被 Git 忽略的运行产物目录
 ```
 
 推荐阅读顺序：
 
 1. [项目约束与路线图](AGENTS.md)
-2. [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md)
-3. [仓库布局与模块边界](docs/architecture/repository-layout.md)
-4. [串口协议 v1](docs/protocol/serial-protocol.md)
-5. [测试策略](docs/testing/strategy.md)
-6. [P4 安全验收](docs/testing/p4-safety.md)
-7. [STM32 固件说明](firmware/stm32/README.md)
-8. [P12 水下目标打标教程](docs/p12-annotation-guide.md)
+2. [文档中心](docs/README.md)
+3. [项目压缩状态](docs/project-status.md)
+4. 当前任务对应的 package README 和验收手册
 
 ## 安全边界
 
@@ -464,8 +468,7 @@ cd ~/auv
 git status
 ```
 
-本开发副本可能使用 `.git-data` 保存元数据；这种情况下普通 Git 命令需由项目工具或
-`git --git-dir=.git-data --work-tree=.` 调用。不要在其他目录直接执行 `git push`。
+确认 `git status` 正常后再执行提交或推送；不要在仓库外部直接运行 `git push`。
 
 ### 构建后找不到 ROS package
 
