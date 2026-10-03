@@ -1,0 +1,30 @@
+# 树莓派 systemd 服务单元模板
+# 复制到 /etc/systemd/system/ 后使用；安装、日志、停止等操作见本目录 README.md
+#
+# 替换说明：
+#   <RUN_USER>    -> 运行本服务的用户，例如 pi
+#   <INSTALL_DIR> -> 本目录在树莓派上的绝对路径，例如 /home/pi/raspi_deploy
+#
+#   ExecStart 用安装目录下 venv 的解释器执行，避免系统 python 找不到 ncnn；
+#   若给脚本加了可执行权限和 shebang，也可写成 <INSTALL_DIR>/dual_cam_ncnn.py
+
+[Unit]
+Description=Dual Camera YOLO Streamer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<RUN_USER>
+WorkingDirectory=<INSTALL_DIR>
+ExecStart=<INSTALL_DIR>/venv/bin/python <INSTALL_DIR>/dual_cam_ncnn.py
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=10
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

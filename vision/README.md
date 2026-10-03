@@ -9,6 +9,7 @@ vision/
 ├── training/      # YOLO 训练与评估入口
 ├── preprocessing/ # 数据清洗、标注转换和切分
 ├── export/        # ONNX / NCNN 导出与一致性检查
+├── raspi_deploy/  # 树莓派端 NCNN 双摄推理、推流与 systemd 部署
 └── notebooks/     # 仅用于探索，不作为部署入口
 ```
 
