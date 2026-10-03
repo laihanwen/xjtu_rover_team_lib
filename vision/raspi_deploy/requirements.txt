@@ -1,0 +1,9 @@
+# Raspberry Pi 4B / Python 3.13 上实测通过的版本（Pi 端 venv 快照）
+ncnn==1.0.20260526
+numpy==2.5.3
+opencv-python==5.0.0.93
+
+# 读取 config.yaml 需要（原代码无此依赖，本次新增）
+PyYAML>=6,<7
+
+# 注意：MJPEG 推流用的是标准库 http.server，不需要 flask

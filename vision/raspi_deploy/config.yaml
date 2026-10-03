@@ -1,0 +1,95 @@
+# =====================================================================
+# dual_cam_ncnn.py 配置文件
+# ---------------------------------------------------------------------
+# 原先硬编码在代码里的参数都集中到这里。字段缺失时会回落到脚本内置
+# 的默认值（见 dual_cam_ncnn.py 的 DEFAULT_CONFIG）。
+# 用 --config 指定其他路径，默认读取与本脚本同目录的 config.yaml。
+# =====================================================================
+
+# ------------------------------ 摄像头 ------------------------------
+cameras:
+  # ---------------- 0 号：CSI（libcamera / Picamera2） ----------------
+  0:
+    # 界面 / 日志中显示的名字
+    label: CAM0-CSI
+    # 1=启用这一路   0=完全不启用（不采集，页面显示 OFFLINE）
+    enable: 1
+    # 1=开启推理并画框   0=只推流、不画框、不占推理资源
+    infer: 0
+    # 每秒推理次数。0 表示该路不推理。
+    # ★ 这只是"请求频率"的上限：实际频率 = min(infer_fps, 单帧耗时倒数, stream.fps)。
+    #   设得比硬件实际能力高，只会不停丢帧，不会真的更快。
+    # CSI 路当前只推流不推理（排线未到位）。
+    infer_fps: 0
+    # 含 model.ncnn.param + model.ncnn.bin 的模型目录。必须填成树莓派上的实际
+    # 路径（例如 /home/<user>/yolov11_ncnn/models/best_ncnn_416）；留空则本路不推理。
+    model_dir: ""
+    # ★ 类别顺序由所加载模型的 metadata.yaml 决定，不要照抄仓库
+    #   vision/configs/classes.yaml（那份是 sea_cucumber/turtle/starfish，顺序不同）。
+    class_names: [sea_cucumber, starfish, turtle]
+    # 置信度阈值。两路当前不一致（CSI 0.25 / USB 0.40），是实测中分别调出来的，
+    # 属有意为之但尚未统一，后续可收敛为同一个值。
+    conf: 0.25
+    # NMS IoU 阈值
+    nms: 0.45
+    # ★ 必须与导出模型时的 imgsz 一致
+    input_size: 416
+    # "BGR" 或 "BGR2RGB"
+    pixel: BGR
+    # CSI 分辨率回退列表：按顺序尝试，全部失败则本路停用
+    csi_candidates:
+      - [640, 480]
+      - [800, 600]
+      - [960, 720]
+
+  # ---------------- 1 号：USB（UVC） ----------------
+  1:
+    label: CAM1-USB
+    enable: 1
+    infer: 1
+    # 同 CAM0：infer_fps 只是请求上限，不是实际能跑到的频率
+    infer_fps: 2
+    # 同 CAM0：填树莓派上的实际模型目录，留空则本路不推理
+    model_dir: ""
+    # ★ 同 CAM0：顺序取自模型 metadata.yaml，切勿与仓库 classes.yaml 混用
+    class_names: [sea_cucumber, starfish, turtle]
+    # 置信度阈值（见 CAM0 关于两路不一致的说明）
+    conf: 0.40
+    nms: 0.45
+    input_size: 416
+    pixel: BGR
+    # USB 请求分辨率
+    usb_size: [960, 540]
+    # 在 /dev/video* 自动探测之外，额外尝试的候选节点。
+    # 列表里的 0/1/2/3 是 OpenCV 索引写法，字符串是设备节点路径。
+    usb_candidates: ["/dev/video0", "/dev/video2", "/dev/video4", 0, 1, 2, 3]
+
+# ------------------------------- 推流 -------------------------------
+stream:
+  # 主循环推流帧率上限（infer_fps 不应超过它）
+  fps: 10
+  # 网页服务端口，浏览器访问 http://<树莓派IP>:<port>
+  port: 8080
+  # MJPEG 单帧 JPEG 编码质量（0-100）
+  mpeg_quality: 80
+
+# ------------------------------ 运行时 ------------------------------
+runtime:
+  # 推理调度模式："A" = 每路独立进程 ；"B" = 单进程两路轮流
+  infer_mode: A
+  # 子进程启动方式：
+  #   "fork"  = Linux 独有，直接复制父进程内存，不靠"函数名重找"，
+  #             不会有 AttributeError: Can't get attribute 'infer_proc_xxx'。
+  #             代码在相机初始化之前 fork，子进程是最干净的状态 —— 默认用这个。
+  #   "spawn" = 隔离最干净，但要求入口函数能被子进程按名字重新找到。
+  mp_start_method: fork
+  # 推理线程数（Pi 4B 是 4 核，别给满；实测给到 4 线程无额外收益）
+  ncnn_threads: 3
+  # 可选的额外 site-packages 路径。正常激活 venv 即可，留空不要填；
+  # 仅在 ncnn 装在非当前解释器的 site-packages 时才需要。
+  extra_site_packages: ""
+
+# ------------------------------- 调试 -------------------------------
+debug:
+  # true=每 2 秒打印一次各类原始最高分（排查"识别不出某类"用）
+  diag_print: false
