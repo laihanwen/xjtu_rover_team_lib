@@ -6,11 +6,12 @@
 ![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
 ![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
 ![STM32F405](https://img.shields.io/badge/MCU-STM32F405-03234B?logo=stmicroelectronics)
-![Stage P11](https://img.shields.io/badge/Stage-P11_Mission_FSM-2E8B57)
+![Stage P12](https://img.shields.io/badge/Stage-P12_YOLO_Data-FF9800)
 
 当前软件已完成 **P0–P11**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
 heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建图、交通锥识别和
-确定性格子路径规划，以及安全任务状态机。下一阶段是 **P12 海参 YOLO**。
+确定性格子路径规划，以及安全任务状态机。**P12 海参 YOLO** 的训练环境、数据工具和
+ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶段。
 
 > [!CAUTION]
 > 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
@@ -22,6 +23,7 @@ heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建�
 - [当前进度](#当前进度)
 - [快速开始](#快速开始)
 - [运行与验收](#运行与验收)
+- [P12 数据标注](#6-p12-数据标注)
 - [仓库结构](#仓库结构)
 - [安全边界](#安全边界)
 - [开发约定](#开发约定)
@@ -246,7 +248,33 @@ ros2 run auv_mission mission_virtual_test
 结果必须以 `VIRTUAL_MISSION_RESULT=PASS` 结束。详见
 [auv_mission 使用说明](src/auv_mission/README.md)。
 
-### 6. PC—树莓派有线联调
+### 6. P12 数据标注
+
+P12 使用独立的 Label Studio 环境，不修改 ROS 系统 Python，也不与
+`vision/.venv` 混用。首次安装并启动：
+
+```fish
+cd /home/hanwen/auv/annotation
+set -gx UV_CACHE_DIR /home/hanwen/auv/.cache/uv
+uv sync --frozen
+./start.sh
+```
+
+浏览器打开 <http://127.0.0.1:8080>，创建本地项目后，将
+`annotation/labeling-config.xml` 粘贴到 **Labeling Setup → Code**。固定类别为：
+
+```text
+0 sea_cucumber
+1 turtle
+2 starfish
+```
+
+完成标注后从 Label Studio 导出 YOLO 数据，先检查 `classes.txt` 的类别和顺序，
+再执行数据切分与校验。完整的图片准备、画框标准、负样本规则、导出整理和验收命令见：
+
+> [P12 水下目标打标教程](docs/p12-annotation-guide.md)
+
+### 7. PC—树莓派有线联调
 
 两端使用同一 ROS 2 Lyrical、工作区接口和 `ROS_DOMAIN_ID`。完整静态 IP、DDS 发现、
 视频查看、拆桨控制和拔网线验收步骤见：
@@ -262,7 +290,7 @@ set -gx ROS_DOMAIN_ID 42
 set -gx ROS_LOCALHOST_ONLY 0
 ```
 
-### 7. STM32 状态
+### 8. STM32 状态
 
 ```fish
 ros2 topic echo /stm32/status
@@ -280,7 +308,7 @@ ros2 topic echo /depth --once
 H30 当前只提供欧拉角。`/imu/data` 的角速度和线加速度为 NaN，对应 covariance
 首项为 `-1`，表示数据不可用，不应被下游当作零值使用。
 
-### 8. 固件检查
+### 9. 固件检查
 
 固件与 ROS 构建隔离。ARM GCC 可进行不链接、不烧写的对象编译检查：
 
@@ -316,6 +344,7 @@ xjtu_rover_team_lib/
 │   ├── auv_mission/          # 安全任务状态机与阶段超时
 │   └── auv_bringup/          # launch 与共享参数
 ├── firmware/stm32/           # STM32F405 CubeMX / Keil 工程与测试
+├── annotation/               # Label Studio 独立打标环境与类别配置
 ├── vision/                   # 数据处理、训练、评估和导出
 ├── models/                   # 模型 manifest 与部署元数据
 ├── datasets/                 # 本地数据集管理约定
@@ -333,6 +362,7 @@ xjtu_rover_team_lib/
 5. [测试策略](docs/testing/strategy.md)
 6. [P4 安全验收](docs/testing/p4-safety.md)
 7. [STM32 固件说明](firmware/stm32/README.md)
+8. [P12 水下目标打标教程](docs/p12-annotation-guide.md)
 
 ## 安全边界
 
@@ -387,6 +417,8 @@ host 测试、交叉编译、无桨台架和 failsafe 故障注入。
 - 模型权重放入本地 `models/artifacts/`，不直接提交普通 Git。
 - 模型版本、类别、输入尺寸、SHA-256 和下载地址记录在 `models/manifests/`。
 - 数据遵循 `datasets/raw → interim → processed → exports`。
+- 原始采集文件保持只读；Label Studio 数据库位于 `annotation/data/`，不提交 Git。
+- 视频相邻帧不得随机分散到 train/val/test，应按采集批次隔离以避免数据泄漏。
 - rosbag、视频、数据集、权重和编译产物均不得混入源码提交。
 
 ### 使用 AI 编程助手
