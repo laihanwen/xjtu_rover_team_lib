@@ -14,20 +14,23 @@
 | `hardware/` | BOM、接线、推进器布局、坐标系和机械资料 | 文档/CAD 工具 |
 | `docs/` | 架构、串口协议、任务流程和测试计划 | 文档 |
 | `tools/` | 开发环境、构建、部署和数据工具 | fish/Python 工具 |
+| `annotation/` | P12 Label Studio 独立环境与标注配置 | `uv sync --frozen` |
+| `logs/`、`videos/`、`maps/`、`trajectory/`、`events/` | 本地运行产物 | 默认不进入 Git |
 
-## ROS package 规划
+## 已实现的 ROS packages
 
-只在开始实现并能独立构建测试时创建 package：
+`src/` 当前包含七个可由 `colcon` 构建的 package：
 
-1. `auv_interfaces`：公共 msg/srv/action。
+1. `auv_interfaces`：公共 msg/srv。
 2. `auv_stm32_bridge`：串口编解码、心跳和 ROS topics。
-3. `auv_control`：高层运动目标和非实时控制逻辑。
-4. `auv_description`：URDF、TF 和传感器坐标。
-5. `auv_vision`：相机、AprilTag、OpenCV 检测和推理节点。
-6. `auv_mapping`：九宫格透视矫正与语义地图。
-7. `auv_planning`：A* 与目标访问顺序。
-8. `auv_mission`：任务 FSM。
-9. `auv_bringup`：系统启动和跨 package 参数。
+3. `auv_vision`：相机、AprilTag、OpenCV 检测和模型推理节点。
+4. `auv_mapping`：九宫格透视矫正与语义地图。
+5. `auv_planning`：A* 与目标访问顺序。
+6. `auv_mission`：任务 FSM。
+7. `auv_bringup`：系统启动和跨 package 参数。
+
+`auv_control` 和 `auv_description` 仍是候选 package，尚未创建。只有形成清晰接口、独立
+实现和测试需求后再建立，避免为了目录完整而产生空 package。
 
 训练代码不放入 `auv_vision`，避免 ROS 系统 Python 与 uv/PyTorch 环境耦合。部署模型只通过明确的模型清单交给运行时节点。
 
