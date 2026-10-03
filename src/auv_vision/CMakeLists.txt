@@ -49,6 +49,15 @@ target_include_directories(yolo_detector PUBLIC
 )
 target_link_libraries(yolo_detector PUBLIC ${OpenCV_LIBS} OpenSSL::Crypto)
 
+add_library(valve_detector src/valve_detector.cpp)
+target_compile_features(valve_detector PUBLIC cxx_std_17)
+target_include_directories(valve_detector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(valve_detector PUBLIC ${OpenCV_LIBS})
+
 add_library(cone_detector_node src/cone_detector_node.cpp)
 target_compile_features(cone_detector_node PUBLIC cxx_std_17)
 target_include_directories(cone_detector_node PUBLIC
@@ -114,10 +123,31 @@ set_target_properties(
 target_compile_features(cucumber_detector_node_executable PUBLIC cxx_std_17)
 target_link_libraries(cucumber_detector_node_executable cucumber_detector_node rclcpp::rclcpp)
 
+add_library(valve_detector_node src/valve_detector_node.cpp)
+target_compile_features(valve_detector_node PUBLIC cxx_std_17)
+target_include_directories(valve_detector_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(valve_detector_node PUBLIC
+  valve_detector
+  cv_bridge::cv_bridge
+  image_transport::image_transport
+  rclcpp::rclcpp
+  ${auv_interfaces_TARGETS}
+  ${sensor_msgs_TARGETS}
+)
+
+add_executable(valve_detector_node_executable src/valve_detector_main.cpp)
+set_target_properties(
+  valve_detector_node_executable PROPERTIES OUTPUT_NAME valve_detector_node)
+target_compile_features(valve_detector_node_executable PUBLIC cxx_std_17)
+target_link_libraries(valve_detector_node_executable valve_detector_node rclcpp::rclcpp)
+
 install(TARGETS
-  camera_source apriltag_detector cone_detector cone_detector_node yolo_detector
+  camera_source apriltag_detector cone_detector cone_detector_node yolo_detector valve_detector
   cucumber_detector_node camera_node apriltag_detector_node cone_detector_node_executable
-  cucumber_detector_node_executable
+  cucumber_detector_node_executable valve_detector_node valve_detector_node_executable
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -159,10 +189,20 @@ if(BUILD_TESTING)
     target_link_libraries(
       test_cucumber_detector_node cucumber_detector_node rclcpp::rclcpp)
   endif()
+
+  ament_add_gtest(test_valve_detector test/test_valve_detector.cpp)
+  if(TARGET test_valve_detector)
+    target_link_libraries(test_valve_detector valve_detector)
+  endif()
+
+  ament_add_gtest(test_valve_detector_node test/test_valve_detector_node.cpp)
+  if(TARGET test_valve_detector_node)
+    target_link_libraries(test_valve_detector_node valve_detector_node rclcpp::rclcpp)
+  endif()
 endif()
 
 ament_export_include_directories(include)
 ament_export_libraries(
   camera_source apriltag_detector cone_detector cone_detector_node yolo_detector
-  cucumber_detector_node)
+  cucumber_detector_node valve_detector valve_detector_node)
 ament_package()

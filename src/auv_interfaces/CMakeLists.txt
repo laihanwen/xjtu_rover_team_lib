@@ -22,6 +22,7 @@ set(msg_files
   "msg/SemanticCell.msg"
   "msg/SemanticMap.msg"
   "msg/Stm32Status.msg"
+  "msg/ValveDetection.msg"
 )
 
 set(srv_files
