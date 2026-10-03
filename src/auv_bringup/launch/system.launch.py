@@ -52,6 +52,9 @@ def generate_launch_description() -> LaunchDescription:
     cucumber_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'cucumber.yaml'
     )
+    valve_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'valve.yaml'
+    )
     calibration_config = os.path.join(
         get_package_share_directory('auv_bringup'),
         'config',
@@ -99,6 +102,11 @@ def generate_launch_description() -> LaunchDescription:
                 default_value='false',
                 description='Start front-camera YOLO sea-cucumber detection.',
             ),
+            DeclareLaunchArgument(
+                'start_valve',
+                default_value='false',
+                description='Start front-camera OpenCV valve detection.',
+            ),
             LogInfo(
                 msg=(
                     'AUV base workspace is ready. Only requested nodes are started; '
@@ -143,6 +151,14 @@ def generate_launch_description() -> LaunchDescription:
                 name='auv_cucumber_detector',
                 parameters=[cucumber_config],
                 condition=IfCondition(LaunchConfiguration('start_cucumber')),
+                output='screen',
+            ),
+            Node(
+                package='auv_vision',
+                executable='valve_detector_node',
+                name='auv_valve_detector',
+                parameters=[valve_config],
+                condition=IfCondition(LaunchConfiguration('start_valve')),
                 output='screen',
             ),
             Node(

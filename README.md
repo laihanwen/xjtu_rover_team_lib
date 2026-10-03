@@ -6,7 +6,7 @@
 ![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
 ![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
 ![STM32F405](https://img.shields.io/badge/MCU-STM32F405-03234B?logo=stmicroelectronics)
-![Stage P13](https://img.shields.io/badge/Stage-P13_Gripper-FF9800)
+![Stage P14](https://img.shields.io/badge/Stage-P14_Valve_Foundation-FF9800)
 
 当前软件已完成 **P0–P11**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
 heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建图、交通锥识别和
@@ -29,6 +29,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 - [安全边界](#安全边界)
 - [开发约定](#开发约定)
 - [常见问题](#常见问题)
+- [项目压缩状态](docs/project-status.md)
 - [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md)
 
 ## 系统架构
@@ -62,6 +63,7 @@ Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高�
 | Vision → Pi/PC | `/apriltag/detections`、`/apriltag/debug_image` | 标签检测与调试画面 |
 | Vision → Mapping | `/cones/detections`、`/cones/debug_image` | 稳定锥体分类与调试画面 |
 | Front Vision → Mission | `/cucumber/detections` | 海参、海龟、海星检测 |
+| Front Vision → Mission | `/valve/detection`、`/valve/debug_image` | 转盘候选、中心与把手方向 |
 | Mapping → Pi/PC | `/semantic_map`、`/mapping/rectified_image` | 3×3 地图与标准俯视图 |
 | Planning → Mission | `/planning/route` | 目标顺序与逐格最短路线 |
 | Mission → Pi/PC | `/mission/state`、`/mission/command` | 状态、故障与人工控制 |
@@ -76,6 +78,8 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
 
 T35-L 单舵机的接线、端点标定和分阶段上电验收见
 [P13 夹爪标定与验收](docs/testing/p13-gripper.md)。
+转盘视觉基础的运行边界、摄像头验收和后续闭环门槛见
+[P14 转盘视觉基础环境验收](docs/testing/p14-valve-foundation.md)。
 
 ## 当前进度
 
@@ -95,7 +99,7 @@ T35-L 单舵机的接线、端点标定和分阶段上电验收见
 | P11 | Mission FSM | ✅ 安全编排、超时、暂停/恢复/终止及虚拟全流程 |
 | P12 | Sea cucumber YOLO | 🚧 训练环境与 ROS 推理已实现；等待真实标注数据/权重 |
 | P13 | 单舵机抓取系统 | 🚧 ROS/串口/STM32 状态机已实现；等待端点标定和实机验收 |
-| P14 | 转盘系统 | 📝 已规划 |
+| P14 | 转盘系统 | 🚧 OpenCV 检测接口、节点和调试环境已建立 |
 
 ### 当前控制能力边界
 

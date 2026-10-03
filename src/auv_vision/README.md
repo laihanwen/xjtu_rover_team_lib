@@ -20,6 +20,11 @@ front camera, verifies a published ONNX model by SHA-256, and publishes
 `sea_cucumber`, `turtle`, and `starfish` detections on
 `/cucumber/detections`. Training remains isolated under `vision/`.
 
+P14 starts with `valve_detector_node`. The conservative OpenCV baseline finds
+a circular valve candidate and, when visible, an undirected handle axis. It
+publishes `/valve/detection` and an optional `/valve/debug_image`. This is a
+vision-only foundation: it does not command motion or any actuator.
+
 The `source` parameter accepts a V4L2 device index (`"0"`), a stable device path
 such as `/dev/v4l/by-id/...`, a video file, or an OpenCV image-sequence pattern.
 Live V4L2 sources reconnect after read failures. File and image-sequence inputs
@@ -147,3 +152,25 @@ ros2 topic echo /cucumber/detections
 Inference uses C++ OpenCV-DNN with a static YOLO11 ONNX model. It samples the
 front-camera stream at `inference_rate` without reducing the camera publisher's
 rate. Debug images are disabled by default.
+
+## Valve detection foundation
+
+Set the front camera source in `config/cameras.yaml`, then run:
+
+```fish
+source /opt/ros/lyrical/setup.fish
+source install/setup.fish
+ros2 launch auv_bringup system.launch.py \
+  start_cameras:=true start_valve:=true
+
+ros2 topic echo /valve/detection
+rqt_image_view /valve/debug_image
+```
+
+For repeatable tuning, publish a recorded video on `/camera/front/image_raw`
+and run `valve_detector_node` with `config/valve.yaml`. The YAML thresholds are
+placeholders until representative dry and underwater recordings are available.
+`processing_rate` caps detection work without reducing the camera topic rate;
+the default is 15 Hz for a Raspberry Pi 4B starting point.
+The handle angle is an undirected line normalized to `[-pi/2, pi/2)`; it does
+not yet prove accumulated rotation or rotation direction.
