@@ -501,6 +501,21 @@
               <FilePath>.\AuvControlSource.h</FilePath>
             </File>
             <File>
+              <FileName>AuvGripper.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvGripper.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvGripper.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvGripper.h</FilePath>
+            </File>
+            <File>
+              <FileName>AuvGripperConfig.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvGripperConfig.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>

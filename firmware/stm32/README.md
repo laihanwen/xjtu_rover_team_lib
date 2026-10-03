@@ -37,6 +37,8 @@ firmware/stm32/
 │   ├── AuvSafety.c/.h       # ARM/DISARM/heartbeat/failsafe 状态机
 │   ├── AuvLink.c/.h         # USART、ACK 和 STATUS 集成
 │   ├── AuvRcInput.c/.h      # 0xA5 遥控帧接收、快照与掉线超时
+│   ├── AuvGripper.c/.h      # P13 T35-L 单舵机夹爪状态机
+│   ├── AuvGripperConfig.h   # 标定门、端点、缓启动和遥控阈值
 │   └── Move_Manual.md       # 安装和控制说明
 ├── CMakeLists.txt           # 编辑器代码模型 / 编译检查
 ├── COLCON_IGNORE            # 防止 ROS colcon 误构建固件
@@ -97,11 +99,13 @@ USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任�
 - heartbeat 恢复后只回到 DISARMED，不自动重新 ARM。
 - 漏水、kill 或传感器无效立即进入 FAILSAFE。
 - `VectorThrusterPwm_Write()` 是 T1–T8 唯一硬件写入口；非 ARMED 状态强制使用原固件已确认的 `midvalue=1488`。
-- SET_ARMED 和 MOTION_TARGET 通过 ACK 返回实际接受/拒绝结果；机械执行器命令仍返回 unsupported。
+- SET_ARMED、MOTION_TARGET 和夹爪 ACTUATOR_COMMAND 均通过 ACK 返回实际结果。
 - 合法 MOTION_TARGET 现已接入：Pi 目标新鲜时优先于遥控输入，250 ms 超时即清零并撤销 ARM。
 - `vx/vy` 当前通过 `Mate.h` 中可标定的前馈增益转换为受统一限幅保护的动力指令；
   yaw 使用 IMU 闭环。真实深度驱动接入前，depth target 不产生垂向输出。
 - STATUS 现在返回经过 ARM 门控后的 T1–T8 归一化输出，便于拆桨验收。
+- T35-L 信号使用 PA8/TIM1_CH1；未标定固件固定保持 1500 μs 并拒绝开合。
+- 遥控模式中 SB=1 启用夹爪，SA 低位闭合、高位张开、中间区停止保持。
 
 连接实机前必须核对 PC10/PC11 是否确实接到 Pi/USB-UART、双方为兼容的 3.3 V UART 电平且共地。不得把 RS-232 电平直接接入 STM32。
 

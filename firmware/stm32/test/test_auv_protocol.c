@@ -20,6 +20,23 @@ static void TestGoldenVector(void)
     assert(AuvProtocol_Crc16((const uint8_t *)"123456789", 9U) == 0x29B1U);
 }
 
+static void TestGripperGoldenVector(void)
+{
+    const uint8_t payload[] = {
+        0x04, 0x03, 0x02, 0x01, 0x01, 0x00, 0x00, 0x80, 0x3F
+    };
+    const uint8_t expected[] = {
+        0xAA, 0x55, 0x01, 0x04, 0x09, 0x04, 0x03, 0x02,
+        0x01, 0x01, 0x00, 0x00, 0x80, 0x3F, 0x69, 0xF4
+    };
+    uint8_t encoded[AUV_PROTOCOL_MAX_FRAME_SIZE];
+    size_t size = AuvProtocol_Encode(
+        AUV_MSG_ACTUATOR_COMMAND, payload, sizeof(payload), encoded,
+        sizeof(encoded));
+    assert(size == sizeof(expected));
+    assert(memcmp(encoded, expected, size) == 0);
+}
+
 static void TestParserAndRecovery(void)
 {
     AuvProtocolParser parser;
@@ -68,6 +85,7 @@ static void TestRejectsInvalidHeaders(void)
 int main(void)
 {
     TestGoldenVector();
+    TestGripperGoldenVector();
     TestParserAndRecovery();
     TestRejectsInvalidHeaders();
     puts("AuvProtocol host tests passed");

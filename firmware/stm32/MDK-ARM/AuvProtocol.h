@@ -24,7 +24,8 @@ typedef enum {
     AUV_MSG_ACK             = 0x7F,
     AUV_MSG_STATUS          = 0x80,
     AUV_MSG_IMU             = 0x81,
-    AUV_MSG_DEPTH           = 0x82
+    AUV_MSG_DEPTH           = 0x82,
+    AUV_MSG_ACTUATOR_STATUS = 0x83
 } AuvMessageType;
 
 typedef struct {

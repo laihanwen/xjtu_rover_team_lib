@@ -23,16 +23,20 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "auv_stm32_bridge/motion_target.hpp"
+#include "auv_stm32_bridge/gripper_protocol.hpp"
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
 #include "auv_stm32_bridge/stream_parser.hpp"
 #include "auv_stm32_bridge/telemetry_decoder.hpp"
 #include "auv_interfaces/msg/depth.hpp"
+#include "auv_interfaces/msg/gripper_status.hpp"
 #include "auv_interfaces/msg/stm32_status.hpp"
 #include "auv_interfaces/srv/set_armed.hpp"
+#include "auv_interfaces/srv/set_gripper.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -85,10 +89,18 @@ public:
     imu_publisher_ = create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::SensorDataQoS());
     depth_publisher_ = create_publisher<auv_interfaces::msg::Depth>(
       "/depth", rclcpp::SensorDataQoS());
+    gripper_status_publisher_ = create_publisher<auv_interfaces::msg::GripperStatus>(
+      "/gripper/status", rclcpp::QoS(10));
     armed_service_ = create_service<auv_interfaces::srv::SetArmed>(
       "/stm32/set_armed",
       std::bind(
         &Stm32BridgeNode::handle_set_armed, this, std::placeholders::_1,
+        std::placeholders::_2),
+      rclcpp::ServicesQoS(), service_callback_group_);
+    gripper_service_ = create_service<auv_interfaces::srv::SetGripper>(
+      "/gripper/set_state",
+      std::bind(
+        &Stm32BridgeNode::handle_set_gripper, this, std::placeholders::_1,
         std::placeholders::_2),
       rclcpp::ServicesQoS(), service_callback_group_);
     const auto command_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
@@ -202,6 +214,8 @@ private:
         publish_imu(frame.payload);
       } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH) {
         publish_depth(frame.payload);
+      } else if (frame.message_type == AUV_PROTOCOL_MSG_ACTUATOR_STATUS) {
+        decode_gripper_status(frame.payload);
       }
     }
     if (connected_ &&
@@ -210,6 +224,7 @@ private:
     {
       connected_ = false;
       status_ = auv_interfaces::msg::Stm32Status();
+      gripper_status_ = auv_interfaces::msg::GripperStatus();
     }
   }
 
@@ -253,12 +268,12 @@ private:
 
   void receive_ack(const std::vector<uint8_t> & payload)
   {
-    if (payload.size() != 6U || payload[0] != AUV_PROTOCOL_MSG_SET_ARMED) {
+    if (payload.size() != 6U) {
       return;
     }
     const uint32_t sequence = auv_protocol_read_u32_le(&payload[2]);
     std::lock_guard<std::mutex> ack_lock(ack_mutex_);
-    if (ack_waiting_ && sequence == ack_sequence_) {
+    if (ack_waiting_ && sequence == ack_sequence_ && payload[0] == ack_type_) {
       ack_result_ = payload[1];
       ack_received_ = true;
       ack_condition_.notify_one();
@@ -335,6 +350,21 @@ private:
     depth_publisher_->publish(message);
   }
 
+  void decode_gripper_status(const std::vector<uint8_t> & payload)
+  {
+    GripperTelemetry telemetry;
+    if (!auv_stm32_bridge::decode_gripper_status(payload, telemetry)) {
+      return;
+    }
+    gripper_status_.connected = true;
+    gripper_status_.state = telemetry.state;
+    gripper_status_.calibrated = telemetry.calibrated;
+    gripper_status_.current_pulse_us = telemetry.current_pulse_us;
+    gripper_status_.target_pulse_us = telemetry.target_pulse_us;
+    gripper_status_.error_flags = telemetry.error_flags;
+    gripper_status_.last_command_sequence = telemetry.last_command_sequence;
+  }
+
   void publish_status()
   {
     status_.header.stamp = now();
@@ -347,6 +377,9 @@ private:
       status_.error_flags |= kProtocolTimeout;
     }
     status_publisher_->publish(status_);
+    gripper_status_.header.stamp = now();
+    gripper_status_.connected = connected_ && serial_port_.is_open();
+    gripper_status_publisher_->publish(gripper_status_);
   }
 
   void handle_set_armed(
@@ -364,45 +397,92 @@ private:
       return;
     }
 
+    std::array<uint8_t, 5> payload{};
+    const uint32_t sequence = transmit_sequence_.fetch_add(1U);
+    auv_protocol_write_u32_le(payload.data(), sequence);
+    payload[4] = request->armed ? 1U : 0U;
+    const auto result = send_and_wait_for_ack(
+      AUV_PROTOCOL_MSG_SET_ARMED, sequence, payload.data(), payload.size(), "SET_ARMED");
+    response->accepted = result.first;
+    response->message = result.second;
+  }
+
+  void handle_set_gripper(
+    const std::shared_ptr<auv_interfaces::srv::SetGripper::Request> request,
+    std::shared_ptr<auv_interfaces::srv::SetGripper::Response> response)
+  {
+    GripperAction action;
+    if (request->action == auv_interfaces::srv::SetGripper::Request::ACTION_STOP) {
+      action = GripperAction::kStop;
+    } else if (request->action == auv_interfaces::srv::SetGripper::Request::ACTION_CLOSE) {
+      action = GripperAction::kClose;
+    } else if (request->action == auv_interfaces::srv::SetGripper::Request::ACTION_OPEN) {
+      action = GripperAction::kOpen;
+    } else {
+      response->accepted = false;
+      response->message = "invalid gripper action";
+      return;
+    }
+    bool transport_open;
+    {
+      std::lock_guard<std::mutex> serial_lock(serial_mutex_);
+      transport_open = serial_port_.is_open();
+    }
+    if (!transport_open || !connected_.load()) {
+      response->accepted = false;
+      response->message = "STM32 is not connected";
+      return;
+    }
+    const uint32_t sequence = transmit_sequence_.fetch_add(1U);
+    const auto payload = encode_gripper_command(sequence, action);
+    const auto result = send_and_wait_for_ack(
+      AUV_PROTOCOL_MSG_ACTUATOR_COMMAND, sequence, payload.data(), payload.size(),
+      "ACTUATOR_COMMAND");
+    response->accepted = result.first;
+    response->message = result.second;
+  }
+
+  std::pair<bool, std::string> send_and_wait_for_ack(
+    const uint8_t message_type, const uint32_t sequence, const uint8_t * payload,
+    const std::size_t payload_size, const std::string & command_name)
+  {
     std::unique_lock<std::mutex> ack_lock(ack_mutex_);
-    ack_sequence_ = transmit_sequence_.fetch_add(1U);
+    ack_sequence_ = sequence;
+    ack_type_ = message_type;
     ack_waiting_ = true;
     ack_received_ = false;
-    std::array<uint8_t, 5> payload{};
-    auv_protocol_write_u32_le(payload.data(), ack_sequence_);
-    payload[4] = request->armed ? 1U : 0U;
     std::array<uint8_t, AUV_PROTOCOL_MAX_FRAME_SIZE> frame{};
     const std::size_t frame_size = auv_protocol_encode_frame(
-      AUV_PROTOCOL_MSG_SET_ARMED, payload.data(), payload.size(), frame.data(), frame.size());
+      message_type, payload, payload_size, frame.data(), frame.size());
+    if (frame_size == 0U) {
+      ack_waiting_ = false;
+      return {false, "failed to encode " + command_name};
+    }
     {
       std::lock_guard<std::mutex> serial_lock(serial_mutex_);
       if (serial_port_.write(frame.data(), frame_size) != frame_size) {
         ack_waiting_ = false;
-        response->accepted = false;
-        response->message = "failed to write complete SET_ARMED frame";
-        return;
+        return {false, "failed to write complete " + command_name + " frame"};
       }
     }
     const bool received = ack_condition_.wait_for(
       ack_lock, std::chrono::milliseconds(300), [this]() {return ack_received_;});
     ack_waiting_ = false;
     if (!received) {
-      response->accepted = false;
-      response->message = "STM32 SET_ARMED acknowledgement timed out";
-      return;
+      return {false, "STM32 " + command_name + " acknowledgement timed out"};
     }
-    response->accepted = ack_result_ == 0U;
-    response->message = ack_result_message(ack_result_);
+    return {ack_result_ == 0U, ack_result_message(ack_result_, command_name)};
   }
 
-  static std::string ack_result_message(const uint8_t result)
+  static std::string ack_result_message(
+    const uint8_t result, const std::string & command_name)
   {
     switch (result) {
-      case 0U: return "STM32 accepted SET_ARMED";
-      case 1U: return "STM32 rejected malformed SET_ARMED";
-      case 2U: return "STM32 rejected command while disarmed";
-      case 3U: return "STM32 rejected unsafe ARM request";
-      case 4U: return "STM32 does not support SET_ARMED";
+      case 0U: return "STM32 accepted " + command_name;
+      case 1U: return "STM32 rejected malformed " + command_name;
+      case 2U: return "STM32 rejected " + command_name + " while disarmed";
+      case 3U: return "STM32 rejected unsafe " + command_name;
+      case 4U: return "STM32 does not support " + command_name;
       default: return "STM32 returned unknown acknowledgement result";
     }
   }
@@ -422,10 +502,13 @@ private:
   SerialPort serial_port_;
   StreamParser parser_;
   auv_interfaces::msg::Stm32Status status_;
+  auv_interfaces::msg::GripperStatus gripper_status_;
   rclcpp::Publisher<auv_interfaces::msg::Stm32Status>::SharedPtr status_publisher_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_publisher_;
   rclcpp::Publisher<auv_interfaces::msg::Depth>::SharedPtr depth_publisher_;
+  rclcpp::Publisher<auv_interfaces::msg::GripperStatus>::SharedPtr gripper_status_publisher_;
   rclcpp::Service<auv_interfaces::srv::SetArmed>::SharedPtr armed_service_;
+  rclcpp::Service<auv_interfaces::srv::SetGripper>::SharedPtr gripper_service_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocity_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr depth_command_subscription_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr yaw_command_subscription_;
@@ -442,6 +525,7 @@ private:
   bool ack_received_{false};
   uint32_t ack_sequence_{0};
   uint8_t ack_result_{0};
+  uint8_t ack_type_{0};
 };
 
 }  // namespace auv_stm32_bridge

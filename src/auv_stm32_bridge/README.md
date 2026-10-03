@@ -1,6 +1,6 @@
 # auv_stm32_bridge
 
-ROS 2 与 STM32 之间的安全串口桥接边界。当前提供参数化 POSIX 串口传输、自动重连、P3 协议编解码、heartbeat、状态解析和 ARM 服务入口。
+ROS 2 与 STM32 之间的安全串口桥接边界。当前提供参数化 POSIX 串口传输、自动重连、P3 协议编解码、heartbeat、状态解析、ARM 服务及 P13 单舵机夹爪接口。
 
 ## 安全行为
 
@@ -10,6 +10,7 @@ ROS 2 与 STM32 之间的安全串口桥接边界。当前提供参数化 POSIX 
 - 串口打开后按参数化频率发送 HEARTBEAT；heartbeat 不包含运动目标。
 - `/stm32/set_armed` 发送带 sequence 的显式请求；只有收到匹配 ACK 才返回成功。
 - 本包不控制 PWM，也不包含推进器参数。
+- `/gripper/set_state` 只发送 OPEN/CLOSE/STOP；PWM 标定、限幅和缓启动留在 STM32。
 
 当前 `error_flags` 的桥接端临时位定义：
 
@@ -71,6 +72,30 @@ ros2 topic echo /stm32/status
 当前 `vx/vy` 是没有 DVL 时的开环前馈，最终艇体必须在约束水池内重新标定
 `AUV_SURGE_PWM_PER_MPS` 和 `AUV_SWAY_PWM_PER_MPS`。深度驱动尚未接入，因此当前版本不会
 根据 `/cmd_depth` 产生垂向推力。
+
+## P13 单舵机夹爪
+
+接口：
+
+```text
+/gripper/set_state  auv_interfaces/srv/SetGripper
+/gripper/status     auv_interfaces/msg/GripperStatus
+```
+
+动作编号：`0=STOP`、`1=CLOSE`、`2=OPEN`。OPEN/CLOSE 要求 STM32 已 ARM 且
+`AUV_GRIPPER_CALIBRATED=1`；未标定固件会返回 unsafe，PA8 保持 1500 μs。
+
+拆桨、断开推进器动力并完成舵机端点标定后才可测试：
+
+```fish
+ros2 topic echo /gripper/status
+ros2 service call /gripper/set_state auv_interfaces/srv/SetGripper '{action: 2}'
+ros2 service call /gripper/set_state auv_interfaces/srv/SetGripper '{action: 1}'
+ros2 service call /gripper/set_state auv_interfaces/srv/SetGripper '{action: 0}'
+```
+
+详细标定与上电验收见
+[`docs/testing/p13-gripper.md`](../../docs/testing/p13-gripper.md)。
 
 ## 验证
 

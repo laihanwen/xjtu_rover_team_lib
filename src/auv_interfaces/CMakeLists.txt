@@ -15,6 +15,7 @@ set(msg_files
   "msg/Detection2D.msg"
   "msg/Depth.msg"
   "msg/GridCell.msg"
+  "msg/GripperStatus.msg"
   "msg/MissionState.msg"
   "msg/ObjectDetectionArray.msg"
   "msg/PlannedRoute.msg"
@@ -26,6 +27,7 @@ set(msg_files
 set(srv_files
   "srv/MissionCommand.srv"
   "srv/SetArmed.srv"
+  "srv/SetGripper.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

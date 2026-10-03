@@ -39,6 +39,7 @@ CRC 使用 **CRC-16/CCITT-FALSE**：poly `0x1021`、init `0xFFFF`、refin/refout
 | `0x80` | STATUS | STM32 → Pi | 30 + 2N |
 | `0x81` | IMU | STM32 → Pi | 40 |
 | `0x82` | DEPTH | STM32 → Pi | 9 |
+| `0x83` | ACTUATOR_STATUS | STM32 → Pi | 16 |
 
 未知 version、未知 ID、超长 payload、长度不完整或 CRC 错误的帧必须丢弃，不得更新控制目标。解析器从下一个 `AA 55` 重新同步。
 
@@ -84,8 +85,12 @@ ARM 必须显式请求；运动指令不能隐式 ARM。STM32 必须用 ACK 报�
 | Offset | 类型 | 字段 |
 |---:|---|---|
 | 0 | `uint32` | sequence |
-| 4 | `uint8` | actuator ID；机构确定后配置，不在 P3 猜测 |
-| 5 | `float32` | normalized command，`[-1, 1]` |
+| 4 | `uint8` | actuator ID；`1` 为 T35-L 单舵机夹爪 |
+| 5 | `float32` | `-1.0` 闭合，`0.0` 停止并保持，`+1.0` 张开 |
+
+夹爪 OPEN/CLOSE 仅在 ARMED 且标定门开启时接受；STOP 允许在 DISARMED 时执行。
+Pi OPEN/CLOSE 还要求本次 ARM 周期已经锁定 Pi 控制源；STM32 拒绝重复或过期
+sequence。业务层不得使用中间浮点值直接控制 PWM。
 
 ### ACK `0x7F`
 
@@ -140,6 +145,21 @@ Firmware error flags：
 
 深度传感器未接入或读数失效时发送 `valid=0` 和 quiet NaN；只有 `valid=1` 且深度为有限值时才是可用测量。
 
+### ACTUATOR_STATUS `0x83`
+
+| Offset | 类型 | 字段 |
+|---:|---|---|
+| 0 | `uint32` | telemetry sequence |
+| 4 | `uint8` | actuator ID；夹爪为 `1` |
+| 5 | `uint8` | 状态：0 未标定、1 停止、2 正在闭合、3 已闭合、4 正在张开、5 已张开、6 故障 |
+| 6 | `uint8` | bit0：已标定 |
+| 7 | `uint16` | 当前 PWM 脉宽，μs |
+| 9 | `uint16` | 目标 PWM 脉宽，μs |
+| 11 | `uint8` | bit0 未标定、bit1 配置错误、bit2 sequence 错误 |
+| 12 | `uint32` | 最近一次已解析命令的 sequence |
+
+状态中的脉宽仅用于诊断。ROS 任务层仍只使用 OPEN/CLOSE/STOP。
+
 ## 黄金测试向量
 
 以下十六进制 bytes 包含完整帧，CRC 低字节在前。
@@ -153,6 +173,9 @@ AA 55 01 02 05 04 03 02 01 01 A5 0A
 
 # MOTION_TARGET sequence=0x12345678, vx=1, vy=-0.5, depth=2.5, yaw=0.5
 AA 55 01 03 14 78 56 34 12 00 00 80 3F 00 00 00 BF 00 00 20 40 00 00 00 3F C1 01
+
+# ACTUATOR_COMMAND sequence=0x01020304, gripper ID=1, OPEN=+1.0
+AA 55 01 04 09 04 03 02 01 01 00 00 80 3F 69 F4
 ```
 
 STM32 P4 接入时必须逐 byte 复用这些权威向量。
