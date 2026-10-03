@@ -101,27 +101,24 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             self.send_header("Age", "0")
             self.send_header("Cache-Control", "no-cache, private")
             self.send_header("Pragma", "no-cache")
-            self.send_header("Content-Type",
-                             "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
             self.end_headers()
 
             try:
-                while True:
+                while not streamer.stop_event.is_set():
                     # 从 WebStreamer 获取对应通道的图像
                     frame = streamer.get_frame(stream_id)
 
                     # 编码为 JPG (支持 3 通道彩色和 1 通道灰度)
                     ret, jpeg = cv2.imencode(
-                        ".jpg", frame,
-                        [int(cv2.IMWRITE_JPEG_QUALITY), streamer.jpeg_quality])
+                        ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), streamer.jpeg_quality]
+                    )
                     if ret:
-                        self.wfile.write(b"--frame\r\n")
-                        # 注意：MJPEG 的 part 头按 HTTP 规范应直接写字节到 wfile；
-                        # 这里沿用 send_header()/end_headers() 的写法，虽然绕过了
-                        # 正常的 header 流程，但实测可稳定工作，故保留不改。
-                        self.send_header("Content-Type", "image/jpeg")
-                        self.send_header("Content-Length", str(len(jpeg)))
-                        self.end_headers()
+                        self.wfile.write(
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n"
+                            + f"Content-Length: {len(jpeg)}\r\n\r\n".encode("ascii")
+                        )
                         self.wfile.write(jpeg.tobytes())
                         self.wfile.write(b"\r\n")
 
@@ -130,7 +127,7 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             except (ConnectionResetError, BrokenPipeError):
                 # 客户端关闭网页时静默退出
                 pass
-            except Exception as e:
+            except OSError as e:
                 print(f"[WebStreamer] 推流异常: {e}")
         else:
             self.send_error(404)
@@ -140,6 +137,8 @@ class _ThreadedHTTPServer(ThreadingTCPServer, HTTPServer):
     """多线程 HTTP 服务器；streamer 绑定在服务器实例上，避免全局单例互相覆盖。"""
 
     allow_reuse_address = True
+    daemon_threads = True
+    block_on_close = False
 
     def __init__(self, server_address, handler_cls, streamer):
         self.streamer = streamer
@@ -151,12 +150,13 @@ class WebStreamer:
 
     def __init__(self, port=8080, jpeg_quality=80, frame_interval=0.03):
         self.port = port
-        self.jpeg_quality = int(jpeg_quality)      # MJPEG 单帧 JPEG 质量
+        self.jpeg_quality = int(jpeg_quality)  # MJPEG 单帧 JPEG 质量
         self.frame_interval = float(frame_interval)  # 推流间隔秒数，默认约 30 FPS
         self.frames = {0: None, 1: None}
         self.lock = threading.Lock()
         self.server = None
         self.server_thread = None
+        self.stop_event = threading.Event()
         self._start_server()
 
     def _generate_placeholder(self, stream_id):
@@ -164,12 +164,20 @@ class WebStreamer:
         placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
         placeholder[:] = (30, 30, 30)
         cv2.rectangle(placeholder, (15, 15), (625, 465), (100, 100, 100), 2)
-        cv2.putText(placeholder, f"Waiting for Stream {stream_id}...", (130, 240),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        cv2.putText(
+            placeholder,
+            f"Waiting for Stream {stream_id}...",
+            (130, 240),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (200, 200, 200),
+            2,
+        )
         return placeholder
 
     def _start_server(self):
         self.server = _ThreadedHTTPServer(("0.0.0.0", self.port), MJPEGHandler, self)
+        self.port = self.server.server_address[1]
         self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.server_thread.start()
         print("\n[WebStreamer] 网页服务已启动！")
@@ -196,6 +204,11 @@ class WebStreamer:
     def stop(self):
         """停止服务器"""
         if self.server:
+            self.stop_event.set()
             self.server.shutdown()
             self.server.server_close()
+            if self.server_thread and self.server_thread is not threading.current_thread():
+                self.server_thread.join(timeout=2.0)
+            self.server = None
+            self.server_thread = None
             print("[WebStreamer] 服务器已安全关闭。")

@@ -24,10 +24,9 @@
 
 ## 3. 类别顺序警告
 
-`config.yaml` 里的 `class_names` 顺序取自**所加载模型的 `metadata.yaml`**，当前为
-`sea_cucumber / starfish / turtle`，与仓库 `vision/configs/classes.yaml` 及
-`src/auv_bringup/config/cucumber.yaml`（`sea_cucumber / turtle / starfish`）**暂不一致**。
-加载其他模型时必须同步修改 `config.yaml` 的这一项，否则画框的类别会张冠李戴。
+`config.yaml` 里的 `class_names` 顺序必须和所加载模型的 `metadata.yaml` 一致。
+程序启动时会同时检查类别顺序与输入尺寸，不一致时会停用该路推理并打印原因，避免
+画框类别张冠李戴。请优先统一训练配置、ROS 配置和此处配置，而不是反复手工换顺序。
 
 ## 4. 硬件前提
 
@@ -77,12 +76,17 @@ sudo systemctl disable dual_cam.service   # 取消开机自启
 ## 7. 浏览器访问
 
 浏览器打开 `http://<树莓派IP>:8080`（端口可用 `stream.port` 修改），页面左右并排显示两路。
+该服务监听所有网卡且没有登录认证，只应在可信、隔离的调试局域网中使用，不要直接暴露到公网。
 
 ## 8. 模型准备
 
 权重不进 Git。本目录只需在 `config.yaml` 把 `cameras.<id>.model_dir` 指向包含
-`model.ncnn.param` + `model.ncnn.bin` 的目录（`models/artifacts/` 用于存放这些文件）。
+同名的 `model.ncnn.param`、`model.ncnn.bin` 和 `metadata.yaml` 的目录
+（`models/artifacts/` 用于存放这些文件）。
 模型导出使用 `../export/export_ncnn.py`。
+
+程序按 Ultralytics 的方式执行 BGR→RGB 和等比例 letterbox。不要把配置中的 `pixel`
+改回 `BGR`，也不要只复制 `.param/.bin` 而漏掉元数据。
 
 ## 9. 性能参考（Pi 4B 实测）
 
@@ -99,3 +103,4 @@ sudo systemctl disable dual_cam.service   # 取消开机自启
 - CAM0（CSI）当前只推流不推理（排线未到位）；
 - 两路 `conf` 阈值尚未统一（0.25 / 0.40）；
 - 无 ROS 接口，检测结果不会发布到 `/cucumber/detections`。
+- 本工具会独占摄像头，不能与 ROS 相机节点同时打开同一设备；切换前先停止另一套程序。

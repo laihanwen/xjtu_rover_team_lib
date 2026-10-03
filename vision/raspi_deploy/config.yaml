@@ -34,8 +34,8 @@ cameras:
     nms: 0.45
     # ★ 必须与导出模型时的 imgsz 一致
     input_size: 416
-    # "BGR" 或 "BGR2RGB"
-    pixel: BGR
+    # Ultralytics 模型使用 RGB；OpenCV 输入必须执行 BGR2RGB。
+    pixel: BGR2RGB
     # CSI 分辨率回退列表：按顺序尝试，全部失败则本路停用
     csi_candidates:
       - [640, 480]
@@ -57,7 +57,7 @@ cameras:
     conf: 0.40
     nms: 0.45
     input_size: 416
-    pixel: BGR
+    pixel: BGR2RGB
     # USB 请求分辨率
     usb_size: [960, 540]
     # 在 /dev/video* 自动探测之外，额外尝试的候选节点。

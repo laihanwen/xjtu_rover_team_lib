@@ -9,6 +9,7 @@ from pathlib import Path
 
 DEFAULT_IMAGE_SIZE = 416
 NCNN_SUFFIXES = (".param", ".bin")
+METADATA_FILE = "metadata.yaml"
 ARTIFACT_DIRECTORY = "models/artifacts"
 MANIFEST_DIRECTORY = "models/manifests"
 
@@ -37,23 +38,34 @@ def resolve_export_directory(exported: Path) -> Path:
 
 
 def collect_ncnn_files(source: Path) -> list[Path]:
-    files = sorted(
-        path for path in source.iterdir() if path.is_file() and path.suffix in NCNN_SUFFIXES
-    )
-    if len(files) != len(NCNN_SUFFIXES):
-        raise FileNotFoundError(f"expected one .param and one .bin in: {source}")
-    return files
+    files_by_suffix = {
+        suffix: sorted(
+            path for path in source.iterdir() if path.is_file() and path.suffix == suffix
+        )
+        for suffix in NCNN_SUFFIXES
+    }
+    if any(len(files) != 1 for files in files_by_suffix.values()):
+        raise FileNotFoundError(f"expected exactly one .param and one .bin in: {source}")
+    param = files_by_suffix[".param"][0]
+    binary = files_by_suffix[".bin"][0]
+    if param.stem != binary.stem:
+        raise FileNotFoundError(f"NCNN .param and .bin must have the same basename in: {source}")
+    return sorted((param, binary))
 
 
 def stage_artifacts(exported: Path, output_dir: Path) -> list[Path]:
-    """Copy model.ncnn.param and model.ncnn.bin into the requested output directory."""
+    """Copy the NCNN pair and its required metadata into the output directory."""
     source = resolve_export_directory(exported)
     files = collect_ncnn_files(source)
+    metadata = source / METADATA_FILE
+    if not metadata.is_file():
+        raise FileNotFoundError(f"expected {METADATA_FILE} beside NCNN artifacts: {source}")
     output_dir.mkdir(parents=True, exist_ok=True)
     staged: list[Path] = []
-    for path in files:
+    for path in (*files, metadata):
         destination = output_dir / path.name
-        shutil.copy2(path, destination)
+        if path.resolve() != destination.resolve():
+            shutil.copy2(path, destination)
         staged.append(destination)
     return staged
 
@@ -103,21 +115,18 @@ def main() -> int:
         raise SystemExit(str(error)) from error
 
     exported = export_model(arguments.checkpoint, image_size, bool(arguments.half))
-    source = resolve_export_directory(exported)
     staged = stage_artifacts(exported, arguments.output_dir)
     for path in staged:
         print(f"{path.name}={path}")
         print(f"{path.name}_bytes={path.stat().st_size}")
         print(f"{path.name}_sha256={sha256(path)}")
 
-    metadata = source / "metadata.yaml"
+    metadata = arguments.output_dir / METADATA_FILE
     if metadata.is_file():
         print(f"metadata={metadata}")
         print(metadata.read_text(encoding="utf-8").rstrip("\n"))
     else:
-        print(f"metadata missing: {metadata}")
-    print("keep metadata.yaml archived with the ncnn artifacts, otherwise the input")
-    print("size and the class order can no longer be proven later")
+        raise SystemExit(f"metadata was not staged: {metadata}")
     print(
         f"weights and ncnn artifacts belong to {ARTIFACT_DIRECTORY}/ (git-ignored); "
         "do not commit them"

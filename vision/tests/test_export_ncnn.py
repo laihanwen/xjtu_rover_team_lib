@@ -76,18 +76,38 @@ def test_collect_ncnn_files_rejects_empty_directory(tmp_path: Path) -> None:
         collect_ncnn_files(tmp_path)
 
 
+def test_collect_ncnn_files_rejects_two_bins(tmp_path: Path) -> None:
+    (tmp_path / "first.bin").write_bytes(b"first")
+    (tmp_path / "second.bin").write_bytes(b"second")
+    with pytest.raises(FileNotFoundError, match="exactly one"):
+        collect_ncnn_files(tmp_path)
+
+
+def test_collect_ncnn_files_rejects_mismatched_basenames(tmp_path: Path) -> None:
+    (tmp_path / "first.param").write_text("7767517\n", encoding="utf-8")
+    (tmp_path / "second.bin").write_bytes(b"weights")
+    with pytest.raises(FileNotFoundError, match="same basename"):
+        collect_ncnn_files(tmp_path)
+
+
 def test_stage_artifacts_copies_into_output_directory(tmp_path: Path) -> None:
     export_dir = tmp_path / "best_ncnn_model"
     export_dir.mkdir()
     (export_dir / "model.ncnn.param").write_text("7767517\n", encoding="utf-8")
     (export_dir / "model.ncnn.bin").write_bytes(b"weights")
+    (export_dir / "metadata.yaml").write_text("imgsz: [416, 416]\n", encoding="utf-8")
     output_dir = tmp_path / "artifacts"
     staged = stage_artifacts(export_dir, output_dir)
-    assert {path.name for path in staged} == {"model.ncnn.param", "model.ncnn.bin"}
+    assert {path.name for path in staged} == {
+        "metadata.yaml",
+        "model.ncnn.bin",
+        "model.ncnn.param",
+    }
     for path in staged:
         assert path.parent == output_dir
         assert path.is_file()
     assert (output_dir / "model.ncnn.bin").read_bytes() == b"weights"
+    assert (output_dir / "metadata.yaml").is_file()
 
 
 def test_stage_artifacts_accepts_returned_param_file(tmp_path: Path) -> None:
@@ -96,6 +116,18 @@ def test_stage_artifacts_accepts_returned_param_file(tmp_path: Path) -> None:
     param = export_dir / "model.ncnn.param"
     param.write_text("7767517\n", encoding="utf-8")
     (export_dir / "model.ncnn.bin").write_bytes(b"weights")
+    (export_dir / "metadata.yaml").write_text("imgsz: [416, 416]\n", encoding="utf-8")
     output_dir = tmp_path / "artifacts"
     staged = stage_artifacts(param, output_dir)
-    assert {path.name for path in staged} == {"model.ncnn.param", "model.ncnn.bin"}
+    assert {path.name for path in staged} == {
+        "metadata.yaml",
+        "model.ncnn.bin",
+        "model.ncnn.param",
+    }
+
+
+def test_stage_artifacts_requires_metadata(tmp_path: Path) -> None:
+    (tmp_path / "model.ncnn.param").write_text("7767517\n", encoding="utf-8")
+    (tmp_path / "model.ncnn.bin").write_bytes(b"weights")
+    with pytest.raises(FileNotFoundError, match="metadata.yaml"):
+        stage_artifacts(tmp_path, tmp_path / "out")

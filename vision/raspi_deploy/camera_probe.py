@@ -29,22 +29,23 @@ def detect_cameras(max_to_test=15):
 
     if system_name == "Linux":
         # Linux 专属高级扫描：读取 V4L2 硬件树并过滤虚拟节点
-        video_paths = glob.glob('/sys/class/video4linux/video*')
+        video_paths = glob.glob("/sys/class/video4linux/video*")
         if video_paths:
             sorted_paths = sorted(
-                video_paths, key=lambda x: int(os.path.basename(x).replace('video', '')))
+                video_paths, key=lambda x: int(os.path.basename(x).replace("video", ""))
+            )
             for path in sorted_paths:
                 dev_name = os.path.basename(path)
-                idx = int(dev_name.replace('video', ''))
+                idx = int(dev_name.replace("video", ""))
 
                 friendly_name = "未知摄像头"
-                name_file = os.path.join(path, 'name')
+                name_file = os.path.join(path, "name")
                 if os.path.exists(name_file):
                     try:
-                        with open(name_file, 'r', encoding='utf-8') as f:
+                        with open(name_file, "r", encoding="utf-8") as f:
                             friendly_name = f.read().strip()
-                    except Exception:
-                        pass
+                    except OSError as error:
+                        print(f"[camera_probe] 无法读取 {name_file}: {error}")
 
                 # 过滤掉无法成像的虚拟节点
                 ignore_keywords = ["metadata", "association", "statistics", "params", "meta"]
@@ -94,7 +95,7 @@ def detect_cameras(max_to_test=15):
                 "name": name,
                 "default_res": f"{default_w}x{default_h}",
                 "default_fps": fps_str,
-                "supported_resolutions": supported_res
+                "supported_resolutions": supported_res,
             }
             available_cameras.append(cam_info)
 
@@ -126,7 +127,7 @@ def detect_cameras(max_to_test=15):
 # ==========================================
 # 极简测试运行入口
 # ==========================================
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 推流类只在演示入口用到，放在这里，避免探测功能硬依赖 mjpeg_stream
     from mjpeg_stream import WebStreamer
 
@@ -140,7 +141,7 @@ if __name__ == '__main__':
     streamer = WebStreamer(port=8080)
 
     # 3. 打开第一个检测到的摄像头
-    target_idx = cams[0]['index']
+    target_idx = cams[0]["index"]
     sys_name = platform.system()
     if sys_name == "Windows":
         cap = cv2.VideoCapture(target_idx, cv2.CAP_DSHOW)

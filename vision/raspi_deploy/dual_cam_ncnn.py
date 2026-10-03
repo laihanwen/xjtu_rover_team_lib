@@ -17,14 +17,21 @@ import argparse
 import glob
 import multiprocessing as mp
 import os
+import queue
 import sys
 import time
 import traceback
+from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
 import yaml
-from mjpeg_stream import WebStreamer
+
+try:
+    from .mjpeg_stream import WebStreamer
+except ImportError:  # Direct script execution from this directory.
+    from mjpeg_stream import WebStreamer
 
 # =====================================================================
 #                     配置默认值（可用 config.yaml 覆盖）
@@ -35,14 +42,14 @@ DEFAULT_CONFIG = {
         0: {
             "label": "CAM0-CSI",
             "enable": 1,
-            "infer": 0,            # CSI 路当前只推流不推理（排线未到位）
-            "infer_fps": 0,        # 0 = 该路不推理
+            "infer": 0,  # CSI 路当前只推流不推理（排线未到位）
+            "infer_fps": 0,  # 0 = 该路不推理
             "model_dir": "",
             "class_names": ["sea_cucumber", "starfish", "turtle"],
             "conf": 0.25,
             "nms": 0.45,
             "input_size": 416,
-            "pixel": "BGR",
+            "pixel": "BGR2RGB",
             "csi_candidates": [(640, 480), (800, 600), (960, 720)],
         },
         # ---------------- 1 号：USB（UVC） ----------------
@@ -56,7 +63,7 @@ DEFAULT_CONFIG = {
             "conf": 0.40,
             "nms": 0.45,
             "input_size": 416,
-            "pixel": "BGR",
+            "pixel": "BGR2RGB",
             "usb_size": (960, 540),
             "usb_candidates": ["/dev/video0", "/dev/video2", "/dev/video4", 0, 1, 2, 3],
         },
@@ -80,10 +87,10 @@ CLASS_COLORS = [(0, 255, 0), (0, 165, 255), (255, 0, 0)]
 # =====================================================================
 def _parse_args(argv=None):
     default_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
-    parser = argparse.ArgumentParser(
-        description="CSI + USB 双路摄像头 NCNN 推理 + MJPEG 推流")
-    parser.add_argument("--config", default=default_cfg,
-                        help="配置文件路径（默认：与本脚本同目录的 config.yaml）")
+    parser = argparse.ArgumentParser(description="CSI + USB 双路摄像头 NCNN 推理 + MJPEG 推流")
+    parser.add_argument(
+        "--config", default=default_cfg, help="配置文件路径（默认：与本脚本同目录的 config.yaml）"
+    )
     return parser.parse_args(argv)
 
 
@@ -94,7 +101,7 @@ def _load_config(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f)
-        except Exception as e:
+        except (OSError, yaml.YAMLError) as e:
             print(f"[CFG] 解析 {path} 失败：{type(e).__name__}: {e}，改用内置默认配置")
             raw = {}
     else:
@@ -122,6 +129,74 @@ def _load_config(path):
 # =====================================================================
 #                          推理引擎（子进程内使用）
 # =====================================================================
+@dataclass(frozen=True)
+class LetterboxTransform:
+    scale: float
+    pad_x: float
+    pad_y: float
+    original_width: int
+    original_height: int
+
+
+def letterbox(frame, size):
+    """Resize with preserved aspect ratio and Ultralytics-compatible padding."""
+    if frame is None or frame.ndim != 3 or frame.shape[2] != 3 or size <= 0:
+        raise ValueError("letterbox expects a BGR image and positive size")
+    height, width = frame.shape[:2]
+    scale = min(size / width, size / height)
+    resized_width = max(1, round(width * scale))
+    resized_height = max(1, round(height * scale))
+    pad_x = (size - resized_width) // 2
+    pad_y = (size - resized_height) // 2
+    resized = cv2.resize(frame, (resized_width, resized_height))
+    output = np.full((size, size, 3), 114, dtype=np.uint8)
+    output[pad_y : pad_y + resized_height, pad_x : pad_x + resized_width] = resized
+    return np.ascontiguousarray(output), LetterboxTransform(
+        scale=scale,
+        pad_x=float(pad_x),
+        pad_y=float(pad_y),
+        original_width=width,
+        original_height=height,
+    )
+
+
+def _ordered_names(names):
+    if isinstance(names, list) and names:
+        return [str(name) for name in names]
+    if isinstance(names, dict) and names:
+        try:
+            return [str(names[key]) for key in sorted(names, key=lambda value: int(value))]
+        except (TypeError, ValueError) as error:
+            raise ValueError("metadata names keys must be integer-like") from error
+    raise ValueError("metadata must contain a non-empty names list or mapping")
+
+
+def validate_model_metadata(model_dir, cfg):
+    """Require the exported metadata to match runtime classes and input size."""
+    metadata_path = Path(model_dir) / "metadata.yaml"
+    if not metadata_path.is_file():
+        raise FileNotFoundError(f"missing model metadata: {metadata_path}")
+    try:
+        metadata = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"unable to read model metadata: {metadata_path}") from error
+    if not isinstance(metadata, dict):
+        raise ValueError(f"invalid model metadata: {metadata_path}")  # noqa: TRY004
+    actual_names = _ordered_names(metadata.get("names"))
+    expected_names = [str(name) for name in cfg.get("class_names", [])]
+    if actual_names != expected_names:
+        raise ValueError(f"class_names mismatch: metadata={actual_names}, config={expected_names}")
+    image_size = metadata.get("imgsz")
+    if isinstance(image_size, (list, tuple)):
+        dimensions = [int(value) for value in image_size]
+    else:
+        dimensions = [int(image_size)] if image_size is not None else []
+    expected_size = int(cfg.get("input_size", 0))
+    if not dimensions or any(value != expected_size for value in dimensions):
+        raise ValueError(f"input_size mismatch: metadata={image_size}, config={expected_size}")
+    return metadata
+
+
 class YoloEngine:
     """一路摄像头的独立推理引擎：自己的模型、类别、阈值、通道序。"""
 
@@ -133,26 +208,35 @@ class YoloEngine:
         self.conf = float(cfg.get("conf", 0.25))
         self.nms = float(cfg.get("nms", 0.45))
         self.names = list(cfg.get("class_names", []))
-        self.pixel = (ncnn_mod.Mat.PixelType.PIXEL_BGR2RGB
-                      if str(cfg.get("pixel", "BGR")).upper() == "BGR2RGB"
-                      else ncnn_mod.Mat.PixelType.PIXEL_BGR)
+        pixel = str(cfg.get("pixel", "BGR2RGB")).upper()
+        if pixel != "BGR2RGB":
+            raise ValueError("Ultralytics NCNN deployment requires pixel: BGR2RGB")
+        self.pixel = ncnn_mod.Mat.PixelType.PIXEL_BGR2RGB
         self.net = None
         self._dbg_t = 0.0
 
     def load(self, model_dir, threads):
         if not model_dir:
-            print("[infer] model_dir 为空，本路不推理。请在 config.yaml 里填成含 "
-                  "model.ncnn.param + model.ncnn.bin 的目录")
+            print(
+                "[infer] model_dir 为空，本路不推理。请在 config.yaml 里填成含 "
+                "model.ncnn.param + model.ncnn.bin 的目录"
+            )
+            return False
+        try:
+            validate_model_metadata(model_dir, self.cfg)
+        except (FileNotFoundError, ValueError) as error:
+            print(f"[infer] 模型元数据校验失败：{error}")
             return False
         net = self.ncnn.Net()
         try:
-            net.opt.num_threads = threads      # 必须在 load 之前设置，否则不生效
-        except Exception:
-            pass
-        if net.load_param(model_dir + "/model.ncnn.param") != 0:
+            net.opt.num_threads = threads  # 必须在 load 之前设置，否则不生效
+        except AttributeError:
+            print("[infer] 当前 ncnn 绑定不支持设置 num_threads，使用运行库默认值")
+        model_path = Path(model_dir)
+        if net.load_param(str(model_path / "model.ncnn.param")) != 0:
             print(f"[infer] load_param 失败：{model_dir}")
             return False
-        if net.load_model(model_dir + "/model.ncnn.bin") != 0:
+        if net.load_model(str(model_path / "model.ncnn.bin")) != 0:
             print(f"[infer] load_model 失败：{model_dir}")
             return False
         self.net = net
@@ -160,7 +244,10 @@ class YoloEngine:
 
     def forward(self, frame):
         s = self.input_size
-        resized = np.ascontiguousarray(cv2.resize(frame, (s, s)))
+        if isinstance(frame, tuple) and len(frame) == 2:
+            resized, transform = frame
+        else:
+            resized, transform = letterbox(frame, s)
         mat = self.ncnn.Mat.from_pixels_resize(resized, self.pixel, s, s, s, s)
         mat.substract_mean_normalize([0.0, 0.0, 0.0], [1 / 255.0, 1 / 255.0, 1 / 255.0])
         ex = self.net.create_extractor()
@@ -171,20 +258,22 @@ class YoloEngine:
             a = a[0]
         if a.shape[0] < a.shape[1]:
             a = a.T
-        return a
+        return a, transform
 
     def detect(self, frame):
-        a = self.forward(frame)
+        a, transform = self.forward(frame)
         if self.diag:
             now = time.time()
             if now - self._dbg_t > 2.0:
                 self._dbg_t = now
                 per_cls = a[:, 4:].max(axis=0)
-                print("[DIAG] 各类最高分: " + ", ".join(
-                    f"{n}={float(per_cls[i]):.3f}" for i, n in enumerate(self.names)))
-        return self._nms(a)
+                print(
+                    "[DIAG] 各类最高分: "
+                    + ", ".join(f"{n}={float(per_cls[i]):.3f}" for i, n in enumerate(self.names))
+                )
+        return self._nms(a, transform)
 
-    def _nms(self, a):
+    def _nms(self, a, transform):
         if a.shape[0] == 0:
             return [], [], []
         cs = a[:, 4:]
@@ -193,20 +282,42 @@ class YoloEngine:
         m = scs >= self.conf
         if not bool(m.any()):
             return [], [], []
-        xywh = a[m, :4]
+        xywh = a[m, :4].copy()
         scs = scs[m]
         cids = cids[m]
+        xywh[:, 0] = (xywh[:, 0] - transform.pad_x) / transform.scale
+        xywh[:, 1] = (xywh[:, 1] - transform.pad_y) / transform.scale
+        xywh[:, 2:] /= transform.scale
         cx, cy, w, h = xywh[:, 0], xywh[:, 1], xywh[:, 2], xywh[:, 3]
         boxes = np.stack([cx - w / 2.0, cy - h / 2.0, w, h], axis=1).astype(np.float64).tolist()
         scores = scs.astype(np.float64).tolist()
         cids = cids.astype(int).tolist()
         if not boxes:
             return [], [], []
-        idx = cv2.dnn.NMSBoxes(boxes, scores, self.conf, self.nms)
-        idx = idx.flatten() if hasattr(idx, "flatten") else [i[0] for i in idx]
-        return ([boxes[int(i)] for i in idx],
-                [scores[int(i)] for i in idx],
-                [cids[int(i)] for i in idx])
+        kept = []
+        for class_id in sorted(set(cids)):
+            source_indexes = [index for index, value in enumerate(cids) if value == class_id]
+            class_boxes = [boxes[index] for index in source_indexes]
+            class_scores = [scores[index] for index in source_indexes]
+            indexes = cv2.dnn.NMSBoxes(class_boxes, class_scores, self.conf, self.nms)
+            indexes = indexes.flatten() if hasattr(indexes, "flatten") else [i[0] for i in indexes]
+            kept.extend(source_indexes[int(index)] for index in indexes)
+        kept.sort(key=lambda index: scores[index], reverse=True)
+        clipped_boxes = []
+        kept_scores = []
+        kept_classes = []
+        for index in kept:
+            x, y, width, height = boxes[index]
+            left = max(0.0, min(float(transform.original_width), x))
+            top = max(0.0, min(float(transform.original_height), y))
+            right = max(left, min(float(transform.original_width), x + width))
+            bottom = max(top, min(float(transform.original_height), y + height))
+            if right <= left or bottom <= top:
+                continue
+            clipped_boxes.append([left, top, right - left, bottom - top])
+            kept_scores.append(scores[index])
+            kept_classes.append(cids[index])
+        return clipped_boxes, kept_scores, kept_classes
 
 
 # ---------------------------------------------------------------------
@@ -225,8 +336,10 @@ def _tick_perf(tag, cam_id, dt_sec):
     now = time.monotonic()
     if now - st["t"] >= 5.0:
         avg = st["ms"] / max(1, st["n"])
-        print(f"[PERF] {tag} cam{cam_id} 平均单帧推理 {avg:.0f} ms"
-              f" → 该路天花板约 {1000.0 / max(avg, 1e-6):.1f} 次/秒")
+        print(
+            f"[PERF] {tag} cam{cam_id} 平均单帧推理 {avg:.0f} ms"
+            f" → 该路天花板约 {1000.0 / max(avg, 1e-6):.1f} 次/秒"
+        )
         st["n"], st["ms"], st["t"] = 0, 0.0, now
 
 
@@ -245,12 +358,21 @@ def _put_latest(q, value):
     try:
         while True:
             q.get_nowait()
-    except Exception:
+    except queue.Empty:
         pass
     try:
         q.put_nowait(value)
-    except Exception:
+    except queue.Full:
         pass
+
+
+def _stop_processes(processes):
+    """Terminate and reap inference children so systemd restarts cleanly."""
+    for _label, process in processes:
+        if process.is_alive():
+            process.terminate()
+    for _label, process in processes:
+        process.join(timeout=2.0)
 
 
 # =====================================================================
@@ -265,14 +387,14 @@ def infer_proc_single(cam_id, cfg, threads, extra_site_packages, diag_print, in_
     print(f"[infer-A] cam{cam_id} 就绪 模型={cfg['model_dir']}")
     # --- 临时诊断：在子进程内部量一次纯算力 ---
     _dbg = np.ascontiguousarray(
-        np.random.randint(0, 255, (eng.input_size, eng.input_size, 3), dtype=np.uint8))
-    eng.detect(_dbg)                      # 预热
+        np.random.randint(0, 255, (eng.input_size, eng.input_size, 3), dtype=np.uint8)
+    )
+    eng.detect(_dbg)  # 预热
     _tb = time.monotonic()
     for _ in range(3):
         eng.detect(_dbg)
     _bench_ms = (time.monotonic() - _tb) / 3 * 1000
-    print(f"[CHILD-BENCH] cam{cam_id} 子进程内单帧 {_bench_ms:.0f} ms"
-          f"  (NCNN_THREADS={threads})")
+    print(f"[CHILD-BENCH] cam{cam_id} 子进程内单帧 {_bench_ms:.0f} ms  (NCNN_THREADS={threads})")
 
     while True:
         _tw = time.monotonic()
@@ -281,7 +403,7 @@ def infer_proc_single(cam_id, cfg, threads, extra_site_packages, diag_print, in_
         t0 = time.monotonic()
         try:
             det = eng.detect(frame)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- third-party NCNN raises binding-specific errors.
             print(f"[infer-A] cam{cam_id} 推理异常:", e)
             det = ([], [], [])
         _tc = time.monotonic() - t0
@@ -290,7 +412,9 @@ def infer_proc_single(cam_id, cfg, threads, extra_site_packages, diag_print, in_
             eng._n = 0
         eng._n += 1
         if eng._n % 5 == 0:
-            print(f"[CHILD] cam{cam_id} 等待取帧 {_tw*1000:.0f} ms  +  纯推理 {_tc*1000:.0f} ms")
+            print(
+                f"[CHILD] cam{cam_id} 等待取帧 {_tw * 1000:.0f} ms  +  纯推理 {_tc * 1000:.0f} ms"
+            )
         _put_latest(out_q, det)
 
 
@@ -322,10 +446,10 @@ def infer_proc_rr(cam_cfgs, threads, extra_site_packages, diag_print, in_qs, out
             cid = order[(rr + k) % len(order)]
             try:
                 frame = in_qs[cid].get_nowait()
-            except Exception:
+            except queue.Empty:
                 continue
             taken = (cid, frame)
-            rr = (order.index(cid) + 1) % len(order)   # 下次从另一路开始
+            rr = (order.index(cid) + 1) % len(order)  # 下次从另一路开始
             break
 
         if taken is None:
@@ -336,7 +460,7 @@ def infer_proc_rr(cam_cfgs, threads, extra_site_packages, diag_print, in_qs, out
         t0 = time.monotonic()
         try:
             det = engs[cid].detect(frame)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- third-party NCNN raises binding-specific errors.
             print(f"[infer-B] cam{cid} 推理异常:", e)
             det = ([], [], [])
         _tick_perf("infer-B", cid, time.monotonic() - t0)
@@ -375,20 +499,20 @@ class CamSource:
                 self.obj.close()
             else:
                 self.obj.release()
-        except BaseException:      # 必须兜住 KeyboardInterrupt（第二个 Ctrl+C 常落在 close 里）
-            pass
+        except Exception as error:  # noqa: BLE001 -- camera backends vary by platform.
+            print(f"[CAM] 关闭相机失败：{error}")
 
 
 def enum_libcamera():
     """枚举 libcamera 看到的相机，返回 [(index, info_dict), ...]。"""
     try:
         from picamera2 import Picamera2
-    except Exception as e:
+    except ImportError as e:
         print(f"[CAM0] picamera2 不可用：{type(e).__name__}: {e}")
         return []
     try:
         infos = Picamera2.global_camera_info()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- libcamera exposes backend-specific errors.
         print(f"[CAM0] 枚举 libcamera 相机失败：{type(e).__name__}: {e}")
         return []
 
@@ -423,7 +547,7 @@ def init_csi(candidates):
 
     try:
         from picamera2 import Picamera2
-    except Exception as e:
+    except ImportError as e:
         print(f"[CAM0] picamera2 不可用：{type(e).__name__}: {e}")
         return None
 
@@ -432,23 +556,22 @@ def init_csi(candidates):
         cam = None
         try:
             cam = Picamera2(camera_num=idx)
-            cam.configure(cam.create_preview_configuration(
-                main={"format": "RGB888", "size": size}))
+            cam.configure(cam.create_preview_configuration(main={"format": "RGB888", "size": size}))
             cam.start()
             time.sleep(1.0)
             frame = cam.capture_array()
             real = (frame.shape[1], frame.shape[0])
             print(f"[CAM0] CSI 就绪 @ 请求{size} 实际{real} (libcamera #{idx})")
             return CamSource("picam", cam, real, swap=False)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- libcamera exposes backend-specific errors.
             last_err = e
             print(f"[CAM0] {size} 启动失败：{type(e).__name__}: {e}")
             if cam is not None:
                 try:
                     cam.stop()
                     cam.close()
-                except BaseException:
-                    pass
+                except Exception as cleanup_error:  # noqa: BLE001 -- best-effort hardware cleanup.
+                    print(f"[CAM0] 清理失败：{cleanup_error}")
 
     print("[CAM0] CSI 所有分辨率都失败，本路停用。真实异常如下：")
     if last_err is not None:
@@ -485,13 +608,13 @@ def init_usb(size, extra_candidates):
             real = (frame.shape[1], frame.shape[0])
             print(f"[CAM1] USB 就绪 @ {dev} 实际{real}")
             return CamSource("cv2", cap, real, swap=False)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- OpenCV camera backends vary by platform.
             print(f"[CAM1] {dev} 打开异常：{type(e).__name__}: {e}")
             if cap is not None:
                 try:
                     cap.release()
-                except BaseException:
-                    pass
+                except Exception as cleanup_error:  # noqa: BLE001 -- best-effort hardware cleanup.
+                    print(f"[CAM1] 清理失败：{cleanup_error}")
     print("[CAM1] USB 本路停用：没有可用的 /dev/video* 采集节点")
     return None
 
@@ -502,6 +625,7 @@ def init_usb(size, extra_candidates):
 def check_ncnn(extra_site_packages):
     try:
         import ncnn
+
         return True
     except ImportError:
         pass
@@ -509,6 +633,7 @@ def check_ncnn(extra_site_packages):
         sys.path.insert(0, extra_site_packages)
     try:
         import ncnn  # noqa: F401
+
         return True
     except ImportError:
         print("[FATAL] 当前 Python 找不到 ncnn，请先激活装好 ncnn 的虚拟环境后重跑：")
@@ -518,8 +643,9 @@ def check_ncnn(extra_site_packages):
 
 def make_offline_frame(cid, w=640, h=480):
     img = np.zeros((h, w, 3), dtype=np.uint8)
-    cv2.putText(img, f"CAM{cid} OFFLINE", (40, h // 2),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+    cv2.putText(
+        img, f"CAM{cid} OFFLINE", (40, h // 2), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2
+    )
     return img
 
 
@@ -527,17 +653,21 @@ def draw(frame, boxes, scores, class_ids, cfg):
     if not boxes:
         return frame
     names = cfg.get("class_names", [])
-    s = int(cfg.get("input_size", 640))
-    h, w = frame.shape[:2]
-    sx, sy = w / s, h / s
     for box, score, cid in zip(boxes, scores, class_ids):
-        x, y = int(box[0] * sx), int(box[1] * sy)
-        bw, bh = int(box[2] * sx), int(box[3] * sy)
+        x, y = int(box[0]), int(box[1])
+        bw, bh = int(box[2]), int(box[3])
         color = CLASS_COLORS[int(cid) % len(CLASS_COLORS)]
         cv2.rectangle(frame, (x, y), (x + bw, y + bh), color, 2)
         label = names[int(cid)] if int(cid) < len(names) else str(cid)
-        cv2.putText(frame, f"{label} {score:.2f}", (x, max(20, y - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(
+            frame,
+            f"{label} {score:.2f}",
+            (x, max(20, y - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            color,
+            2,
+        )
     return frame
 
 
@@ -574,18 +704,24 @@ def main():
         print(f"[FATAL] runtime.infer_mode 只能是 'A' 或 'B'，当前 = {infer_mode}")
         return 1
 
-    infer_on = {cid: bool(int(cam_cfg[cid].get("enable", 1)) and
-                          int(cam_cfg[cid].get("infer", 0)) and
-                          float(cam_cfg[cid].get("infer_fps", 0)) > 0)
-                for cid in (0, 1)}
-    print(f"[INFO] 启动方式={mp_start_method} | 调度模式={infer_mode} | "
-          f"开启推理={[c for c in (0, 1) if infer_on[c]]}")
+    infer_on = {
+        cid: bool(
+            int(cam_cfg[cid].get("enable", 1))
+            and int(cam_cfg[cid].get("infer", 0))
+            and float(cam_cfg[cid].get("infer_fps", 0)) > 0
+        )
+        for cid in (0, 1)
+    }
+    print(
+        f"[INFO] 启动方式={mp_start_method} | 调度模式={infer_mode} | "
+        f"开启推理={[c for c in (0, 1) if infer_on[c]]}"
+    )
 
     # ---------- 1) 先建队列 + 起推理进程 ----------
     # fork 模式下这一步放在相机初始化"之前"：此刻父进程还没启动 libcamera，
     # 子进程继承到的是最干净的状态（没有 libcamera 的线程和 DMA 缓冲）。
     ctx = mp.get_context(mp_start_method)
-    in_qs, out_qs, procs = {}, {}, []      # procs 元素是 (名字, Process)
+    in_qs, out_qs, procs = {}, {}, []  # procs 元素是 (名字, Process)
 
     for cid in (0, 1):
         if not infer_on[cid]:
@@ -597,20 +733,30 @@ def main():
         for cid in (0, 1):
             if not infer_on[cid]:
                 continue
-            p = ctx.Process(target=infer_proc_single,
-                            args=(cid, cam_cfg[cid], ncnn_threads,
-                                  extra_site_packages, diag_print, in_qs[cid], out_qs[cid]),
-                            daemon=True)
+            p = ctx.Process(
+                target=infer_proc_single,
+                args=(
+                    cid,
+                    cam_cfg[cid],
+                    ncnn_threads,
+                    extra_site_packages,
+                    diag_print,
+                    in_qs[cid],
+                    out_qs[cid],
+                ),
+                daemon=True,
+            )
             p.start()
             procs.append((f"cam{cid}", p))
             print(f"[INFO] cam{cid} 独立推理进程已启动 (pid={p.pid})")
     else:
         rr_cfgs = {cid: cam_cfg[cid] for cid in (0, 1) if infer_on[cid]}
         if rr_cfgs:
-            p = ctx.Process(target=infer_proc_rr,
-                            args=(rr_cfgs, ncnn_threads, extra_site_packages,
-                                  diag_print, in_qs, out_qs),
-                            daemon=True)
+            p = ctx.Process(
+                target=infer_proc_rr,
+                args=(rr_cfgs, ncnn_threads, extra_site_packages, diag_print, in_qs, out_qs),
+                daemon=True,
+            )
             p.start()
             procs.append(("rr", p))
             print(f"[INFO] 单进程轮流推理已启动 (pid={p.pid})")
@@ -618,30 +764,25 @@ def main():
     # ---------- 2) 再建摄像头 ----------
     cams = {}
     if int(cam_cfg[0].get("enable", 1)):
-        csi_cands = cam_cfg[0].get("csi_candidates",
-                                   DEFAULT_CONFIG["cameras"][0]["csi_candidates"])
+        csi_cands = cam_cfg[0].get("csi_candidates", DEFAULT_CONFIG["cameras"][0]["csi_candidates"])
         cams[0] = init_csi([tuple(s) for s in csi_cands])
     if int(cam_cfg[1].get("enable", 1)):
-        usb_size = tuple(cam_cfg[1].get("usb_size",
-                                        DEFAULT_CONFIG["cameras"][1]["usb_size"]))
-        usb_cands = cam_cfg[1].get("usb_candidates",
-                                   DEFAULT_CONFIG["cameras"][1]["usb_candidates"])
+        usb_size = tuple(cam_cfg[1].get("usb_size", DEFAULT_CONFIG["cameras"][1]["usb_size"]))
+        usb_cands = cam_cfg[1].get("usb_candidates", DEFAULT_CONFIG["cameras"][1]["usb_candidates"])
         cams[1] = init_usb(usb_size, usb_cands)
 
     alive = {cid: (cams.get(cid) is not None) for cid in (0, 1)}
     if not any(alive.values()):
         print("[FATAL] 两路摄像头都不可用，退出")
-        for _label, p in procs:
-            try:
-                p.terminate()
-            except BaseException:
-                pass
+        _stop_processes(procs)
         return 1
     print(f"[INFO] 摄像头可用={[c for c in (0, 1) if alive[c]]}")
     for cid in (0, 1):
         if infer_on[cid]:
-            print(f"[INFO] cam{cid} 目标推理频率 = {cam_cfg[cid].get('infer_fps')} 次/秒"
-                  f"（实际 = min(该值, 单帧耗时倒数, {stream_fps})）")
+            print(
+                f"[INFO] cam{cid} 目标推理频率 = {cam_cfg[cid].get('infer_fps')} 次/秒"
+                f"（实际 = min(该值, 单帧耗时倒数, {stream_fps})）"
+            )
 
     streamer = WebStreamer(port=stream_port, jpeg_quality=mpeg_quality)
 
@@ -668,7 +809,7 @@ def main():
                 frame = None
                 try:
                     frame = cam.read()
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 -- camera backends vary by platform.
                     print(f"[CAM{cid}] 取帧异常：{type(e).__name__}: {e}")
 
                 if frame is None:
@@ -691,7 +832,7 @@ def main():
                         if now_t - last_infer_t[cid] >= 1.0 / fps:
                             last_infer_t[cid] = now_t
                             s = int(cfg_i.get("input_size", 640))
-                            _put_latest(in_qs[cid], cv2.resize(frame, (s, s)))
+                            _put_latest(in_qs[cid], letterbox(frame, s))
 
                 out = draw(frame.copy(), *detections[cid], cfg_i)
                 streamer.update_frame(cid, out)
@@ -704,7 +845,7 @@ def main():
                 try:
                     detections[cid] = out_qs[cid].get_nowait()
                     got = True
-                except Exception:
+                except queue.Empty:
                     pass
             if got:
                 for cid in (0, 1):
@@ -728,12 +869,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] 退出中...")
     finally:
-        for _label, p in procs:
-            try:
-                if p.is_alive():
-                    p.terminate()
-            except BaseException:
-                pass
+        streamer.stop()
+        _stop_processes(procs)
         for cam in cams.values():
             if cam is not None:
                 cam.close()
