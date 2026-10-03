@@ -30,12 +30,21 @@ target_include_directories(motion_target PUBLIC
 )
 target_link_libraries(motion_target PUBLIC protocol)
 
+add_library(gripper_protocol src/gripper_protocol.cpp)
+target_compile_features(gripper_protocol PUBLIC cxx_std_17)
+target_include_directories(gripper_protocol PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(gripper_protocol PUBLIC protocol)
+
 add_executable(stm32_bridge_node src/stm32_bridge_node.cpp)
 target_compile_features(stm32_bridge_node PUBLIC cxx_std_17)
 target_link_libraries(stm32_bridge_node
   serial_port
   protocol
   motion_target
+  gripper_protocol
   auv_interfaces::auv_interfaces__rosidl_generator_cpp
   auv_interfaces::auv_interfaces__rosidl_typesupport_cpp
   rclcpp::rclcpp
@@ -44,7 +53,7 @@ target_link_libraries(stm32_bridge_node
   ${std_msgs_TARGETS}
 )
 
-install(TARGETS motion_target protocol serial_port stm32_bridge_node
+install(TARGETS gripper_protocol motion_target protocol serial_port stm32_bridge_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -80,8 +89,13 @@ if(BUILD_TESTING)
   if(TARGET test_motion_target)
     target_link_libraries(test_motion_target motion_target)
   endif()
+
+  ament_add_gtest(test_gripper_protocol test/test_gripper_protocol.cpp)
+  if(TARGET test_gripper_protocol)
+    target_link_libraries(test_gripper_protocol gripper_protocol)
+  endif()
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(motion_target protocol serial_port)
+ament_export_libraries(gripper_protocol motion_target protocol serial_port)
 ament_package()

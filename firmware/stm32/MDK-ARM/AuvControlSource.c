@@ -34,3 +34,8 @@ AuvControlSourceDecision AuvControlSource_Update(uint8_t armed,
     decision.active = active_source;
     return decision;
 }
+
+AuvControlSource AuvControlSource_GetActive(void)
+{
+    return active_source;
+}

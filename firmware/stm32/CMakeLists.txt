@@ -22,6 +22,7 @@ set(ROV_CONTROL_SOURCES
     MDK-ARM/AuvRcInput.c
     MDK-ARM/AuvMotionTarget.c
     MDK-ARM/AuvControlSource.c
+    MDK-ARM/AuvGripper.c
 )
 
 set(ROV_GENERATED_SOURCES

@@ -4,6 +4,7 @@
  */
 
 #include "Mate.h"
+#include "AuvGripper.h"
 #include "PID.h"
 #include "Move.h"
 #include "imu.h"
@@ -160,9 +161,8 @@ void Mate_Init(void)
     /* 原 9/10 号附加推进通道仅启动并保持中位，不参与混控。 */
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-    // 启动舵机 PWM：主舵机 PA8/TIM1_CH1，SG90 PC7/TIM8_CH2
+    /* T35-L gripper signal: PA8/TIM1_CH1, 0.5 us per timer count. */
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
 
     /* 八推上电时统一保持中位。 */
     {
@@ -171,11 +171,10 @@ void Mate_Init(void)
             neutral_pwm[i] = midvalue;
         VectorThrusterPwm_Write(neutral_pwm);
     }
-    // 主舵机初始位置
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 3000);
-    // SG90 上电转到 90 度：TIM8 计数频率 2 MHz，3000 计数 = 1.5 ms
-    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, 3000);
-    // 遥控数据到来前保持 SA 在中位，防止首轮任务把 SG90 拉回 0 度
+    /* Uncalibrated builds hold 1500 us; calibrated builds ramp closed. */
+    __HAL_TIM_SET_COMPARE(
+        &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
+    /* Remote data arrival never creates an immediate full-travel command. */
     MyRCKey[SA] = 127;
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, midvalue);
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, midvalue);
@@ -196,6 +195,10 @@ void Mate_Task(void)
 
     if (imu_data_ready) imu_data_ready = 0;
     HAL_Delay(10);
+
+    AuvGripper_Tick();
+    __HAL_TIM_SET_COMPARE(
+        &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
 
     /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
     __disable_irq();

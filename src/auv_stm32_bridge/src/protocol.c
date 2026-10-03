@@ -46,6 +46,7 @@ int auv_protocol_is_known_message_type(const uint8_t message_type)
     case AUV_PROTOCOL_MSG_STATUS:
     case AUV_PROTOCOL_MSG_IMU:
     case AUV_PROTOCOL_MSG_DEPTH:
+    case AUV_PROTOCOL_MSG_ACTUATOR_STATUS:
       return 1;
     default:
       return 0;

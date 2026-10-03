@@ -18,5 +18,6 @@ void AuvControlSource_Init(void);
 AuvControlSourceDecision AuvControlSource_Update(uint8_t armed,
                                                  uint8_t pi_fresh,
                                                  uint8_t rc_fresh);
+AuvControlSource AuvControlSource_GetActive(void);
 
 #endif

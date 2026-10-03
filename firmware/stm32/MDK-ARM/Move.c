@@ -4,33 +4,8 @@
  */
 
 #include "Move.h"
+#include "AuvGripper.h"
 #include "RC.h"
-
-/* TIM8 runs at 2 MHz (0.5 us/count). */
-#define SG90S_45_DEG_CCR  2550U
-#define SG90S_135_DEG_CCR 3450U
-
-static uint32_t SG90S_DialToCCR(uint8_t dial)
-{
-    return SG90S_45_DEG_CCR
-        + ((uint32_t)dial * (SG90S_135_DEG_CCR - SG90S_45_DEG_CCR)) / 255U;
-}
-
-/* Main-servo mapping retained from the original project. */
-#define MAIN_SERVO_MIN_CCR    1000U
-#define MAIN_SERVO_CENTER_CCR 3000U
-#define MAIN_SERVO_MAX_CCR    5000U
-#define MAIN_SERVO_DIAL_MAX    225U
-
-static uint32_t MainServo_DialToCCR(uint8_t dial)
-{
-    if (dial > MAIN_SERVO_DIAL_MAX)
-        dial = MAIN_SERVO_DIAL_MAX;
-
-    return MAIN_SERVO_MIN_CCR
-        + ((uint32_t)dial * (MAIN_SERVO_MAX_CCR - MAIN_SERVO_MIN_CCR))
-        / MAIN_SERVO_DIAL_MAX;
-}
 
 float RCStep;
 int L_Servo;
@@ -165,19 +140,7 @@ void RCWrench_Calc(VectorWrenchCommand *command, const uint8_t *RC)
 
 void RCServo_Calc(uint8_t *RC)
 {
-    int Servo_CCR;
-    int Servo;
-
-    if (RC[SB] == 1U) {
-        Servo = Servo_Limit(RC[SA]);
-        Servo_CCR = (int)MainServo_DialToCCR((uint8_t)Servo);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Servo_CCR);
-    } else if (RC[SB] == 0U) {
-        uint32_t sg90s_ccr = SG90S_DialToCCR(RC[SA]);
-        __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, sg90s_ccr);
-    } else {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, MAIN_SERVO_CENTER_CCR);
-    }
+    AuvGripper_CommandRemote(RC[SA], (RC[SB] == 1U) ? 1U : 0U, 1U);
 }
 
 int Servo_Limit(int a)

@@ -6,6 +6,9 @@
 #include "AuvLink.h"
 
 #include "AuvProtocol.h"
+#include "AuvGripper.h"
+#include "AuvGripperConfig.h"
+#include "AuvControlSource.h"
 #include "AuvSafety.h"
 #include "AuvMotionTarget.h"
 #include "imu.h"
@@ -20,6 +23,7 @@
 #define AUV_STATUS_PERIOD_MS        100U
 #define AUV_IMU_PERIOD_MS           20U
 #define AUV_DEPTH_PERIOD_MS         100U
+#define AUV_ACTUATOR_PERIOD_MS      100U
 #define AUV_DEGREES_TO_RADIANS      0.01745329251994329577f
 #define AUV_QUIET_NAN_BITS          0x7FC00000UL
 #define AUV_ERROR_HEARTBEAT_TIMEOUT (1UL << 0)
@@ -37,8 +41,10 @@ static uint32_t status_sequence;
 static uint32_t last_status_ms;
 static uint32_t last_depth_ms;
 static uint32_t last_imu_ms;
+static uint32_t last_actuator_ms;
 static uint32_t last_imu_sequence;
 static uint32_t depth_sequence;
+static uint32_t actuator_sequence;
 
 static UART_HandleTypeDef *LinkUart(void)
 {
@@ -76,7 +82,10 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
     } else if (frame->message_type == AUV_MSG_ACTUATOR_COMMAND) {
         uint32_t sequence = (frame->payload_length >= 4U)
             ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
-        QueueAck(frame->message_type, AUV_ARM_UNSUPPORTED, sequence);
+        AuvArmResult result = AuvGripper_Accept(
+            frame->payload, frame->payload_length, AuvSafety_IsArmed(),
+            (AuvControlSource_GetActive() == AUV_CONTROL_SOURCE_PI) ? 1U : 0U);
+        QueueAck(frame->message_type, (uint8_t)result, sequence);
     }
 }
 
@@ -181,6 +190,22 @@ static void SendDepthUnavailable(void)
     SendFrame(AUV_MSG_DEPTH, payload, sizeof(payload));
 }
 
+static void SendActuatorStatus(void)
+{
+    uint8_t payload[16] = {0};
+    AuvGripperStatus status;
+    AuvGripper_GetStatus(&status);
+    AuvProtocol_WriteU32Le(&payload[0], actuator_sequence++);
+    payload[4] = AUV_GRIPPER_ACTUATOR_ID;
+    payload[5] = (uint8_t)status.state;
+    payload[6] = (status.calibrated != 0U) ? 1U : 0U;
+    AuvProtocol_WriteU16Le(&payload[7], status.current_us);
+    AuvProtocol_WriteU16Le(&payload[9], status.target_us);
+    payload[11] = status.error_flags;
+    AuvProtocol_WriteU32Le(&payload[12], status.last_command_sequence);
+    SendFrame(AUV_MSG_ACTUATOR_STATUS, payload, sizeof(payload));
+}
+
 void AuvLink_Init(void)
 {
     UART_HandleTypeDef *uart = LinkUart();
@@ -194,6 +219,20 @@ void AuvLink_Init(void)
     last_imu_ms = last_status_ms;
     last_imu_sequence = imu_sample_sequence;
     depth_sequence = 0U;
+    actuator_sequence = 0U;
+    last_actuator_ms = last_status_ms;
+    {
+        const AuvGripperConfig gripper_config = {
+            AUV_GRIPPER_CALIBRATED,
+            AUV_GRIPPER_MIN_US,
+            AUV_GRIPPER_NEUTRAL_US,
+            AUV_GRIPPER_MAX_US,
+            AUV_GRIPPER_CLOSE_US,
+            AUV_GRIPPER_OPEN_US,
+            AUV_GRIPPER_SLEW_US_PER_TICK
+        };
+        AuvGripper_Init(&gripper_config);
+    }
 
     (void)HAL_UART_DeInit(uart);
     uart->Init.BaudRate = AUV_LINK_BAUD_RATE;
@@ -232,6 +271,10 @@ void AuvLink_Task(void)
     if ((uint32_t)(now_ms - last_depth_ms) >= AUV_DEPTH_PERIOD_MS) {
         last_depth_ms = now_ms;
         SendDepthUnavailable();
+    }
+    if ((uint32_t)(now_ms - last_actuator_ms) >= AUV_ACTUATOR_PERIOD_MS) {
+        last_actuator_ms = now_ms;
+        SendActuatorStatus();
     }
 }
 

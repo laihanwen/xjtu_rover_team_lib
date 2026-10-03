@@ -36,6 +36,7 @@ uint8_t AuvProtocol_IsKnownType(uint8_t message_type)
     case AUV_MSG_STATUS:
     case AUV_MSG_IMU:
     case AUV_MSG_DEPTH:
+    case AUV_MSG_ACTUATOR_STATUS:
         return 1U;
     default:
         return 0U;

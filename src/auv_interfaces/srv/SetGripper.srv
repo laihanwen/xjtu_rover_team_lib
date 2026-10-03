@@ -1,0 +1,8 @@
+uint8 ACTION_STOP=0
+uint8 ACTION_CLOSE=1
+uint8 ACTION_OPEN=2
+
+uint8 action
+---
+bool accepted
+string message

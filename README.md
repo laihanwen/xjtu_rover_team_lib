@@ -6,12 +6,13 @@
 ![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
 ![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
 ![STM32F405](https://img.shields.io/badge/MCU-STM32F405-03234B?logo=stmicroelectronics)
-![Stage P12](https://img.shields.io/badge/Stage-P12_YOLO_Data-FF9800)
+![Stage P13](https://img.shields.io/badge/Stage-P13_Gripper-FF9800)
 
 当前软件已完成 **P0–P11**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
 heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建图、交通锥识别和
 确定性格子路径规划，以及安全任务状态机。**P12 海参 YOLO** 的训练环境、数据工具和
-ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶段。
+ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶段。**P13 单舵机抓取链路**
+已完成 ROS 接口、串口协议和 STM32 安全状态机，等待机械端点标定与实机验收。
 
 > [!CAUTION]
 > 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
@@ -67,9 +68,14 @@ Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高�
 | PC/Pi → STM32 | `/cmd_vel`、`/cmd_depth`、`/cmd_yaw` | 完整运动目标 |
 | STM32 → Pi/PC | `/imu/data`、`/depth`、`/stm32/status` | 遥测、安全状态和八路输出 |
 | Operator → STM32 | `/stm32/set_armed` | 显式 ARM/DISARM |
+| Operator/Mission → STM32 | `/gripper/set_state` | 夹爪 OPEN/CLOSE/STOP 动作请求 |
+| STM32 → Pi/PC | `/gripper/status` | 夹爪标定、状态、目标与实际脉宽 |
 
 Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
 [串口协议 v1](docs/protocol/serial-protocol.md)。
+
+T35-L 单舵机的接线、端点标定和分阶段上电验收见
+[P13 夹爪标定与验收](docs/testing/p13-gripper.md)。
 
 ## 当前进度
 
@@ -88,7 +94,8 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
 | P10 | Path planning | ✅ 四邻域 A*、目标排列枚举与确定性路线 |
 | P11 | Mission FSM | ✅ 安全编排、超时、暂停/恢复/终止及虚拟全流程 |
 | P12 | Sea cucumber YOLO | 🚧 训练环境与 ROS 推理已实现；等待真实标注数据/权重 |
-| P13–P14 | 抓取、转盘 | 📝 已规划 |
+| P13 | 单舵机抓取系统 | 🚧 ROS/串口/STM32 状态机已实现；等待端点标定和实机验收 |
+| P14 | 转盘系统 | 📝 已规划 |
 
 ### 当前控制能力边界
 
@@ -99,6 +106,7 @@ Pi 与 STM32 的二进制协议、payload 和 CRC 定义见
   `Fz=0`，不会产生垂向推力。
 - ARM 周期会锁定 Pi 或遥控器控制源。锁定源超过 250 ms 未更新时自动 DISARM，
   不会静默切换到另一控制源。
+- T35-L 夹爪使用 PA8/TIM1_CH1；未完成开合端点标定前，固件保持 1500 μs 并拒绝动作。
 
 ## 快速开始
 

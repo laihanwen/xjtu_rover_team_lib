@@ -42,7 +42,8 @@ typedef enum auv_protocol_message_type
   AUV_PROTOCOL_MSG_ACK = 0x7F,
   AUV_PROTOCOL_MSG_STATUS = 0x80,
   AUV_PROTOCOL_MSG_IMU = 0x81,
-  AUV_PROTOCOL_MSG_DEPTH = 0x82
+  AUV_PROTOCOL_MSG_DEPTH = 0x82,
+  AUV_PROTOCOL_MSG_ACTUATOR_STATUS = 0x83
 } auv_protocol_message_type_t;
 
 uint16_t auv_protocol_crc16_ccitt_false(const uint8_t * data, size_t size);

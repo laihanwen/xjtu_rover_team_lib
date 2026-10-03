@@ -73,6 +73,22 @@ TEST(Protocol, EncodesMotionTargetGoldenVector)
   EXPECT_TRUE(std::equal(expected.begin(), expected.end(), output.begin()));
 }
 
+TEST(Protocol, EncodesGripperOpenGoldenVector)
+{
+  constexpr std::array<uint8_t, 9> payload{
+    0x04, 0x03, 0x02, 0x01, 0x01, 0x00, 0x00, 0x80, 0x3F};
+  constexpr std::array<uint8_t, 16> expected{
+    0xAA, 0x55, 0x01, 0x04, 0x09, 0x04, 0x03, 0x02,
+    0x01, 0x01, 0x00, 0x00, 0x80, 0x3F, 0x69, 0xF4};
+  std::array<uint8_t, AUV_PROTOCOL_MAX_FRAME_SIZE> output{};
+
+  const std::size_t size = auv_protocol_encode_frame(
+    AUV_PROTOCOL_MSG_ACTUATOR_COMMAND, payload.data(), payload.size(), output.data(),
+    output.size());
+  ASSERT_EQ(size, expected.size());
+  EXPECT_TRUE(std::equal(expected.begin(), expected.end(), output.begin()));
+}
+
 TEST(Protocol, RejectsInvalidEncodeArguments)
 {
   std::array<uint8_t, AUV_PROTOCOL_MAX_FRAME_SIZE> output{};

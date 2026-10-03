@@ -251,7 +251,22 @@ Yaw PID 开启时，偏航摇杆不再直接生成 `Mz`，而是以每秒最大 
 
 按照论文第 II-A 节，必须把 T60 固定在水下测力台上，同步记录每台推进器的 PWM、电压和推力，分别拟合正转/反转曲线、死区、迟滞与个体差异。得到原始标定表后，才可把当前线性逻辑计数安全替换为牛顿到 PWM 的查表反函数。
 
-## 10. 实机安装后的必做检查
+## 10. T35-L 单舵机夹爪
+
+P13 夹爪信号固定使用 `PA8/TIM1_CH1`。TIM1 以 2 MHz 计数，因此
+`CCR = pulse_us × 2`，周期 20 ms。脉宽增大张开，减小闭合。
+
+实际开合端点保存在 `AuvGripperConfig.h`。在
+`AUV_GRIPPER_CALIBRATED=0` 时，固件保持 1500 μs 并拒绝 OPEN/CLOSE；不得使用理论
+500/2500 μs 代替机械实测值。标定启用后，上电从中位限速移动到闭合目标。
+
+遥控状态下 `SB=1` 才接受夹爪输入：SA≤80 请求闭合，SA≥175 请求张开，中间区停止
+并保持。Pi 链路通过 `ACTUATOR_COMMAND` 发送离散 OPEN/CLOSE/STOP，两种来源继续遵守
+ARM 周期控制源锁定，不在运行中静默切换。
+
+详细安全步骤见 `docs/testing/p13-gripper.md`。
+
+## 11. 实机安装后的必做检查
 
 1. 拆除或隔离其他推进器，每次只以低功率驱动一台。
 2. 核对实机编号与第 5 节的 PWM 通道。
@@ -261,7 +276,7 @@ Yaw PID 开启时，偏航摇杆不再直接生成 `Mz`，而是以每秒最大 
 
 本版只适用于安装位置 `(±180,±120,±58) mm` 与第 4 节所列尾流方向同时成立的情况。若实际位置、重心或尾流角度改变，应根据最终实测的 `r_i` 与 `d_i` 重新生成配置矩阵、伪逆和经典匹配增益。
 
-## 11. 参考资料
+## 12. 参考资料
 
 - Gao et al., *Model Predictive Control for an Autonomous Underwater Robot with Fully Vectored Propulsion*, ICRA 2024, DOI `10.1109/ICRA57147.2024.10611025`。
 - Gao et al., *Design, Modeling, and MPC-Based Control of a Fully Vectored Propulsion Underwater Robot*, Drones, 2026: <https://www.mdpi.com/2504-446X/10/2/103>
