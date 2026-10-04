@@ -49,6 +49,9 @@ def generate_launch_description() -> LaunchDescription:
     mission_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'mission.yaml'
     )
+    control_config = os.path.join(
+        get_package_share_directory('auv_bringup'), 'config', 'control.yaml'
+    )
     cucumber_config = os.path.join(
         get_package_share_directory('auv_bringup'), 'config', 'cucumber.yaml'
     )
@@ -98,6 +101,16 @@ def generate_launch_description() -> LaunchDescription:
                 description='Start the safety-gated autonomous mission FSM.',
             ),
             DeclareLaunchArgument(
+                'start_route_executor',
+                default_value='false',
+                description='Start the safety-gated grid route executor.',
+            ),
+            DeclareLaunchArgument(
+                'enable_route_motion',
+                default_value='false',
+                description='Allow route executor to publish motion targets.',
+            ),
+            DeclareLaunchArgument(
                 'start_cucumber',
                 default_value='false',
                 description='Start front-camera YOLO sea-cucumber detection.',
@@ -143,6 +156,17 @@ def generate_launch_description() -> LaunchDescription:
                 name='auv_mission_manager',
                 parameters=[mission_config],
                 condition=IfCondition(LaunchConfiguration('start_mission')),
+                output='screen',
+            ),
+            Node(
+                package='auv_control',
+                executable='route_executor_node',
+                name='auv_route_executor',
+                parameters=[
+                    control_config,
+                    {'publish_motion_commands': LaunchConfiguration('enable_route_motion')},
+                ],
+                condition=IfCondition(LaunchConfiguration('start_route_executor')),
                 output='screen',
             ),
             Node(

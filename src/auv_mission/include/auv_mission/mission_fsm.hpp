@@ -52,6 +52,7 @@ struct MissionFsmConfig
   double planning_timeout_sec{10.0};
   double cone_visit_timeout_sec{120.0};
   double status_timeout_sec{1.0};
+  bool allow_armed_during_visit{false};
 };
 
 struct CommandResult

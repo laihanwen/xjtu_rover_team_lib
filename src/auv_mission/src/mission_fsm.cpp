@@ -198,8 +198,10 @@ void MissionFsm::tick(double now_sec)
       fault("STM32 error flags are nonzero", now_sec);
       return;
     }
-    if (armed_) {
-      fault("P11 orchestration requires propulsion to remain DISARMED", now_sec);
+    if (armed_ && !(config_.allow_armed_during_visit &&
+      snapshot_.phase == MissionPhase::kVisitCones))
+    {
+      fault("propulsion armed outside the permitted visit phase", now_sec);
       return;
     }
   }
@@ -244,7 +246,7 @@ void MissionFsm::tick(double now_sec)
         if (route_has_targets_) {
           transition(MissionPhase::kVisitCones, "cone route ready", now_sec);
         } else {
-          transition(MissionPhase::kComplete, "no unvisited cone targets", now_sec);
+          fault("semantic map completed without an unvisited cone route", now_sec);
         }
       }
       break;

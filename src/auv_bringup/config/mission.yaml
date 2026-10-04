@@ -17,3 +17,6 @@ auv_mission_manager:
     planning_timeout_sec: 10.0
     cone_visit_timeout_sec: 120.0
     status_timeout_sec: 1.0
+    # ARM remains forbidden in every other phase. VISIT_CONES still requires an
+    # explicit operator ARM; neither Mission nor route executor auto-arms.
+    allow_armed_during_visit: true

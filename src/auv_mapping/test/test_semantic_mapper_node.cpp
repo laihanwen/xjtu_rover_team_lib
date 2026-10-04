@@ -24,6 +24,8 @@
 #include "auv_interfaces/msg/semantic_map.hpp"
 #include "auv_interfaces/msg/cone_detection.hpp"
 #include "auv_interfaces/msg/cone_detection_array.hpp"
+#include "auv_interfaces/msg/grid_cell.hpp"
+#include "auv_interfaces/msg/grid_pose.hpp"
 #include "auv_mapping/semantic_mapper_node.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 #include "gtest/gtest.h"
@@ -71,9 +73,12 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
   options.parameter_overrides({
       rclcpp::Parameter("require_calibration", false),
       rclcpp::Parameter("stable_frames", 1),
+      rclcpp::Parameter("expected_cone_count", 1),
       rclcpp::Parameter("image_topic", "/mapping_test/image"),
       rclcpp::Parameter("map_topic", "/mapping_test/map"),
       rclcpp::Parameter("cone_detections_topic", "/mapping_test/cones"),
+      rclcpp::Parameter("grid_pose_topic", "/mapping_test/pose"),
+      rclcpp::Parameter("visited_cell_topic", "/mapping_test/visited"),
       rclcpp::Parameter("rectified_topic", "/mapping_test/rectified")});
   auto mapper = auv_mapping::make_semantic_mapper_node(options);
   auto driver = std::make_shared<rclcpp::Node>("mapping_test_driver");
@@ -81,9 +86,12 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
     "/mapping_test/image", rclcpp::SensorDataQoS());
   auto cone_publisher = driver->create_publisher<auv_interfaces::msg::ConeDetectionArray>(
     "/mapping_test/cones", rclcpp::SensorDataQoS());
+  auto visited_publisher = driver->create_publisher<auv_interfaces::msg::GridCell>(
+    "/mapping_test/visited", rclcpp::QoS(10).reliable());
 
   auv_interfaces::msg::SemanticMap::SharedPtr received_map;
   sensor_msgs::msg::Image::SharedPtr received_rectified;
+  auv_interfaces::msg::GridPose::SharedPtr received_pose;
   auto map_subscription = driver->create_subscription<auv_interfaces::msg::SemanticMap>(
     "/mapping_test/map", rclcpp::QoS(1).reliable().transient_local(),
     [&received_map](auv_interfaces::msg::SemanticMap::SharedPtr message) {
@@ -94,8 +102,14 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
     [&received_rectified](sensor_msgs::msg::Image::SharedPtr message) {
       received_rectified = std::move(message);
     });
+  auto pose_subscription = driver->create_subscription<auv_interfaces::msg::GridPose>(
+    "/mapping_test/pose", rclcpp::SensorDataQoS(),
+    [&received_pose](auv_interfaces::msg::GridPose::SharedPtr message) {
+      received_pose = std::move(message);
+    });
   (void)map_subscription;
   (void)image_subscription;
+  (void)pose_subscription;
 
   std_msgs::msg::Header header;
   header.frame_id = "camera_down_optical_frame";
@@ -103,6 +117,7 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
     header, sensor_msgs::image_encodings::BGR8, make_node_test_grid()).toImageMsg();
   auv_interfaces::msg::ConeDetectionArray cones;
   cones.header = header;
+  cones.stable = false;
   auv_interfaces::msg::ConeDetection cone;
   cone.row = 1;
   cone.col = 2;
@@ -112,8 +127,18 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(mapper);
   executor.add_node(driver);
+  for (std::size_t attempt = 0U; attempt < 100U && !received_map; ++attempt) {
+    cone_publisher->publish(cones);
+    image_publisher->publish(*image);
+    executor.spin_some();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_NE(received_map, nullptr);
+  EXPECT_FALSE(received_map->complete);
+  received_map.reset();
+  cones.stable = true;
   for (std::size_t attempt = 0U;
-    attempt < 100U && (!received_map || !received_rectified); ++attempt)
+    attempt < 100U && (!received_map || !received_rectified || !received_pose); ++attempt)
   {
     cone_publisher->publish(cones);
     image_publisher->publish(*image);
@@ -142,6 +167,25 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
   EXPECT_EQ(received_rectified->width, 600U);
   EXPECT_EQ(received_rectified->height, 600U);
   EXPECT_EQ(received_rectified->header.frame_id, "camera_down_optical_frame");
+  ASSERT_NE(received_pose, nullptr);
+  EXPECT_TRUE(received_pose->valid);
+  EXPECT_GE(received_pose->row, 0.0F);
+  EXPECT_LE(received_pose->row, 3.0F);
+  EXPECT_GE(received_pose->col, 0.0F);
+  EXPECT_LE(received_pose->col, 3.0F);
+
+  auv_interfaces::msg::GridCell visited;
+  visited.row = 1;
+  visited.col = 2;
+  visited_publisher->publish(visited);
+  for (std::size_t attempt = 0U;
+    attempt < 100U && !received_map->cells[5].visited; ++attempt)
+  {
+    image_publisher->publish(*image);
+    executor.spin_some();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(received_map->cells[5].visited);
 
   executor.remove_node(driver);
   executor.remove_node(mapper);

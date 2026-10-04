@@ -72,7 +72,7 @@ STM32F405（底层、实时）
 | `tools/setup_dev.fish` | 加载项目开发环境 | 使用，不随意改 |
 | `build/ install/ log/` | 自动生成的构建和日志文件 | 不手工编辑、不提交 |
 
-当前已有七个 ROS package：
+当前已有八个 ROS package：
 
 - `auv_interfaces`
 - `auv_stm32_bridge`
@@ -80,6 +80,7 @@ STM32F405（底层、实时）
 - `auv_mapping`
 - `auv_planning`
 - `auv_mission`
+- `auv_control`
 - `auv_bringup`
 
 后续 package 仍应在真正开始实现且能独立测试时再创建。

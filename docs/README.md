@@ -25,6 +25,7 @@
 
 - [总体测试策略](testing/strategy.md)
 - [P4 heartbeat/failsafe 验收](testing/p4-safety.md)
+- [任务一 AprilTag 与交通锥遍历验收](testing/task1-apriltag-cones.md)
 - [P13 T35-L 单舵机夹爪验收](testing/p13-gripper.md)
 - [P14 转盘视觉基础验收](testing/p14-valve-foundation.md)
 
@@ -36,6 +37,7 @@
 | 相机与视觉 | [`auv_vision`](../src/auv_vision/README.md) |
 | 九宫格语义地图 | [`auv_mapping`](../src/auv_mapping/README.md) |
 | 格子路径规划 | [`auv_planning`](../src/auv_planning/README.md) |
+| 路线执行控制 | [`auv_control`](../src/auv_control/README.md) |
 | Mission FSM | [`auv_mission`](../src/auv_mission/README.md) |
 | 数据标注 | [`annotation`](../annotation/README.md) |
 | 数据集约定 | [`datasets`](../datasets/README.md) |

@@ -100,6 +100,7 @@ public:
 
   std::vector<ConeObservation> update(
     const std::vector<ConeObservation> & observations);
+  bool ready() const noexcept;
   void reset();
 
 private:
@@ -112,6 +113,7 @@ private:
   ConeTrackerConfig config_;
   std::array<std::deque<CellSample>, 9> history_{};
   std::array<ConeObservation, 9> stable_{};
+  std::size_t update_count_{0U};
 };
 
 const char * cone_shape_name(ConeShape shape);

@@ -56,7 +56,7 @@ TEST(MissionFsm, RunsConeMissionToCompletion)
   EXPECT_FALSE(fsm.snapshot().faulted);
 }
 
-TEST(MissionFsm, CompletesWhenPlannerHasNoTargets)
+TEST(MissionFsm, FaultsWhenPlannerHasNoTargets)
 {
   MissionFsm fsm;
   ASSERT_TRUE(fsm.command(MissionCommand::kStart, 0.0).accepted);
@@ -71,7 +71,30 @@ TEST(MissionFsm, CompletesWhenPlannerHasNoTargets)
   fsm.update_route(true, false, 0.4);
   provide_safe_status(fsm, 0.4);
   fsm.tick(0.4);
-  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kComplete);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kFault);
+}
+
+TEST(MissionFsm, AllowsArmedVehicleOnlyDuringVisitWhenConfigured)
+{
+  MissionFsmConfig config;
+  config.allow_armed_during_visit = true;
+  MissionFsm fsm(config);
+  ASSERT_TRUE(fsm.command(MissionCommand::kStart, 0.0).accepted);
+  provide_safe_status(fsm, 0.1);
+  fsm.tick(0.1);
+  fsm.update_apriltag(true, 0.2);
+  provide_safe_status(fsm, 0.2);
+  fsm.tick(0.2);
+  fsm.update_map(true, false, 0.3);
+  provide_safe_status(fsm, 0.3);
+  fsm.tick(0.3);
+  fsm.update_route(true, true, 0.4);
+  provide_safe_status(fsm, 0.4);
+  fsm.tick(0.4);
+  ASSERT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
+  fsm.update_status(true, true, false, 0U, 0.5);
+  fsm.tick(0.5);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
 }
 
 TEST(MissionFsm, SupportsPauseResumeAbortAndReset)

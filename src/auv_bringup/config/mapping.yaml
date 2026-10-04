@@ -7,6 +7,11 @@ auv_semantic_mapper:
     publish_debug_image: false
     cone_detections_topic: /cones/detections
     cone_detection_timeout_sec: 1.0
+    grid_pose_topic: /mapping/grid_pose
+    visited_cell_topic: /planning/visited_cell
+    # Competition task 1 contains four cone targets. The semantic map is not
+    # complete until the temporal detector has stabilized all expected targets.
+    expected_cone_count: 4
 
     # Real underwater mapping must use calibrated down-camera intrinsics.
     # Set false only for generated images and controlled offline experiments.

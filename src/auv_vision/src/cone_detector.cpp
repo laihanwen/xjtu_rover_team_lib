@@ -250,11 +250,18 @@ void ConeTracker::reset()
     history.clear();
   }
   stable_.fill(ConeObservation{});
+  update_count_ = 0U;
+}
+
+bool ConeTracker::ready() const noexcept
+{
+  return update_count_ >= static_cast<std::size_t>(config_.history_size);
 }
 
 std::vector<ConeObservation> ConeTracker::update(
   const std::vector<ConeObservation> & observations)
 {
+  ++update_count_;
   std::array<CellSample, 9> samples{};
   for (const auto & observation : observations) {
     if (observation.row < 0 || observation.row >= 3 || observation.col < 0 ||

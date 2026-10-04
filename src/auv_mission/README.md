@@ -12,9 +12,10 @@ Every transition is published on `/mission/state` and written to the ROS log.
 Each active phase has a timeout. Leak detection, STM32 errors, status loss,
 disconnect, or an unexpected ARM state sends the mission to `FAULT`.
 
-P11 deliberately does not publish `/cmd_vel`, `/cmd_depth`, `/cmd_yaw`, or an
-ARM request. `VISIT_CONES` completes only when an external, later motion layer
-marks every cone cell visited. P12–P14 will extend the FSM with sea cucumber,
+Mission itself does not publish `/cmd_vel`, `/cmd_depth`, `/cmd_yaw`, or an ARM request. The
+separate, default-disabled `auv_control/route_executor_node` executes the frozen route and marks
+cone cells visited. ARM is allowed only during `VISIT_CONES` when configured, remains explicit,
+and is never requested automatically. P12–P14 will extend the FSM with sea cucumber,
 grab, valve, return-home, and surface states after those capabilities exist.
 
 ## Run

@@ -14,8 +14,10 @@ publisher and fuses fresh stable cone detections into `circle_cone` and
 |---|---|---|
 | input | `/camera/down/image_raw` | `sensor_msgs/msg/Image` |
 | input | `/cones/detections` | `auv_interfaces/msg/ConeDetectionArray` |
+| input | `/planning/visited_cell` | `auv_interfaces/msg/GridCell` |
 | output | `/semantic_map` | `auv_interfaces/msg/SemanticMap` |
 | output | `/mapping/rectified_image` | `sensor_msgs/msg/Image` |
+| output | `/mapping/grid_pose` | `auv_interfaces/msg/GridPose` |
 | optional | `/mapping/debug_image` | `sensor_msgs/msg/Image` |
 
 The rectified image is published only after the grid passes the configured
@@ -50,6 +52,6 @@ ros2 topic hz /mapping/rectified_image
 rqt_image_view /mapping/debug_image
 ```
 
-`complete=true` requires three consecutive geometrically consistent frames by
-default. A plain yellow quadrilateral without two horizontal and two vertical
-internal divisions is rejected.
+`complete=true` requires three consecutive geometrically consistent frames, a completed temporal
+cone scan, and at least `expected_cone_count` targets (competition default: four). A plain yellow
+quadrilateral without two horizontal and two vertical internal divisions is rejected.

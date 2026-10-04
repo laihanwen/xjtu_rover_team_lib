@@ -46,6 +46,9 @@ struct GridResult
   bool geometry_valid{false};
   bool stable{false};
   float confidence{0.0F};
+  bool position_valid{false};
+  float camera_row{0.0F};
+  float camera_col{0.0F};
   std::string reason{"grid not processed"};
   std::array<cv::Point2f, 4> corners{};
   cv::Mat rectified;

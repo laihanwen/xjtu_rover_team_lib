@@ -19,7 +19,7 @@
 
 ## 已实现的 ROS packages
 
-`src/` 当前包含七个可由 `colcon` 构建的 package：
+`src/` 当前包含八个可由 `colcon` 构建的 package：
 
 1. `auv_interfaces`：公共 msg/srv。
 2. `auv_stm32_bridge`：串口编解码、心跳和 ROS topics。
@@ -27,10 +27,11 @@
 4. `auv_mapping`：九宫格透视矫正与语义地图。
 5. `auv_planning`：A* 与目标访问顺序。
 6. `auv_mission`：任务 FSM。
-7. `auv_bringup`：系统启动和跨 package 参数。
+7. `auv_control`：默认禁用动力的格子路线执行与安全门控。
+8. `auv_bringup`：系统启动和跨 package 参数。
 
-`auv_control` 和 `auv_description` 仍是候选 package，尚未创建。只有形成清晰接口、独立
-实现和测试需求后再建立，避免为了目录完整而产生空 package。
+`auv_description` 仍是候选 package。只有形成清晰接口、独立实现和测试需求后再建立，
+避免为了目录完整而产生空 package。
 
 训练代码不放入 `auv_vision`，避免 ROS 系统 Python 与 uv/PyTorch 环境耦合。部署模型只通过明确的模型清单交给运行时节点。
 

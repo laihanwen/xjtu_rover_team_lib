@@ -80,6 +80,7 @@ TEST(ConeDetectorNode, PublishesStableDetectionsAndDebugImage)
   }
 
   ASSERT_NE(received_detections, nullptr);
+  EXPECT_TRUE(received_detections->stable);
   ASSERT_EQ(received_detections->detections.size(), 1U);
   const auto & detection = received_detections->detections.front();
   EXPECT_EQ(detection.shape, auv_interfaces::msg::ConeDetection::SHAPE_CIRCLE);
