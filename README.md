@@ -1,7 +1,7 @@
 # XJTU AUV
 
 > 面向水下机器人竞赛的自主 AUV 软件与 STM32 固件。
-> ROS 2 负责视觉、语义地图、规划和任务决策；STM32 负责实时姿态、推力分配与安全保护。
+> PC 的 ROS 2 与树莓派轻量 C++ 模式共用任务一核心；STM32 负责实时姿态、推力分配与安全保护。
 
 ![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04_E2E2E2?logo=ubuntu&logoColor=white&labelColor=E95420)
 ![ROS 2 Lyrical](https://img.shields.io/badge/ROS_2-Lyrical-22314E?logo=ros)
@@ -57,6 +57,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 
 Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高速姿态控制、
 推力分配和最终 PWM 必须留在 STM32，不由 ROS 2 调度承担。
+树莓派轻量模式以 `auv_runtime` 运行任务一；PC 仍使用 ROS 2 Lyrical 做开发、可视化与调试。
 
 ### 关键数据流
 
@@ -501,3 +502,7 @@ ARM 需要有效串口协议、近期 heartbeat、无漏水、kill 未触发且�
 第一次加入项目建议依次阅读：**README → [AGENTS.md](AGENTS.md) →
 [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md) →
 [仓库架构](docs/architecture/repository-layout.md) → 当前任务所属模块文档**。
+
+## Lightweight Raspberry Pi mode
+
+The standalone C++ runtime and safe deployment procedure are documented in [runtime/README.md](runtime/README.md). ROS 2 Lyrical PC development remains available through the existing colcon packages; both modes link the same mission-one core sources in `auv_core`.

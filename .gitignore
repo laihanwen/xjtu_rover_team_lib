@@ -1,5 +1,6 @@
 # ROS 2 / colcon generated directories
 /build/
+/build-lightweight/
 /install/
 /log/
 

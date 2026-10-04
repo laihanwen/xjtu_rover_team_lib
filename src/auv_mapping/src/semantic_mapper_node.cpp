@@ -27,6 +27,8 @@
 #include "auv_interfaces/msg/grid_pose.hpp"
 #include "auv_interfaces/msg/semantic_map.hpp"
 #include "auv_mapping/grid_mapper.hpp"
+#include "auv_core/semantic_map.hpp"
+#include "auv_vision/cone_detector.hpp"
 #include "auv_mapping/semantic_mapper_node.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 #include "image_transport/image_transport.hpp"
@@ -192,54 +194,49 @@ private:
   void publish_map(
     const std_msgs::msg::Header & header, const GridResult & result)
   {
-    std::array<const auv_interfaces::msg::ConeDetection *, 9> cones{};
-    const bool cones_fresh = latest_cones_ &&
+    std::vector<auv_vision::ConeObservation> observations;
+    const bool fresh = latest_cones_ &&
       (now() - latest_cones_received_).seconds() <= cone_detection_timeout_sec_;
-    if (cones_fresh) {
+    if (fresh) {
       for (const auto & detection : latest_cones_->detections) {
-        if (detection.row < 0 || detection.row >= 3 || detection.col < 0 || detection.col >= 3) {
-          continue;
+        auv_vision::ConeObservation observation;
+        observation.row = detection.row;
+        observation.col = detection.col;
+        observation.confidence = detection.detection.confidence;
+        if (detection.shape == auv_interfaces::msg::ConeDetection::SHAPE_CIRCLE) {
+          observation.shape = auv_vision::ConeShape::kCircle;
+        } else if (detection.shape == auv_interfaces::msg::ConeDetection::SHAPE_SQUARE) {
+          observation.shape = auv_vision::ConeShape::kSquare;
         }
-        const auto index = static_cast<std::size_t>(detection.row * 3 + detection.col);
-        if (cones[index] == nullptr ||
-          detection.detection.confidence > cones[index]->detection.confidence)
-        {
-          cones[index] = &detection;
-        }
+        observations.push_back(observation);
       }
     }
-
+    const auto fused = auv_core::fuse_semantic_map(
+      result, observations, fresh && latest_cones_->stable,
+      visited_cells_, expected_cone_count_);
     auv_interfaces::msg::SemanticMap map;
     map.header = header;
-    map.rows = 3U;
-    map.cols = 3U;
-    const auto detected_cone_count = static_cast<int>(std::count_if(
-      cones.begin(), cones.end(), [](const auto * cone) {return cone != nullptr;}));
-    const bool semantic_scan_complete = cones_fresh && latest_cones_->stable &&
-      detected_cone_count >= expected_cone_count_;
-    map.complete = result.stable && semantic_scan_complete;
-    map.cells.reserve(9U);
-    for (int8_t row = 0; row < 3; ++row) {
-      for (int8_t col = 0; col < 3; ++col) {
-        auv_interfaces::msg::SemanticCell cell;
-        cell.row = row;
-        cell.col = col;
-        cell.object_type = "unknown";
-        cell.confidence = result.geometry_valid ? result.confidence : 0.0F;
-        const auto * cone = cones[static_cast<std::size_t>(row * 3 + col)];
-        if (result.stable && cone != nullptr) {
-          if (cone->shape == auv_interfaces::msg::ConeDetection::SHAPE_CIRCLE) {
-            cell.object_type = "circle_cone";
-          } else if (cone->shape == auv_interfaces::msg::ConeDetection::SHAPE_SQUARE) {
-            cell.object_type = "square_cone";
-          }
-          if (cell.object_type != "unknown") {
-            cell.confidence = cone->detection.confidence;
-          }
+    map.rows = fused.grid.rows;
+    map.cols = fused.grid.cols;
+    map.complete = fused.complete;
+    for (const auto & planning_cell : fused.grid.cells) {
+      auv_interfaces::msg::SemanticCell cell;
+      cell.row = planning_cell.cell.row;
+      cell.col = planning_cell.cell.col;
+      cell.object_type = planning_cell.cell.object_type;
+      cell.visited = planning_cell.visited;
+      cell.confidence = result.geometry_valid ? result.confidence : 0.0F;
+      bool cone_confidence_set = false;
+      for (const auto & observation : observations) {
+        if (observation.row == cell.row && observation.col == cell.col &&
+          cell.object_type != "unknown")
+        {
+          cell.confidence = cone_confidence_set ?
+            std::max(cell.confidence, observation.confidence) : observation.confidence;
+          cone_confidence_set = true;
         }
-        cell.visited = visited_cells_[static_cast<std::size_t>(row * 3 + col)];
-        map.cells.push_back(std::move(cell));
       }
+      map.cells.push_back(std::move(cell));
     }
     map_publisher_->publish(map);
   }

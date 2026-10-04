@@ -2,15 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 project(auv_mission)
 
 find_package(ament_cmake REQUIRED)
+find_package(auv_core REQUIRED)
 find_package(auv_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 
-add_library(mission_fsm src/mission_fsm.cpp)
-target_compile_features(mission_fsm PUBLIC cxx_std_17)
-target_include_directories(mission_fsm PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
+add_library(mission_fsm INTERFACE)
+target_link_libraries(mission_fsm INTERFACE auv_core::auv_core)
 
 add_library(mission_manager src/mission_node.cpp)
 target_compile_features(mission_manager PUBLIC cxx_std_17)
@@ -37,7 +34,7 @@ target_link_libraries(mission_virtual_test
 )
 
 install(TARGETS
-  mission_fsm mission_manager mission_manager_node mission_virtual_test
+  mission_manager mission_manager_node mission_virtual_test
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -59,5 +56,6 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(mission_fsm mission_manager)
+ament_export_dependencies(auv_core)
+ament_export_libraries(mission_manager)
 ament_package()

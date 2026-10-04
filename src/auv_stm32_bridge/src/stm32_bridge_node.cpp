@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "auv_core/status_decoder.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
 #include "auv_stm32_bridge/gripper_protocol.hpp"
 #include "auv_stm32_bridge/protocol.h"
@@ -282,29 +283,19 @@ private:
 
   void decode_status(const std::vector<uint8_t> & payload)
   {
-    constexpr std::size_t kFixedSize = 30U;
-    if (payload.size() < kFixedSize) {
+    auv_core::Stm32Status decoded;
+    if (!auv_core::decode_status(payload, decoded)) {
       return;
     }
-    const std::size_t thruster_count = payload[29];
-    if (thruster_count > 8U || payload.size() != kFixedSize + thruster_count * 2U) {
-      return;
-    }
-    const uint8_t state_flags = payload[4];
-    status_.armed = (state_flags & 0x01U) != 0U;
-    status_.leak_detected = (state_flags & 0x02U) != 0U;
-    status_.error_flags = auv_protocol_read_u32_le(&payload[5]);
-    status_.voltage = auv_protocol_read_f32_le(&payload[9]);
-    status_.depth = auv_protocol_read_f32_le(&payload[13]);
-    status_.roll = auv_protocol_read_f32_le(&payload[17]);
-    status_.pitch = auv_protocol_read_f32_le(&payload[21]);
-    status_.yaw = auv_protocol_read_f32_le(&payload[25]);
-    status_.thruster_outputs.clear();
-    status_.thruster_outputs.reserve(thruster_count);
-    for (std::size_t index = 0; index < thruster_count; ++index) {
-      const auto raw = auv_protocol_read_i16_le(&payload[kFixedSize + index * 2U]);
-      status_.thruster_outputs.push_back(static_cast<float>(raw) / 1000.0F);
-    }
+    status_.armed = decoded.armed;
+    status_.leak_detected = decoded.leak_detected;
+    status_.error_flags = decoded.error_flags;
+    status_.voltage = decoded.voltage;
+    status_.depth = decoded.depth;
+    status_.roll = decoded.roll;
+    status_.pitch = decoded.pitch;
+    status_.yaw = decoded.yaw;
+    status_.thruster_outputs = decoded.thruster_outputs;
   }
 
   void publish_imu(const std::vector<uint8_t> & payload)

@@ -21,8 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "auv_interfaces/msg/grid_cell.hpp"
-#include "auv_interfaces/msg/planned_route.hpp"
+#include "auv_planning/grid_planner.hpp"
 
 namespace auv_control
 {
@@ -48,7 +47,7 @@ struct RouteStep
   double row_error{0.0};
   double col_error{0.0};
   std::size_t waypoint_index{0U};
-  std::optional<auv_interfaces::msg::GridCell> visited_cell;
+  std::optional<auv_planning::GridCell> visited_cell;
 };
 
 class RouteExecutor
@@ -56,7 +55,7 @@ class RouteExecutor
 public:
   explicit RouteExecutor(RouteExecutorConfig config = RouteExecutorConfig());
 
-  void set_route(const auv_interfaces::msg::PlannedRoute & route);
+  void set_route(const auv_planning::PlanResult & route, std::uint32_t map_revision);
   void set_mission_active(bool active);
   void set_vehicle_ready(bool ready);
   void set_pose(bool valid, double row, double col);
@@ -64,10 +63,11 @@ public:
   void reset();
 
 private:
-  bool is_target(const auv_interfaces::msg::GridCell & cell) const;
+  bool is_target(const auv_planning::GridCell & cell) const;
 
   RouteExecutorConfig config_;
-  auv_interfaces::msg::PlannedRoute route_;
+  auv_planning::PlanResult route_;
+  std::uint32_t map_revision_{0U};
   bool route_ready_{false};
   bool mission_active_{false};
   bool vehicle_ready_{false};
