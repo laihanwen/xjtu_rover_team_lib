@@ -63,6 +63,8 @@ public:
     config.cone_visit_timeout_sec = declare_parameter<double>(
       "cone_visit_timeout_sec", 120.0);
     config.status_timeout_sec = declare_parameter<double>("status_timeout_sec", 1.0);
+    config.allow_armed_during_visit = declare_parameter<bool>(
+      "allow_armed_during_visit", false);
     fsm_ = std::make_unique<MissionFsm>(config);
 
     state_publisher_ = create_publisher<auv_interfaces::msg::MissionState>(

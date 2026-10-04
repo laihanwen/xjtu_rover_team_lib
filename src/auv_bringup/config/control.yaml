@@ -1,0 +1,17 @@
+auv_route_executor:
+  ros__parameters:
+    # Keep false until dry-run topics, camera orientation, failsafe and mixer are verified.
+    publish_motion_commands: false
+    control_rate_hz: 20.0
+    pose_timeout_sec: 0.5
+    status_timeout_sec: 0.5
+
+    # Grid row/column error -> body surge/sway. Verify signs with the vehicle fixed
+    # and propellers removed before enabling motion publication.
+    surge_from_row: 0.25
+    surge_from_col: 0.0
+    sway_from_row: 0.0
+    sway_from_col: 0.25
+    maximum_speed: 0.20
+    arrival_tolerance: 0.15
+    arrival_stable_ticks: 5

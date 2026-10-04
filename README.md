@@ -10,7 +10,8 @@
 
 当前软件已完成 **P0–P11**：ROS 2 工作区、公共接口、STM32 bridge、串口协议、
 heartbeat/failsafe、IMU/depth 遥测、双摄像头、AprilTag、九宫格建图、交通锥识别和
-确定性格子路径规划，以及安全任务状态机。**P12 海参 YOLO** 的训练环境、数据工具和
+确定性格子路径规划、安全任务状态机，以及默认禁用动力的任务一路线执行器。
+**P12 海参 YOLO** 的训练环境、数据工具和
 ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶段。**P13 单舵机抓取链路**
 已完成 ROS 接口、串口协议和 STM32 安全状态机，等待机械端点标定与实机验收。
 **P14 转盘视觉基础**已具备可配置 OpenCV 节点、ROS 接口和调试图，尚未进入执行器闭环。
@@ -26,6 +27,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 | 了解当前完成度、硬件门槛和下一步 | [项目压缩状态](docs/project-status.md) |
 | 第一次构建和启动 | [快速开始](#快速开始) |
 | 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
+| 验收任务一闭环 | [AprilTag 与交通锥遍历](docs/testing/task1-apriltag-cones.md) |
 | 查找架构、协议、网络和测试文档 | [文档中心](docs/README.md) |
 | 理解目录职责和 ROS package 边界 | [仓库布局](docs/architecture/repository-layout.md) |
 | 配置 P12 数据标注环境 | [P12 打标教程](docs/p12-annotation-guide.md) |
@@ -98,6 +100,7 @@ T35-L 单舵机的接线、端点标定和分阶段上电验收见
 | P9 | Cone detection | ✅ OpenCV 分类、时序稳定与地图融合；待水下调参 |
 | P10 | Path planning | ✅ 四邻域 A*、目标排列枚举与确定性路线 |
 | P11 | Mission FSM | ✅ 安全编排、超时、暂停/恢复/终止及虚拟全流程 |
+| P11.1 | 任务一遍历执行 | 🚧 软件闭环完成；等待水下标定、方向校验和拆桨实机验收 |
 | P12 | Sea cucumber YOLO | 🚧 训练环境与 ROS 推理已实现；等待真实标注数据/权重 |
 | P13 | 单舵机抓取系统 | 🚧 ROS/串口/STM32 状态机已实现；等待端点标定和实机验收 |
 | P14 | 转盘系统 | 🚧 OpenCV 检测接口、节点和调试环境已建立 |
@@ -157,11 +160,12 @@ colcon test-result --verbose
 git diff --check
 ```
 
-当前工作区包含七个 ROS packages：
+当前工作区包含八个 ROS packages：
 
 ```text
 auv_interfaces    auv_stm32_bridge    auv_vision
-auv_mapping       auv_planning        auv_mission       auv_bringup
+auv_mapping       auv_planning        auv_mission       auv_control
+auv_bringup
 ```
 
 ## 运行与验收
@@ -185,6 +189,7 @@ ros2 launch auv_bringup system.launch.py \
   start_cones:=true \
   start_planning:=true \
   start_mission:=true \
+  start_route_executor:=true \
   start_cucumber:=true \
   start_valve:=true
 ```
@@ -241,7 +246,9 @@ ros2 topic echo /planning/route
 ```
 
 有效路线包含目标访问顺序、从起点开始的每个相邻格和总步数。规划器只计算路线，
-不会发布运动指令或 ARM。详细说明见
+不会发布运动指令或 ARM。任务一执行器默认 dry-run，可查看
+`/planning/execution_state`；完成标定、拆桨和方向验收后，才可显式增加
+`enable_route_motion:=true`，执行器也不会自动 ARM。详细说明见
 [auv_planning 使用说明](src/auv_planning/README.md)。
 
 ### 5. Mission FSM

@@ -269,6 +269,18 @@ GridResult GridMapper::process(const cv::Mat & bgr_image)
     cv::Point2f(0.0F, 0.0F), cv::Point2f(maximum, 0.0F),
     cv::Point2f(maximum, maximum), cv::Point2f(0.0F, maximum)};
   const cv::Mat transform = cv::getPerspectiveTransform(result.corners.data(), destination.data());
+  std::vector<cv::Point2f> camera_center{
+    cv::Point2f(
+      static_cast<float>(bgr_image.cols - 1) * 0.5F,
+      static_cast<float>(bgr_image.rows - 1) * 0.5F)};
+  std::vector<cv::Point2f> rectified_center;
+  cv::perspectiveTransform(camera_center, rectified_center, transform);
+  if (!rectified_center.empty()) {
+    const float grid_scale = 3.0F / static_cast<float>(config_.output_size);
+    result.camera_col = std::clamp(rectified_center[0].x * grid_scale, 0.0F, 3.0F);
+    result.camera_row = std::clamp(rectified_center[0].y * grid_scale, 0.0F, 3.0F);
+    result.position_valid = true;
+  }
   cv::warpPerspective(
     bgr_image, result.rectified, transform,
     cv::Size(config_.output_size, config_.output_size));

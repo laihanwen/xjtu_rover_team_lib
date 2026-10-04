@@ -23,6 +23,8 @@
 #include "auv_interfaces/msg/semantic_cell.hpp"
 #include "auv_interfaces/msg/cone_detection.hpp"
 #include "auv_interfaces/msg/cone_detection_array.hpp"
+#include "auv_interfaces/msg/grid_cell.hpp"
+#include "auv_interfaces/msg/grid_pose.hpp"
 #include "auv_interfaces/msg/semantic_map.hpp"
 #include "auv_mapping/grid_mapper.hpp"
 #include "auv_mapping/semantic_mapper_node.hpp"
@@ -53,8 +55,19 @@ public:
       "cone_detections_topic", "/cones/detections");
     cone_detection_timeout_sec_ = declare_parameter<double>(
       "cone_detection_timeout_sec", 1.0);
+    grid_pose_topic_ = declare_parameter<std::string>(
+      "grid_pose_topic", "/mapping/grid_pose");
+    visited_cell_topic_ = declare_parameter<std::string>(
+      "visited_cell_topic", "/planning/visited_cell");
+    expected_cone_count_ = declare_parameter<int>("expected_cone_count", 4);
     if (cone_detection_timeout_sec_ <= 0.0) {
       throw std::invalid_argument("cone_detection_timeout_sec must be positive");
+    }
+    if (grid_pose_topic_.empty() || visited_cell_topic_.empty() ||
+      expected_cone_count_ < 0 || expected_cone_count_ > 9)
+    {
+      throw std::invalid_argument(
+              "mapping pose/visited topics and expected_cone_count are invalid");
     }
 
     GridMapperConfig config;
@@ -96,6 +109,8 @@ public:
 
     map_publisher_ = create_publisher<auv_interfaces::msg::SemanticMap>(
       map_topic_, rclcpp::QoS(1).reliable().transient_local());
+    grid_pose_publisher_ = create_publisher<auv_interfaces::msg::GridPose>(
+      grid_pose_topic_, rclcpp::SensorDataQoS());
     rectified_publisher_ = image_transport::create_publisher(
       *this, rectified_topic_, rclcpp::SensorDataQoS());
     if (publish_debug_image_) {
@@ -110,6 +125,16 @@ public:
       [this](auv_interfaces::msg::ConeDetectionArray::ConstSharedPtr message) {
         latest_cones_ = std::move(message);
         latest_cones_received_ = now();
+      });
+    visited_cell_subscription_ = create_subscription<auv_interfaces::msg::GridCell>(
+      visited_cell_topic_, rclcpp::QoS(10).reliable(),
+      [this](auv_interfaces::msg::GridCell::ConstSharedPtr message) {
+        if (message->row < 0 || message->row >= 3 || message->col < 0 || message->col >= 3) {
+          RCLCPP_WARN(get_logger(), "ignored out-of-range visited cell (%d,%d)",
+            message->row, message->col);
+          return;
+        }
+        visited_cells_[static_cast<std::size_t>(message->row * 3 + message->col)] = true;
       });
 
     RCLCPP_INFO(
@@ -168,9 +193,9 @@ private:
     const std_msgs::msg::Header & header, const GridResult & result)
   {
     std::array<const auv_interfaces::msg::ConeDetection *, 9> cones{};
-    if (latest_cones_ &&
-      (now() - latest_cones_received_).seconds() <= cone_detection_timeout_sec_)
-    {
+    const bool cones_fresh = latest_cones_ &&
+      (now() - latest_cones_received_).seconds() <= cone_detection_timeout_sec_;
+    if (cones_fresh) {
       for (const auto & detection : latest_cones_->detections) {
         if (detection.row < 0 || detection.row >= 3 || detection.col < 0 || detection.col >= 3) {
           continue;
@@ -188,7 +213,11 @@ private:
     map.header = header;
     map.rows = 3U;
     map.cols = 3U;
-    map.complete = result.stable;
+    const auto detected_cone_count = static_cast<int>(std::count_if(
+      cones.begin(), cones.end(), [](const auto * cone) {return cone != nullptr;}));
+    const bool semantic_scan_complete = cones_fresh && latest_cones_->stable &&
+      detected_cone_count >= expected_cone_count_;
+    map.complete = result.stable && semantic_scan_complete;
     map.cells.reserve(9U);
     for (int8_t row = 0; row < 3; ++row) {
       for (int8_t col = 0; col < 3; ++col) {
@@ -208,7 +237,7 @@ private:
             cell.confidence = cone->detection.confidence;
           }
         }
-        cell.visited = false;
+        cell.visited = visited_cells_[static_cast<std::size_t>(row * 3 + col)];
         map.cells.push_back(std::move(cell));
       }
     }
@@ -235,6 +264,13 @@ private:
     }
 
     const GridResult result = mapper_->process(input);
+    auv_interfaces::msg::GridPose pose;
+    pose.header = message->header;
+    pose.valid = result.stable && result.position_valid;
+    pose.row = result.camera_row;
+    pose.col = result.camera_col;
+    pose.confidence = result.confidence;
+    grid_pose_publisher_->publish(pose);
     publish_map(message->header, result);
     if (result.stable) {
       rectified_publisher_.publish(
@@ -259,20 +295,26 @@ private:
   std::string rectified_topic_;
   std::string debug_topic_;
   std::string cone_detections_topic_;
+  std::string grid_pose_topic_;
+  std::string visited_cell_topic_;
   bool publish_debug_image_{false};
   bool require_calibration_{true};
   bool calibration_enabled_{false};
   double cone_detection_timeout_sec_{1.0};
+  int expected_cone_count_{4};
   cv::Mat camera_matrix_;
   cv::Mat distortion_coefficients_;
   std::unique_ptr<GridMapper> mapper_;
   rclcpp::Publisher<auv_interfaces::msg::SemanticMap>::SharedPtr map_publisher_;
+  rclcpp::Publisher<auv_interfaces::msg::GridPose>::SharedPtr grid_pose_publisher_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
   rclcpp::Subscription<auv_interfaces::msg::ConeDetectionArray>::SharedPtr cone_subscription_;
+  rclcpp::Subscription<auv_interfaces::msg::GridCell>::SharedPtr visited_cell_subscription_;
   auv_interfaces::msg::ConeDetectionArray::ConstSharedPtr latest_cones_;
   rclcpp::Time latest_cones_received_{0, 0, RCL_ROS_TIME};
   image_transport::Publisher rectified_publisher_;
   image_transport::Publisher debug_publisher_;
+  std::array<bool, 9> visited_cells_{};
 };
 
 std::shared_ptr<rclcpp::Node> make_semantic_mapper_node(

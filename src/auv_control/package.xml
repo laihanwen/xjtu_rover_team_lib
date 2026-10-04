@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>auv_control</name>
+  <version>0.1.0</version>
+  <description>Safety-gated grid route execution for the AUV.</description>
+  <maintainer email="hanwen@example.com">hanwen</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>auv_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export><build_type>ament_cmake</build_type></export>
+</package>

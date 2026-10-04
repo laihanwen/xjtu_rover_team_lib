@@ -105,16 +105,20 @@ TEST(ConeDetector, ValidatesInputAndConfiguration)
 TEST(ConeTracker, RequiresVotesAndClearsStaleShape)
 {
   auv_vision::ConeTracker tracker;
+  EXPECT_FALSE(tracker.ready());
   const std::vector<auv_vision::ConeObservation> circle{
     make_observation(auv_vision::ConeShape::kCircle, 0, 1)};
   EXPECT_TRUE(tracker.update(circle).empty());
   EXPECT_TRUE(tracker.update(circle).empty());
   auto stable = tracker.update(circle);
   ASSERT_EQ(stable.size(), 1U);
+  EXPECT_FALSE(tracker.ready());
   EXPECT_EQ(stable.front().shape, auv_vision::ConeShape::kCircle);
 
   EXPECT_EQ(tracker.update({}).size(), 1U);
+  EXPECT_FALSE(tracker.ready());
   EXPECT_EQ(tracker.update({}).size(), 1U);
+  EXPECT_TRUE(tracker.ready());
   EXPECT_TRUE(tracker.update({}).empty());
 }
 

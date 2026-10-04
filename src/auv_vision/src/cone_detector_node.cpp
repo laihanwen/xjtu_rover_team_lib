@@ -133,6 +133,7 @@ private:
     const auto stable_observations = tracker_->update(result.observations);
     auv_interfaces::msg::ConeDetectionArray output;
     output.header = message->header;
+    output.stable = tracker_->ready();
     output.detections.reserve(stable_observations.size());
     for (const auto & observation : stable_observations) {
       auv_interfaces::msg::ConeDetection detection;
