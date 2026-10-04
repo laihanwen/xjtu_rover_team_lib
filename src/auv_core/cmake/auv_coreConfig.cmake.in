@@ -1,0 +1,4 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(OpenCV COMPONENTS aruco calib3d core imgcodecs imgproc videoio)
+include("${CMAKE_CURRENT_LIST_DIR}/auv_coreTargets.cmake")

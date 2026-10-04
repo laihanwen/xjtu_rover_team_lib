@@ -2,41 +2,24 @@ cmake_minimum_required(VERSION 3.20)
 project(auv_stm32_bridge)
 
 find_package(ament_cmake REQUIRED)
+find_package(auv_core REQUIRED)
 find_package(auv_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-add_library(serial_port src/serial_port.cpp)
-target_compile_features(serial_port PUBLIC cxx_std_17)
-target_include_directories(serial_port PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
+add_library(serial_port INTERFACE)
+target_link_libraries(serial_port INTERFACE auv_core::auv_core)
 
-add_library(protocol src/protocol.c src/stream_parser.cpp src/telemetry_decoder.cpp)
-target_compile_features(protocol PUBLIC c_std_11 cxx_std_17)
-target_include_directories(protocol PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
+add_library(protocol INTERFACE)
+target_link_libraries(protocol INTERFACE auv_core::auv_core)
 
-add_library(motion_target src/motion_target.cpp)
-target_compile_features(motion_target PUBLIC cxx_std_17)
-target_include_directories(motion_target PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-target_link_libraries(motion_target PUBLIC protocol)
+add_library(motion_target INTERFACE)
+target_link_libraries(motion_target INTERFACE auv_core::auv_core)
 
-add_library(gripper_protocol src/gripper_protocol.cpp)
-target_compile_features(gripper_protocol PUBLIC cxx_std_17)
-target_include_directories(gripper_protocol PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-target_link_libraries(gripper_protocol PUBLIC protocol)
+add_library(gripper_protocol INTERFACE)
+target_link_libraries(gripper_protocol INTERFACE auv_core::auv_core)
 
 add_executable(stm32_bridge_node src/stm32_bridge_node.cpp)
 target_compile_features(stm32_bridge_node PUBLIC cxx_std_17)
@@ -53,7 +36,7 @@ target_link_libraries(stm32_bridge_node
   ${std_msgs_TARGETS}
 )
 
-install(TARGETS gripper_protocol motion_target protocol serial_port stm32_bridge_node
+install(TARGETS stm32_bridge_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -97,5 +80,5 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(gripper_protocol motion_target protocol serial_port)
+ament_export_dependencies(auv_core)
 ament_package()

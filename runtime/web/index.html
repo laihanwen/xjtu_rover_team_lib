@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AUV Monitor</title>
+<style>body{background:#0b1724;color:#e8f2fa;font:16px system-ui;margin:2rem;max-width:900px}h1{font-size:1.5rem}video{width:100%;background:#000}.card{background:#172b3d;padding:1rem;border-radius:.5rem;margin:1rem 0}pre{white-space:pre-wrap} .bad{color:#ff988c}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem}.cell{min-height:4rem;padding:.4rem;border:1px solid #53718a;border-radius:.3rem}.cell.current{border-color:#38c7d8}.cell.next{background:#2d4b61}.small{font-size:.8rem;color:#aabdc9}</style>
+<h1>AUV Mission One Monitor</h1><p>只读监看。任务与安全控制请通过 SSH 使用 auvctl。</p>
+<div class="card"><video id="video" controls autoplay muted playsinline></video><p id="video-state">视频连接中</p></div>
+<div class="card"><h2>九宫格</h2><div id="grid" class="grid"></div><p id="route"></p></div>
+<div class="card"><pre id="state">状态连接中</pre></div>
+<script src="/hls.min.js"></script><script>
+const v=document.getElementById('video'),vs=document.getElementById('video-state');
+if(Hls.isSupported()){const h=new Hls({liveSyncDurationCount:2});h.loadSource('/hls/index.m3u8');h.attachMedia(v);h.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal)vs.textContent='视频降级：'+d.details})}
+else if(v.canPlayType('application/vnd.apple.mpegurl'))v.src='/hls/index.m3u8';else vs.textContent='此浏览器不支持 HLS';
+async function refresh(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();document.getElementById('state').textContent=JSON.stringify(s,null,2);const g=document.getElementById('grid');g.replaceChildren();for(const c of s.cells){const e=document.createElement('div');e.className='cell'+(s.pose_valid&&Math.floor(s.row)===c.row&&Math.floor(s.col)===c.col?' current':'')+(s.next_row===c.row&&s.next_col===c.col?' next':'');e.textContent=c.row+','+c.col+' · '+c.object+(c.visited?' ✓':'');g.append(e)}document.getElementById('route').textContent='当前格：'+(s.pose_valid?Math.floor(s.row)+','+Math.floor(s.col):'未知')+'　下一航点：'+(s.next_row>=0?s.next_row+','+s.next_col:'无');if(s.video_degraded)vs.textContent='视频降级：'+s.video_detail}catch(e){document.getElementById('state').textContent='状态连接失败：'+e}}
+setInterval(refresh,500);refresh();
+</script></html>

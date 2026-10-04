@@ -113,6 +113,19 @@ TEST(MissionFsm, SupportsPauseResumeAbortAndReset)
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kInit);
 }
 
+TEST(MissionFsm, PauseAllowsBriefDisarmThenFaultsIfStillArmed)
+{
+  MissionFsm fsm;
+  ASSERT_TRUE(fsm.command(MissionCommand::kStart, 0.0).accepted);
+  ASSERT_TRUE(fsm.command(MissionCommand::kPause, 0.1).accepted);
+  fsm.update_status(true, true, false, 0U, 0.2);
+  fsm.tick(0.2);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kPaused);
+  fsm.update_status(true, true, false, 0U, 0.7);
+  fsm.tick(0.7);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kFault);
+}
+
 TEST(MissionFsm, FaultsOnLeakArmErrorsDisconnectAndStatusTimeout)
 {
   MissionFsm leak_fsm;

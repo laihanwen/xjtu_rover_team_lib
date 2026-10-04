@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(auv_vision)
 
 find_package(ament_cmake REQUIRED)
+find_package(auv_core REQUIRED)
 find_package(auv_interfaces REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -13,32 +14,14 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Threads REQUIRED)
 
-add_library(camera_source src/camera_source.cpp)
-target_compile_features(camera_source PUBLIC cxx_std_17)
-target_include_directories(camera_source PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${OpenCV_INCLUDE_DIRS}
-)
-target_link_libraries(camera_source PUBLIC ${OpenCV_LIBS})
+add_library(camera_source INTERFACE)
+target_link_libraries(camera_source INTERFACE auv_core::auv_core)
 
-add_library(apriltag_detector src/apriltag_detector.cpp)
-target_compile_features(apriltag_detector PUBLIC cxx_std_17)
-target_include_directories(apriltag_detector PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${OpenCV_INCLUDE_DIRS}
-)
-target_link_libraries(apriltag_detector PUBLIC ${OpenCV_LIBS})
+add_library(apriltag_detector INTERFACE)
+target_link_libraries(apriltag_detector INTERFACE auv_core::auv_core)
 
-add_library(cone_detector src/cone_detector.cpp)
-target_compile_features(cone_detector PUBLIC cxx_std_17)
-target_include_directories(cone_detector PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${OpenCV_INCLUDE_DIRS}
-)
-target_link_libraries(cone_detector PUBLIC ${OpenCV_LIBS})
+add_library(cone_detector INTERFACE)
+target_link_libraries(cone_detector INTERFACE auv_core::auv_core)
 
 add_library(yolo_detector src/yolo_detector.cpp)
 target_compile_features(yolo_detector PUBLIC cxx_std_17)
@@ -145,7 +128,7 @@ target_compile_features(valve_detector_node_executable PUBLIC cxx_std_17)
 target_link_libraries(valve_detector_node_executable valve_detector_node rclcpp::rclcpp)
 
 install(TARGETS
-  camera_source apriltag_detector cone_detector cone_detector_node yolo_detector valve_detector
+  cone_detector_node yolo_detector valve_detector
   cucumber_detector_node camera_node apriltag_detector_node cone_detector_node_executable
   cucumber_detector_node_executable valve_detector_node valve_detector_node_executable
   ARCHIVE DESTINATION lib
@@ -202,7 +185,8 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_include_directories(include)
+ament_export_dependencies(auv_core)
 ament_export_libraries(
-  camera_source apriltag_detector cone_detector cone_detector_node yolo_detector
+  cone_detector_node yolo_detector
   cucumber_detector_node valve_detector valve_detector_node)
 ament_package()

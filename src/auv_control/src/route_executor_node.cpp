@@ -36,6 +36,22 @@
 namespace auv_control
 {
 
+static auv_planning::PlanResult to_core_route(const auv_interfaces::msg::PlannedRoute & route)
+{
+  auv_planning::PlanResult result;
+  result.valid = route.valid;
+  result.reason = route.reason;
+  result.start = {route.start.row, route.start.col, route.start.object_type};
+  result.total_cost = route.total_cost;
+  for (const auto & cell : route.targets) {
+    result.targets.push_back({cell.row, cell.col, cell.object_type});
+  }
+  for (const auto & cell : route.path) {
+    result.path.push_back({cell.row, cell.col, cell.object_type});
+  }
+  return result;
+}
+
 class RouteExecutorNode final : public rclcpp::Node
 {
 public:
@@ -78,7 +94,7 @@ public:
         }
         route_revision_ = message->map_revision;
         route_ = *message;
-        executor_->set_route(*message);
+        executor_->set_route(to_core_route(*message), message->map_revision);
       });
     pose_subscription_ = create_subscription<auv_interfaces::msg::GridPose>(
       "/mapping/grid_pose", rclcpp::SensorDataQoS(),
@@ -100,7 +116,7 @@ public:
         if (!mission_active_ && was_active) {
           executor_->reset();
           if (route_.valid) {
-            executor_->set_route(route_);
+            executor_->set_route(to_core_route(route_), route_.map_revision);
           }
         }
         executor_->set_mission_active(mission_active_);
@@ -182,7 +198,11 @@ private:
       }
     }
     if (step.visited_cell.has_value()) {
-      visited_publisher_->publish(*step.visited_cell);
+      auv_interfaces::msg::GridCell visited;
+      visited.row = step.visited_cell->row;
+      visited.col = step.visited_cell->col;
+      visited.object_type = step.visited_cell->object_type;
+      visited_publisher_->publish(visited);
     }
 
     auv_interfaces::msg::RouteExecutionState state;

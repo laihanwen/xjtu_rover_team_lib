@@ -2,17 +2,14 @@ cmake_minimum_required(VERSION 3.20)
 project(auv_control)
 
 find_package(ament_cmake REQUIRED)
+find_package(auv_core REQUIRED)
 find_package(auv_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 
-add_library(route_executor_core src/route_executor.cpp)
-target_compile_features(route_executor_core PUBLIC cxx_std_17)
-target_include_directories(route_executor_core PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_link_libraries(route_executor_core PUBLIC ${auv_interfaces_TARGETS})
+add_library(route_executor_core INTERFACE)
+target_link_libraries(route_executor_core INTERFACE auv_core::auv_core)
 
 add_library(route_executor_node_lib src/route_executor_node.cpp)
 target_compile_features(route_executor_node_lib PUBLIC cxx_std_17)
@@ -30,7 +27,7 @@ add_executable(route_executor_node src/route_executor_main.cpp)
 target_compile_features(route_executor_node PUBLIC cxx_std_17)
 target_link_libraries(route_executor_node route_executor_node_lib rclcpp::rclcpp)
 
-install(TARGETS route_executor_core route_executor_node_lib route_executor_node
+install(TARGETS route_executor_node_lib route_executor_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -52,6 +49,7 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(route_executor_core route_executor_node_lib)
+ament_export_dependencies(auv_core)
+ament_export_libraries(route_executor_node_lib)
 ament_export_dependencies(auv_interfaces)
 ament_package()

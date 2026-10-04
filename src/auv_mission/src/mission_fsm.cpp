@@ -74,6 +74,13 @@ void MissionFsm::fault(const std::string & detail, double now_sec)
   transition(MissionPhase::kFault, detail, now_sec);
 }
 
+void MissionFsm::force_fault(const std::string & detail, double now_sec)
+{
+  if (snapshot_.phase != MissionPhase::kFault) {
+    fault(detail, now_sec);
+  }
+}
+
 bool MissionFsm::is_active() const
 {
   return snapshot_.phase == MissionPhase::kSelfCheck ||
@@ -198,9 +205,11 @@ void MissionFsm::tick(double now_sec)
       fault("STM32 error flags are nonzero", now_sec);
       return;
     }
-    if (armed_ && !(config_.allow_armed_during_visit &&
-      snapshot_.phase == MissionPhase::kVisitCones))
-    {
+    const bool allowed_visit_arm = config_.allow_armed_during_visit &&
+      snapshot_.phase == MissionPhase::kVisitCones;
+    const bool pause_disarm_grace = snapshot_.phase == MissionPhase::kPaused &&
+      now_sec - phase_entered_sec_ <= 0.5;
+    if (armed_ && !allowed_visit_arm && !pause_disarm_grace) {
       fault("propulsion armed outside the permitted visit phase", now_sec);
       return;
     }

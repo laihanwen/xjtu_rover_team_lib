@@ -25,23 +25,32 @@ namespace auv_control
 RouteExecutor::RouteExecutor(RouteExecutorConfig config)
 : config_(std::move(config))
 {
-  if (config_.maximum_speed <= 0.0 || config_.arrival_tolerance <= 0.0 ||
+  if (!std::isfinite(config_.surge_from_row) || !std::isfinite(config_.surge_from_col) ||
+    !std::isfinite(config_.sway_from_row) || !std::isfinite(config_.sway_from_col) ||
+    !std::isfinite(config_.maximum_speed) || !std::isfinite(config_.arrival_tolerance) ||
+    config_.maximum_speed <= 0.0 || config_.arrival_tolerance <= 0.0 ||
     config_.arrival_tolerance >= 0.5 || config_.arrival_stable_ticks <= 0)
   {
     throw std::invalid_argument("route executor configuration is invalid");
   }
 }
 
-void RouteExecutor::set_route(const auv_interfaces::msg::PlannedRoute & route)
+void RouteExecutor::set_route(const auv_planning::PlanResult & route, std::uint32_t map_revision)
 {
   if (mission_active_ && route_ready_) {
     return;
   }
-  if (route.map_revision == route_.map_revision && route_ready_) {
+  if (map_revision == map_revision_ && route_ready_) {
     return;
   }
   route_ = route;
-  route_ready_ = route.valid && !route.path.empty();
+  map_revision_ = map_revision;
+  auto in_grid = [](const auv_planning::GridCell & cell) {
+      return cell.row >= 0 && cell.row < 3 && cell.col >= 0 && cell.col < 3;
+    };
+  route_ready_ = route.valid && !route.path.empty() &&
+    std::all_of(route.path.begin(), route.path.end(), in_grid) &&
+    std::all_of(route.targets.begin(), route.targets.end(), in_grid);
   waypoint_index_ = 0U;
   arrival_ticks_ = 0;
 }
@@ -51,12 +60,13 @@ void RouteExecutor::set_vehicle_ready(bool ready) {vehicle_ready_ = ready;}
 
 void RouteExecutor::set_pose(bool valid, double row, double col)
 {
-  pose_valid_ = valid && std::isfinite(row) && std::isfinite(col);
+  pose_valid_ = valid && std::isfinite(row) && std::isfinite(col) &&
+    row >= 0.0 && row <= 3.0 && col >= 0.0 && col <= 3.0;
   row_ = row;
   col_ = col;
 }
 
-bool RouteExecutor::is_target(const auv_interfaces::msg::GridCell & cell) const
+bool RouteExecutor::is_target(const auv_planning::GridCell & cell) const
 {
   return std::any_of(route_.targets.begin(), route_.targets.end(), [&cell](const auto & target) {
              return target.row == cell.row && target.col == cell.col;

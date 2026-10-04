@@ -20,20 +20,19 @@
 namespace
 {
 
-auv_interfaces::msg::GridCell cell(std::int8_t row, std::int8_t col, const char * type = "unknown")
+auv_planning::GridCell cell(std::int8_t row, std::int8_t col, const char * type = "unknown")
 {
-  auv_interfaces::msg::GridCell result;
+  auv_planning::GridCell result;
   result.row = row;
   result.col = col;
   result.object_type = type;
   return result;
 }
 
-auv_interfaces::msg::PlannedRoute route()
+auv_planning::PlanResult route()
 {
-  auv_interfaces::msg::PlannedRoute result;
+  auv_planning::PlanResult result;
   result.valid = true;
-  result.map_revision = 7U;
   result.path = {cell(2, 0), cell(1, 0), cell(0, 0, "circle_cone")};
   result.targets = {cell(0, 0, "circle_cone")};
   return result;
@@ -45,7 +44,7 @@ TEST(RouteExecutor, RequiresMissionArmPoseAndRoute)
   EXPECT_EQ(executor.step().state, auv_control::RouteStep::State::kIdle);
   executor.set_mission_active(true);
   EXPECT_EQ(executor.step().state, auv_control::RouteStep::State::kFault);
-  executor.set_route(route());
+  executor.set_route(route(), 7U);
   EXPECT_EQ(executor.step().state, auv_control::RouteStep::State::kWaitingForArm);
   executor.set_vehicle_ready(true);
   EXPECT_EQ(executor.step().state, auv_control::RouteStep::State::kFault);
@@ -56,7 +55,7 @@ TEST(RouteExecutor, TraversesWaypointsAndMarksTargetVisited)
   auv_control::RouteExecutorConfig config;
   config.arrival_stable_ticks = 2;
   auv_control::RouteExecutor executor(config);
-  executor.set_route(route());
+  executor.set_route(route(), 7U);
   executor.set_mission_active(true);
   executor.set_vehicle_ready(true);
 
@@ -78,7 +77,7 @@ TEST(RouteExecutor, TraversesWaypointsAndMarksTargetVisited)
 TEST(RouteExecutor, ProducesBoundedGridErrorCommands)
 {
   auv_control::RouteExecutor executor;
-  executor.set_route(route());
+  executor.set_route(route(), 7U);
   executor.set_mission_active(true);
   executor.set_vehicle_ready(true);
   executor.set_pose(true, 0.0, 2.9);
