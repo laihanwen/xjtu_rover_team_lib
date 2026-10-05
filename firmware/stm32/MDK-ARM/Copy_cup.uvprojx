@@ -516,6 +516,21 @@
               <FilePath>.\AuvGripperConfig.h</FilePath>
             </File>
             <File>
+              <FileName>AuvCameraServo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvCameraServo.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvCameraServo.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvCameraServo.h</FilePath>
+            </File>
+            <File>
+              <FileName>AuvCameraServoConfig.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvCameraServoConfig.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>

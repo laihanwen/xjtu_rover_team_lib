@@ -39,6 +39,8 @@ firmware/stm32/
 │   ├── AuvRcInput.c/.h      # 0xA5 遥控帧接收、快照与掉线超时
 │   ├── AuvGripper.c/.h      # P13 T35-L 单舵机夹爪状态机
 │   ├── AuvGripperConfig.h   # 标定门、端点、缓启动和遥控阈值
+│   ├── AuvCameraServo.c/.h  # 摄像头舵机限位、斜率限制与命令校验
+│   ├── AuvCameraServoConfig.h # 摄像头舵机标定门与 CCR 端点
 │   └── Move_Manual.md       # 安装和控制说明
 ├── CMakeLists.txt           # 编辑器代码模型 / 编译检查
 ├── COLCON_IGNORE            # 防止 ROS colcon 误构建固件
@@ -94,6 +96,7 @@ USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任�
 - 遥控兼容链路使用 `huart2`（PA2/PA3）115200 8N1，与 Pi CRC 链路相互独立。
 - 当前 CubeMX 映射为 USART3 TX=PC10、RX=PC11；`AuvLink_Init()` 将其配置为 115200 8N1。
 - 上电默认 DISARMED，传感器有效标志默认 false，因此 P5 接入前 ARM 会返回 unsafe。
+- 上电后的前 2 秒为强制 ARM 抑制期；期间即使心跳和传感器状态正常也拒绝 ARM。
 - 只有 CRC、version、type 和长度均合法的 HEARTBEAT 才更新时间。
 - 超过 500 ms 无合法 heartbeat，状态进入 FAILSAFE。
 - heartbeat 恢复后只回到 DISARMED，不自动重新 ARM。
@@ -106,6 +109,23 @@ USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任�
 - STATUS 现在返回经过 ARM 门控后的 T1–T8 归一化输出，便于拆桨验收。
 - T35-L 信号使用 PA8/TIM1_CH1；未标定固件固定保持 1500 μs 并拒绝开合。
 - 遥控模式中 SB=1 启用夹爪，SA 低位闭合、高位张开、中间区停止保持。
+- 摄像头舵机使用 PC7/TIM8_CH2；SB=0 时由 SA 控制，也可使用执行器 ID 2 的 Pi 命令。
+- 摄像头舵机默认 `AUV_CAMERA_SERVO_CALIBRATED=0`，不启动该 PWM 通道并拒绝运动；实测机械端点后才能打开标定门。
+
+## “八推矢量_代码开发_可改_摄像”选择性合并记录
+
+参考工程中可独立验证的摄像头舵机控制和上电等待要求已经合入，但没有覆盖当前安全架构。
+摄像头舵机沿用参考工程的 PC7/TIM8_CH2 和候选 CCR 范围 `2250..3000`，同时增加了
+标定门、ARM/控制源授权、协议序号校验、边界检查和每周期斜率限制。候选范围只是待实机确认的
+初值，当前默认禁用，因此烧录后不会启动该 PWM 通道或接受摄像头转动命令。
+
+以下差异没有合并：
+
+- 参考工程的推进器中位值与代码/说明互相不一致，当前继续使用已建立基线的 `1488`；
+- T2/T3 极性与当前安装表冲突，需逐台拆桨低功率验证后才能修改；
+- Pitch/Roll PID 符号及参数未经本机水槽数据验证；
+- 参考深度模块占用 USART3，与当前 Pi CRC 通信链路冲突；
+- 参考工程会移除 heartbeat、failsafe 和控制源锁，不能整体覆盖当前工程。
 
 连接实机前必须核对 PC10/PC11 是否确实接到 Pi/USB-UART、双方为兼容的 3.3 V UART 电平且共地。不得把 RS-232 电平直接接入 STM32。
 
