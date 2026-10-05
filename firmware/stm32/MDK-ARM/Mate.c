@@ -5,6 +5,8 @@
 
 #include "Mate.h"
 #include "AuvGripper.h"
+#include "AuvCameraServo.h"
+#include "AuvCameraServoConfig.h"
 #include "PID.h"
 #include "Move.h"
 #include "imu.h"
@@ -140,7 +142,16 @@ float constrain(float a)
  */
 void Mate_Init(void)
 {
+    const AuvCameraServoConfig camera_servo_config = {
+        AUV_CAMERA_SERVO_CALIBRATED,
+        AUV_CAMERA_SERVO_MIN_CCR,
+        AUV_CAMERA_SERVO_MAX_CCR,
+        AUV_CAMERA_SERVO_STARTUP_CCR,
+        AUV_CAMERA_SERVO_SLEW_PER_TICK
+    };
+
     AuvControlSource_Init();
+    AuvCameraServo_Init(&camera_servo_config);
     PID_Init(&PID_yaw, 3.0f, 0.0f, 0.02f, -100, 100);
     PID_Init(&PID_pit, 5.5f, 0.0f, 0.01f, -400, 400);
     PID_Init(&PID_rol, 5.0f, 0.0f, 0.0f,  -200, 200);
@@ -163,6 +174,10 @@ void Mate_Init(void)
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
     /* T35-L gripper signal: PA8/TIM1_CH1, 0.5 us per timer count. */
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+#if AUV_CAMERA_SERVO_CALIBRATED
+    /* Camera tilt servo: PC7/TIM8_CH2. Build-time calibration gate is enabled. */
+    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
+#endif
 
     /* 八推上电时统一保持中位。 */
     {
@@ -174,6 +189,9 @@ void Mate_Init(void)
     /* Uncalibrated builds hold 1500 us; calibrated builds ramp closed. */
     __HAL_TIM_SET_COMPARE(
         &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
+#if AUV_CAMERA_SERVO_CALIBRATED
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, AuvCameraServo_GetCcr());
+#endif
     /* Remote data arrival never creates an immediate full-travel command. */
     MyRCKey[SA] = 127;
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, midvalue);
@@ -199,6 +217,10 @@ void Mate_Task(void)
     AuvGripper_Tick();
     __HAL_TIM_SET_COMPARE(
         &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
+    AuvCameraServo_Tick(AuvSafety_IsArmed());
+#if AUV_CAMERA_SERVO_CALIBRATED
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, AuvCameraServo_GetCcr());
+#endif
 
     /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
     __disable_irq();

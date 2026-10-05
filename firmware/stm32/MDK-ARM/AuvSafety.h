@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #define AUV_HEARTBEAT_TIMEOUT_MS 500U
+#define AUV_ARM_STARTUP_INHIBIT_MS 2000U
 
 typedef enum {
     AUV_SAFETY_BOOT = 0,
@@ -28,6 +29,7 @@ typedef enum {
 typedef struct {
     volatile AuvSafetyState state;
     volatile uint32_t last_heartbeat_ms;
+    volatile uint32_t boot_ms;
     volatile uint8_t heartbeat_seen;
     volatile uint8_t leak_detected;
     volatile uint8_t kill_active;

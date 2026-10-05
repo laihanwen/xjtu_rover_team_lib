@@ -54,3 +54,12 @@ add_executable(test_auv_gripper
 target_include_directories(test_auv_gripper PRIVATE ../MDK-ARM)
 target_compile_options(test_auv_gripper PRIVATE -Wall -Wextra -Werror -pedantic)
 add_test(NAME auv_gripper COMMAND test_auv_gripper)
+
+add_executable(test_auv_camera_servo
+    test_auv_camera_servo.c
+    ../MDK-ARM/AuvCameraServo.c
+    ../MDK-ARM/AuvProtocol.c
+)
+target_include_directories(test_auv_camera_servo PRIVATE ../MDK-ARM)
+target_compile_options(test_auv_camera_servo PRIVATE -Wall -Wextra -Werror -pedantic)
+add_test(NAME auv_camera_servo COMMAND test_auv_camera_servo)

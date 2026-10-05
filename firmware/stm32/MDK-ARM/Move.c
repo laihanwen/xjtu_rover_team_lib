@@ -5,6 +5,7 @@
 
 #include "Move.h"
 #include "AuvGripper.h"
+#include "AuvCameraServo.h"
 #include "RC.h"
 
 float RCStep;
@@ -141,6 +142,7 @@ void RCWrench_Calc(VectorWrenchCommand *command, const uint8_t *RC)
 void RCServo_Calc(uint8_t *RC)
 {
     AuvGripper_CommandRemote(RC[SA], (RC[SB] == 1U) ? 1U : 0U, 1U);
+    AuvCameraServo_CommandRemote(RC[SA], (RC[SB] == 0U) ? 1U : 0U, 1U);
 }
 
 int Servo_Limit(int a)

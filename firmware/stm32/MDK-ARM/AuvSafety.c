@@ -25,6 +25,7 @@ void AuvSafety_Init(uint32_t now_ms)
 {
     safety.state = AUV_SAFETY_DISARMED;
     safety.last_heartbeat_ms = now_ms;
+    safety.boot_ms = now_ms;
     safety.heartbeat_seen = 0U;
     safety.leak_detected = 0U;
     safety.kill_active = 0U;
@@ -54,6 +55,7 @@ AuvArmResult AuvSafety_RequestArm(uint8_t arm, uint32_t now_ms)
         return AUV_ARM_ACCEPTED;
     }
     if ((safety.state != AUV_SAFETY_DISARMED) ||
+        ((uint32_t)(now_ms - safety.boot_ms) < AUV_ARM_STARTUP_INHIBIT_MS) ||
         (InputsSafe() == 0U) || (HeartbeatFresh(now_ms) == 0U))
         return AUV_ARM_UNSAFE;
     safety.state = AUV_SAFETY_ARMED;

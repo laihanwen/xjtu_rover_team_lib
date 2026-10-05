@@ -266,7 +266,19 @@ ARM 周期控制源锁定，不在运行中静默切换。
 
 详细安全步骤见 `docs/testing/p13-gripper.md`。
 
-## 11. 实机安装后的必做检查
+## 11. 摄像头俯仰舵机
+
+从“八推矢量_代码开发_可改_摄像”参考工程确认的信号通道为 `PC7/TIM8_CH2`，当前
+`Copy_cup.ioc` 也配置为该通道。参考工程给出的候选范围是 CCR `2250..3000`，但该数值
+尚未在当前摄像头连杆上完成机械端点验证，因此 `AuvCameraServoConfig.h` 默认设置
+`AUV_CAMERA_SERVO_CALIBRATED=0`。此状态下不启动 TIM8_CH2 PWM，Pi 和遥控转动命令均被拒绝。
+
+完成断开推进器电源的实机标定后，才能修改最小/最大/启动 CCR 并启用标定门。运行时每个
+10 ms 控制周期最多变化 `AUV_CAMERA_SERVO_SLEW_PER_TICK`，DISARM 会立即冻结当前位置。
+遥控状态下 `SB=0` 使用 SA 调节摄像头，`SB=1` 仍控制夹爪；Pi 使用执行器 ID `2`，并且
+仍须满足 ARMED、Pi 控制源锁定和递增命令序号。
+
+## 12. 实机安装后的必做检查
 
 1. 拆除或隔离其他推进器，每次只以低功率驱动一台。
 2. 核对实机编号与第 5 节的 PWM 通道。
@@ -276,7 +288,7 @@ ARM 周期控制源锁定，不在运行中静默切换。
 
 本版只适用于安装位置 `(±180,±120,±58) mm` 与第 4 节所列尾流方向同时成立的情况。若实际位置、重心或尾流角度改变，应根据最终实测的 `r_i` 与 `d_i` 重新生成配置矩阵、伪逆和经典匹配增益。
 
-## 12. 参考资料
+## 13. 参考资料
 
 - Gao et al., *Model Predictive Control for an Autonomous Underwater Robot with Fully Vectored Propulsion*, ICRA 2024, DOI `10.1109/ICRA57147.2024.10611025`。
 - Gao et al., *Design, Modeling, and MPC-Based Control of a Fully Vectored Propulsion Underwater Robot*, Drones, 2026: <https://www.mdpi.com/2504-446X/10/2/103>

@@ -8,6 +8,7 @@
 #include "AuvProtocol.h"
 #include "AuvGripper.h"
 #include "AuvGripperConfig.h"
+#include "AuvCameraServo.h"
 #include "AuvControlSource.h"
 #include "AuvSafety.h"
 #include "AuvMotionTarget.h"
@@ -82,9 +83,21 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
     } else if (frame->message_type == AUV_MSG_ACTUATOR_COMMAND) {
         uint32_t sequence = (frame->payload_length >= 4U)
             ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
-        AuvArmResult result = AuvGripper_Accept(
-            frame->payload, frame->payload_length, AuvSafety_IsArmed(),
-            (AuvControlSource_GetActive() == AUV_CONTROL_SOURCE_PI) ? 1U : 0U);
+        AuvArmResult result = AUV_ARM_MALFORMED;
+        const uint8_t pi_authorized =
+            (AuvControlSource_GetActive() == AUV_CONTROL_SOURCE_PI) ? 1U : 0U;
+        if (frame->payload_length == 9U) {
+            if (frame->payload[4] == AUV_GRIPPER_ACTUATOR_ID)
+                result = AuvGripper_Accept(frame->payload, frame->payload_length,
+                                           AuvSafety_IsArmed(), pi_authorized);
+            else if (frame->payload[4] == AUV_CAMERA_SERVO_ACTUATOR_ID)
+                result = AuvCameraServo_Accept(frame->payload,
+                                               frame->payload_length,
+                                               AuvSafety_IsArmed(),
+                                               pi_authorized);
+            else
+                result = AUV_ARM_UNSUPPORTED;
+        }
         QueueAck(frame->message_type, (uint8_t)result, sequence);
     }
 }
