@@ -14,7 +14,7 @@ ctest --test-dir build-lightweight --output-on-failure
 
 原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 漏水 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
 
-复制并编辑 `runtime/config/runtime.yaml`。示例配置默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。生产环境中的相机源必须使用稳定的 `/dev/v4l/by-id/...` 符号链接。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成校准，运动仍然保持禁用状态。进程启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障或重启后自动上电或恢复运动。
+复制并编辑 `runtime/config/runtime.yaml`。示例配置为 `debug` 模式并默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。生产环境中的相机源必须使用稳定的 `/dev/v4l/by-id/...` 符号链接。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成标定，运动仍然保持禁用状态。调试模式启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障后自动恢复运动。
 
 ```sh
 ./build-lightweight/runtime/auv_runtime runtime/config/runtime.yaml
@@ -24,6 +24,16 @@ ctest --test-dir build-lightweight --output-on-failure
 ```
 
 `auvctl` 通过 `/run/auv-runtime/control.sock`（模式 `0660`）进行控制，适合通过 SSH 使用。SSH 用户必须属于 `auv` 组。执行 ARM 还需要满足额外条件：`auvctl arm --confirm SAFE_TO_ARM`，并且必须具备新鲜且安全的 STM32 STATUS、VISIT_CONES、已校准的运动配置，以及显式启用的运动控制。`pause`、`abort`、`disarm` 和故障条件都会撤销运动并请求 DISARM。若 Linux 异常退出，STM32 心跳丢失仍然是最终的安全屏障。
+
+## 自主模式
+
+完成相机、控制方向、速度限制和真实 STM32 安全验收后，比赛配置可以设置 `operation.mode: autonomous`、`auto_start: true` 和 `auto_arm: true`。自主模式会先保持 DISARM，等待启动延时，并要求相机采集、视觉处理与安全 STM32 STATUS 在 `startup_stable_sec` 内持续新鲜，然后自动启动 Mission；进入 `VISIT_CONES` 且完整 ARM 安全门仍满足时，才自动发送一次 ARM 请求。自主模式拒绝远程 `start`、`arm`、`pause`、`resume`、`abort` 和 `reset`，只保留只读 `status` 与紧急 `disarm`。紧急 DISARM 会把任务锁定到 FAULT。
+
+STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超过 `safety.control_watchdog_timeout_sec` 未完成一次周期，即使串口线程仍存活，也会停止heartbeat、请求DISARM并等待STM32自身的heartbeat failsafe生效。这避免“通信线程健康但控制决策已经卡死”时维持危险输出。
+
+每次系统上电最多允许一次自主任务启动。首次自动 START 会建立 `/run/auv-runtime/control.sock.autonomous-started` 锁存；服务崩溃或被 systemd 重启后不会再次自动开始或 ARM。锁存只在整机重启后清除。不要手工删除锁存来绕过现场安全流程。
+
+自主模式不会降低任何运动标定要求，且 `auto_arm: true` 必须同时启用经过标定的运动配置。仓库默认配置始终保持调试模式和运动禁用。
 
 网页地址为 `http://192.168.137.201:8080/`，它是只读页面。`hls.js` 已本地打包。视频采用 FFmpeg 的 `h264_v4l2m2m` 编码，分辨率为 640×480，20 fps，码率 2 Mbit/s，HLS 分段长度为 0.5 s。若编码失败，状态会报告视频降级。软件编码 `libx264` 需要开启 `video.software_fallback_enabled: true`，或者显式修改 `video.encoder: libx264`。若构建时缺少 cpp-httplib，或网络地址不可用，HTTP 也会被降级处理。上述任一失败都不会中断任务控制。NDJSON 会记录带时间戳的事件、路径和周期性状态，并按大小或日期自动轮转。已完成的网格调试帧保存在 `logging.debug_dir`。
 

@@ -18,6 +18,7 @@
 #include <deque>
 #include <array>
 #include <chrono>
+#include <cerrno>
 #include <cmath>
 #include <csignal>
 #include <cstring>
@@ -53,11 +54,14 @@ static std::string json_escape(const std::string& s) {
 }
 struct Config {
   std::string camera, serial, socket, log, debug_dir;
+  std::string operation_mode{"debug"};
+  bool auto_start{}, auto_arm{};
+  double startup_delay{5.0}, startup_timeout{30.0}, startup_stable{1.0};
   int camera_width{640}, camera_height{480};
   double camera_fps{30.0};
   std::string camera_pixel_format{"MJPG"}, apriltag_family{"tag36h11"};
   int baud{}, expected_cones{4};
-  double status_timeout{0.5}, frame_timeout{0.5}, pose_timeout{0.5};
+  double status_timeout{0.5}, frame_timeout{0.5}, pose_timeout{0.5}, control_watchdog_timeout{0.25};
   bool motion_enabled{}, directions_calibrated{}, limits_calibrated{};
   auv_control::RouteExecutorConfig route;
   auv_mapping::GridMapperConfig grid;
@@ -83,6 +87,12 @@ static Config load_config(const std::string& path) {
   c.serial = y["serial"]["device"].as<std::string>();
   c.baud = y["serial"]["baud"].as<int>();
   c.socket = y["control"]["socket"].as<std::string>();
+  c.operation_mode = y["operation"]["mode"].as<std::string>();
+  c.auto_start = y["operation"]["auto_start"].as<bool>();
+  c.auto_arm = y["operation"]["auto_arm"].as<bool>();
+  c.startup_delay = y["operation"]["startup_delay_sec"].as<double>();
+  c.startup_timeout = y["operation"]["startup_timeout_sec"].as<double>();
+  c.startup_stable = y["operation"]["startup_stable_sec"].as<double>();
   c.log = y["logging"]["events"].as<std::string>();
   c.debug_dir = y["logging"]["debug_dir"].as<std::string>();
   c.expected_cones = y["vision"]["expected_cones"].as<int>();
@@ -98,6 +108,7 @@ static Config load_config(const std::string& path) {
   c.status_timeout = y["safety"]["status_timeout_sec"].as<double>();
   c.frame_timeout = y["safety"]["frame_timeout_sec"].as<double>();
   c.pose_timeout = y["safety"]["pose_timeout_sec"].as<double>();
+  c.control_watchdog_timeout = y["safety"]["control_watchdog_timeout_sec"].as<double>();
   c.motion_enabled = y["motion"]["motion_commands_enabled"].as<bool>();
   c.directions_calibrated = y["motion"]["directions_calibrated"].as<bool>();
   c.limits_calibrated = y["motion"]["limits_calibrated"].as<bool>();
@@ -137,9 +148,20 @@ static Config load_config(const std::string& path) {
       c.camera_pixel_format.size() != 4 || c.grid.stable_frames <= 0 ||
       c.cone.minimum_confidence <= 0 || c.cone.minimum_confidence > 1 ||
       c.baud <= 0 || c.expected_cones < 1 || c.expected_cones > 9 || c.status_timeout <= 0 ||
-      c.frame_timeout <= 0 || c.pose_timeout <= 0 || c.socket.empty() ||
-      c.log.empty() || c.debug_dir.empty())
+      c.frame_timeout <= 0 || c.pose_timeout <= 0 || c.control_watchdog_timeout <= 0 ||
+      c.control_watchdog_timeout >= c.status_timeout || c.socket.empty() ||
+      c.log.empty() || c.debug_dir.empty() || c.startup_delay < 0 ||
+      c.startup_timeout <= c.startup_delay || c.startup_stable <= 0 ||
+      c.startup_stable >= c.startup_timeout-c.startup_delay)
     throw std::runtime_error("invalid runtime configuration");
+  if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
+    throw std::runtime_error("operation.mode must be debug or autonomous");
+  if (c.operation_mode == "debug" && (c.auto_start || c.auto_arm))
+    throw std::runtime_error("automatic operation is only valid in autonomous mode");
+  if (c.operation_mode == "autonomous" && !c.auto_start)
+    throw std::runtime_error("autonomous mode requires auto_start");
+  if (c.auto_arm && !c.motion_enabled)
+    throw std::runtime_error("auto_arm requires motion_commands_enabled");
   in_addr web_addr{};
   const bool web_ip_valid = ::inet_pton(AF_INET,c.web_bind.c_str(),&web_addr) == 1;
   const auto web_ip = ntohl(web_addr.s_addr);
@@ -188,7 +210,7 @@ class Runtime {
   }
   void run() {
     std::signal(SIGINT, stop_signal); std::signal(SIGTERM, stop_signal); std::signal(SIGPIPE,SIG_IGN);
-    event("BOOT", "DISARM");
+    event("BOOT", "mode=" + cfg_.operation_mode + " DISARM");
     std::thread logger(&Runtime::logger_loop, this);
     std::thread capture(&Runtime::capture_loop, this);
     std::thread vision(&Runtime::vision_loop, this);
@@ -280,6 +302,34 @@ class Runtime {
   bool safe_status(double now) const {
     return serial_connected_ && status_fresh(now) && !status_.leak_detected &&
       status_.error_flags == 0 && status_.telemetry_valid;
+  }
+  bool arm_gate_ready(double now) const {
+    return cfg_.motion_enabled && cfg_.directions_calibrated && cfg_.limits_calibrated &&
+      !cfg_.serial.empty() && fault_.empty() && safe_status(now) && !status_.armed &&
+      pose_valid_ && now-pose_time_ <= cfg_.pose_timeout &&
+      frame_time_ > 0 && now-frame_time_ <= cfg_.frame_timeout && map_.complete && route_ready_ &&
+      mission_.snapshot().phase == auv_mission::MissionPhase::kVisitCones;
+  }
+  void request_arm_locked(const std::string& source) {
+    hold_depth_=status_.depth; hold_yaw_=status_.yaw;
+    armed_requested_ = true; arm_ack_ = false; arm_pending_ = true; arm_time_=0;
+    event("ARM_REQUEST", source);
+  }
+  bool claim_autonomous_run_locked() {
+    const auto latch = cfg_.socket + ".autonomous-started";
+    const int fd = ::open(latch.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0640);
+    if (fd >= 0) {
+      const auto stamp = std::to_string(static_cast<std::uint64_t>(seconds()*1000));
+      const auto ignored = ::write(fd,stamp.data(),stamp.size());
+      (void)ignored;
+      ::close(fd);
+      event("AUTONOMOUS_LATCH",latch);
+      return true;
+    }
+    if (errno == EEXIST) set_fault_locked("autonomous mission already started since boot");
+    else set_fault_locked("cannot create autonomous start latch");
+    disarm_pending_ = true;
+    return false;
   }
   void capture_loop() {
     auto source_name = cfg_.camera.rfind("file:", 0) == 0 ? cfg_.camera.substr(5) : cfg_.camera;
@@ -406,8 +456,14 @@ class Runtime {
         auv_stm32_bridge::MotionTarget motion, neutral;
         bool send_motion = false, send_disarm = false, send_neutral = false,
           send_arm_request = false, reconnect = false;
+        bool control_healthy = false;
         {
           std::lock_guard<std::mutex> lock(state_mutex_);
+          control_healthy = now-last_control_time_.load() <= cfg_.control_watchdog_timeout;
+          if (!control_healthy) {
+            set_fault_locked("control loop watchdog timeout");
+            armed_requested_=false; disarm_pending_=true; motion_={};
+          }
           if (serial_connected_ && !status_fresh(now)) {
             set_fault_locked("STM32 STATUS timeout"); armed_requested_ = false; disarm_pending_ = true; motion_ = {};
             if (now-status_time_ > 2*cfg_.status_timeout) { serial_connected_=false; reconnect=true; }
@@ -427,11 +483,13 @@ class Runtime {
             mission_.snapshot().phase == auv_mission::MissionPhase::kVisitCones && fault_.empty();
           motion = send_motion ? motion_ : auv_stm32_bridge::MotionTarget{};
         }
-        std::array<std::uint8_t,8> heartbeat{};
-        auv_protocol_write_u32_le(heartbeat.data(),++sequence_);
-        auv_protocol_write_u32_le(heartbeat.data()+4,static_cast<std::uint32_t>(now*1000));
-        send_frame(AUV_PROTOCOL_MSG_HEARTBEAT,heartbeat.data(),heartbeat.size());
-        ++heartbeat_count_;
+        if (control_healthy) {
+          std::array<std::uint8_t,8> heartbeat{};
+          auv_protocol_write_u32_le(heartbeat.data(),++sequence_);
+          auv_protocol_write_u32_le(heartbeat.data()+4,static_cast<std::uint32_t>(now*1000));
+          send_frame(AUV_PROTOCOL_MSG_HEARTBEAT,heartbeat.data(),heartbeat.size());
+          ++heartbeat_count_;
+        }
         if (send_disarm) {
           if (send_neutral) {
             const auto p=auv_stm32_bridge::encode_motion_target_payload(++sequence_,neutral);
@@ -485,6 +543,27 @@ class Runtime {
           next=Clock::now();
         } else missed_deadlines=0;
         auto phase = mission_.snapshot().phase;
+        if (cfg_.auto_start && !autonomous_start_attempted_ && phase == auv_mission::MissionPhase::kInit) {
+          const bool startup_ready = safe_status(now) && frame_time_ > 0 &&
+            now-frame_time_ <= cfg_.frame_timeout && processed_time_ > 0 &&
+            now-processed_time_ <= cfg_.frame_timeout;
+          if (startup_ready) {
+            if (startup_ready_since_ <= 0) startup_ready_since_=now;
+          } else startup_ready_since_=0;
+          if (now-boot_time_ >= cfg_.startup_delay && startup_ready_since_ > 0 &&
+              now-startup_ready_since_ >= cfg_.startup_stable) {
+            autonomous_start_attempted_ = true;
+            if (claim_autonomous_run_locked()) {
+              const auto result = mission_.command(auv_mission::MissionCommand::kStart,now);
+              event("AUTO_START",result.message);
+              phase = mission_.snapshot().phase;
+            }
+          } else if (now-boot_time_ > cfg_.startup_timeout) {
+            autonomous_start_attempted_ = true;
+            set_fault_locked("autonomous startup readiness timeout");
+            disarm_pending_ = true;
+          }
+        }
         if (phase != auv_mission::MissionPhase::kInit && phase != auv_mission::MissionPhase::kComplete &&
             phase != auv_mission::MissionPhase::kFault && phase != auv_mission::MissionPhase::kAborted) {
           if (!safe_status(now)) {
@@ -523,6 +602,17 @@ class Runtime {
         if (fault_.empty()) mission_.tick(now);
         else mission_.force_fault(fault_,now);
         phase = mission_.snapshot().phase;
+        if (cfg_.auto_arm && !autonomous_arm_attempted_ &&
+            phase == auv_mission::MissionPhase::kVisitCones) {
+          autonomous_arm_attempted_ = true;
+          if (arm_gate_ready(now)) request_arm_locked("autonomous");
+          else {
+            set_fault_locked("autonomous ARM safety gate rejected");
+            armed_requested_ = false; disarm_pending_ = true;
+            mission_.force_fault(fault_,now);
+            phase = mission_.snapshot().phase;
+          }
+        }
         if (!fault_.empty() || phase == auv_mission::MissionPhase::kFault) {
           armed_requested_ = false; disarm_pending_ = true; motion_ = {};
         } else {
@@ -558,6 +648,7 @@ class Runtime {
           event("STATE",detail.str());
         }
         if (snapshot.phase == auv_mission::MissionPhase::kComplete) { armed_requested_ = false; disarm_pending_ = true; }
+        last_control_time_=seconds();
       }
       std::this_thread::sleep_until(next);
     }
@@ -571,7 +662,10 @@ class Runtime {
       std::sort(latency.begin(),latency.end());
       double p99=latency.empty() ? -1.0 : latency[static_cast<std::size_t>(0.99*(latency.size()-1))];
       s << "{\"phase\":\"" << auv_mission::mission_phase_name(mission_.snapshot().phase)
-        << "\",\"serial\":" << (serial_connected_ ? "true":"false")
+        << "\",\"operation_mode\":\"" << cfg_.operation_mode
+        << "\",\"auto_start\":" << (cfg_.auto_start ? "true":"false")
+        << ",\"auto_arm\":" << (cfg_.auto_arm ? "true":"false")
+        << ",\"serial\":" << (serial_connected_ ? "true":"false")
         << ",\"armed\":" << (status_.armed ? "true":"false")
         << ",\"motion_enabled\":" << (cfg_.motion_enabled ? "true":"false")
         << ",\"leak\":" << (status_.leak_detected ? "true":"false")
@@ -582,6 +676,7 @@ class Runtime {
         << ",\"vision_hz\":" << vision_hz_
         << ",\"vision_latency_p99_ms\":" << p99
         << ",\"control_ticks\":" << control_ticks_
+        << ",\"control_age_sec\":" << now-last_control_time_.load()
         << ",\"heartbeats\":" << heartbeat_count_.load()
         << ",\"vision_age_sec\":" << (processed_time_ ? now-processed_time_ : -1)
         << ",\"grid_complete\":" << (map_.complete ? "true":"false")
@@ -611,6 +706,10 @@ class Runtime {
         << "\",\"fault\":\"" << json_escape(fault_) << "\"}\n";
       return s.str();
     }
+    if (cfg_.operation_mode == "autonomous" && cmd != "status" && cmd != "disarm") {
+      event("COMMAND_REJECTED",cmd+": autonomous mode");
+      return "ERR operator command disabled in autonomous mode\n";
+    }
     if (cmd == "disarm" || cmd == "abort" || cmd == "pause" || cmd == "reset") {
       armed_requested_ = false; arm_ack_ = false; arm_pending_ = false;
       arm_time_=0;
@@ -618,17 +717,19 @@ class Runtime {
     }
     if (cmd == "arm SAFE_TO_ARM") {
       if (!cfg_.motion_enabled || !cfg_.directions_calibrated || !cfg_.limits_calibrated || cfg_.serial.empty()) return "ERR motion configuration disabled or uncalibrated\n";
-      if (!fault_.empty() || !safe_status(now) || status_.armed ||
-          !pose_valid_ || now-pose_time_ > cfg_.pose_timeout ||
-          now-frame_time_ > cfg_.frame_timeout || !map_.complete || !route_ready_ ||
-          mission_.snapshot().phase != auv_mission::MissionPhase::kVisitCones)
+      if (!arm_gate_ready(now))
         return "ERR ARM safety gate rejected\n";
-      hold_depth_=status_.depth; hold_yaw_=status_.yaw;
-      armed_requested_ = true; arm_ack_ = false; arm_pending_ = true; arm_time_=0;
-      event("ARM_REQUEST", "operator"); return "OK ARM requested\n";
+      request_arm_locked("operator"); return "OK ARM requested\n";
     }
     if (cmd == "arm") return "ERR use arm --confirm SAFE_TO_ARM\n";
-    if (cmd == "disarm") { event("DISARM", "operator"); return "OK DISARM requested\n"; }
+    if (cmd == "disarm") {
+      event("DISARM", "operator");
+      if (cfg_.operation_mode == "autonomous") {
+        set_fault_locked("emergency DISARM requested");
+        mission_.force_fault(fault_,now);
+      }
+      return "OK DISARM requested\n";
+    }
     std::optional<auv_mission::MissionCommand> c;
     if (cmd == "start") c = auv_mission::MissionCommand::kStart;
     if (cmd == "pause") c = auv_mission::MissionCommand::kPause;
@@ -761,7 +862,14 @@ class Runtime {
       char b[128]{}; const auto n = ::read(peer,b,sizeof(b)-1);
       if (n > 0) { std::string request(b,static_cast<std::size_t>(n));
         request.erase(request.find_last_not_of("\r\n ")+1);
-        const auto answer = command(request); ::write(peer,answer.data(),answer.size()); }
+        const auto answer = command(request);
+        std::size_t offset=0;
+        while (offset < answer.size()) {
+          const auto written=::write(peer,answer.data()+offset,answer.size()-offset);
+          if (written <= 0) break;
+          offset+=static_cast<std::size_t>(written);
+        }
+      }
       ::close(peer);
     }
     ::close(fd); ::unlink(cfg_.socket.c_str());
@@ -795,9 +903,13 @@ class Runtime {
   auv_stm32_bridge::SerialPort serial_;
   std::uint32_t sequence_{},arm_sequence_{},map_revision_{};
   double arm_time_{};
+  double boot_time_{seconds()};
+  double startup_ready_since_{};
+  std::atomic<double> last_control_time_{seconds()};
   float hold_depth_{},hold_yaw_{};
   std::size_t waypoint_index_{};
   bool tag_found_{},pose_valid_{},route_ready_{},all_visited_{},serial_connected_{},armed_requested_{},arm_ack_{},arm_pending_{},disarm_pending_{true};
+  bool autonomous_start_attempted_{},autonomous_arm_attempted_{};
   float row_{},col_{};
   std::string fault_,video_detail_,web_detail_;
   bool running_video_{true};

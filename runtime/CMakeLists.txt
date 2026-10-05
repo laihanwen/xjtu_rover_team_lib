@@ -37,5 +37,10 @@ if(BUILD_TESTING)
         $<TARGET_FILE:auv_runtime>)
     set_tests_properties(arm_simulation PROPERTIES
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 20)
+    add_test(NAME autonomous_simulation
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/arm_simulation.py
+        $<TARGET_FILE:auv_runtime> autonomous)
+    set_tests_properties(autonomous_simulation PROPERTIES
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 20)
   endif()
 endif()

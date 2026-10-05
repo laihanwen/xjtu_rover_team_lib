@@ -12,6 +12,14 @@ serial:
   baud: 115200
 control:
   socket: /run/auv-runtime/control.sock
+operation:
+  # debug requires explicit auvctl commands. autonomous starts without an operator.
+  mode: debug
+  auto_start: false
+  auto_arm: false
+  startup_delay_sec: 5.0
+  startup_timeout_sec: 30.0
+  startup_stable_sec: 1.0
 vision:
   expected_cones: 4
   apriltag_family: tag36h11
@@ -34,6 +42,7 @@ safety:
   status_timeout_sec: 0.5
   frame_timeout_sec: 0.5
   pose_timeout_sec: 0.5
+  control_watchdog_timeout_sec: 0.25
 motion:
   motion_commands_enabled: false
   directions_calibrated: false
