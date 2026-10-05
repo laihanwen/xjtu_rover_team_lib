@@ -63,3 +63,11 @@ add_executable(test_auv_camera_servo
 target_include_directories(test_auv_camera_servo PRIVATE ../MDK-ARM)
 target_compile_options(test_auv_camera_servo PRIVATE -Wall -Wextra -Werror -pedantic)
 add_test(NAME auv_camera_servo COMMAND test_auv_camera_servo)
+
+add_executable(test_auv_depth
+    test_auv_depth.c
+    ../MDK-ARM/AuvDepth.c
+)
+target_include_directories(test_auv_depth PRIVATE ../MDK-ARM)
+target_compile_options(test_auv_depth PRIVATE -Wall -Wextra -Werror -pedantic)
+add_test(NAME auv_depth COMMAND test_auv_depth)

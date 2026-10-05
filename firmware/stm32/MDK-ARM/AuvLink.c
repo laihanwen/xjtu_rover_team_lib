@@ -9,6 +9,7 @@
 #include "AuvGripper.h"
 #include "AuvGripperConfig.h"
 #include "AuvCameraServo.h"
+#include "AuvDepth.h"
 #include "AuvControlSource.h"
 #include "AuvSafety.h"
 #include "AuvMotionTarget.h"
@@ -25,6 +26,7 @@
 #define AUV_IMU_PERIOD_MS           20U
 #define AUV_DEPTH_PERIOD_MS         100U
 #define AUV_ACTUATOR_PERIOD_MS      100U
+#define AUV_IMU_TIMEOUT_MS          250U
 #define AUV_DEGREES_TO_RADIANS      0.01745329251994329577f
 #define AUV_QUIET_NAN_BITS          0x7FC00000UL
 #define AUV_ERROR_HEARTBEAT_TIMEOUT (1UL << 0)
@@ -46,6 +48,11 @@ static uint32_t last_actuator_ms;
 static uint32_t last_imu_sequence;
 static uint32_t depth_sequence;
 static uint32_t actuator_sequence;
+static uint32_t last_imu_update_ms;
+static uint8_t external_safety_seen;
+static uint8_t external_leak_detected;
+static uint8_t external_kill_active;
+static uint8_t external_sensors_valid;
 
 static UART_HandleTypeDef *LinkUart(void)
 {
@@ -138,6 +145,11 @@ static void SendStatus(uint32_t now_ms)
     float thruster_outputs[VECTOR_THRUSTER_COUNT];
     uint8_t state_flags = 0U;
     uint32_t error_flags = 0U;
+    AuvDepthSample depth;
+    FLOAT_Angle angle;
+    const uint8_t depth_fresh = AuvDepth_CopyFresh(now_ms, &depth);
+    const uint8_t imu_fresh = (last_imu_sequence != 0U) &&
+        ((uint32_t)(now_ms - last_imu_update_ms) <= AUV_IMU_TIMEOUT_MS);
 
     if (context->state == AUV_SAFETY_ARMED) state_flags |= 1U << 0;
     if (context->leak_detected != 0U) state_flags |= 1U << 1;
@@ -153,7 +165,22 @@ static void SendStatus(uint32_t now_ms)
     payload[4] = state_flags;
     AuvProtocol_WriteU32Le(&payload[5], error_flags);
     AuvProtocol_WriteU32Le(&payload[9], AUV_QUIET_NAN_BITS);  /* voltage unavailable */
-    AuvProtocol_WriteU32Le(&payload[13], AUV_QUIET_NAN_BITS); /* depth unavailable */
+    if (depth_fresh != 0U)
+        AuvProtocol_WriteF32Le(&payload[13], depth.depth_m);
+    else
+        AuvProtocol_WriteU32Le(&payload[13], AUV_QUIET_NAN_BITS);
+    if (imu_fresh != 0U) {
+        __disable_irq();
+        angle = Angle_Measure;
+        __enable_irq();
+        AuvProtocol_WriteF32Le(&payload[17], angle.rol * AUV_DEGREES_TO_RADIANS);
+        AuvProtocol_WriteF32Le(&payload[21], angle.pit * AUV_DEGREES_TO_RADIANS);
+        AuvProtocol_WriteF32Le(&payload[25], angle.yaw * AUV_DEGREES_TO_RADIANS);
+    } else {
+        AuvProtocol_WriteU32Le(&payload[17], AUV_QUIET_NAN_BITS);
+        AuvProtocol_WriteU32Le(&payload[21], AUV_QUIET_NAN_BITS);
+        AuvProtocol_WriteU32Le(&payload[25], AUV_QUIET_NAN_BITS);
+    }
     Mate_GetThrusterOutputs(thruster_outputs);
     payload[29] = VECTOR_THRUSTER_COUNT;
     for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; ++i) {
@@ -179,6 +206,7 @@ static void SendImu(void)
     __enable_irq();
     if (sequence == last_imu_sequence) return;
     last_imu_sequence = sequence;
+    last_imu_update_ms = HAL_GetTick();
 
     AuvProtocol_WriteU32Le(&payload[0], sequence);
     AuvProtocol_WriteF32Le(&payload[4], angle.rol * AUV_DEGREES_TO_RADIANS);
@@ -194,12 +222,17 @@ static void SendImu(void)
     SendFrame(AUV_MSG_IMU, payload, sizeof(payload));
 }
 
-static void SendDepthUnavailable(void)
+static void SendDepth(uint32_t now_ms)
 {
     uint8_t payload[9] = {0};
+    AuvDepthSample sample;
+    const uint8_t fresh = AuvDepth_CopyFresh(now_ms, &sample);
     AuvProtocol_WriteU32Le(&payload[0], depth_sequence++);
-    AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
-    payload[8] = 0U;
+    if (fresh != 0U)
+        AuvProtocol_WriteF32Le(&payload[4], sample.depth_m);
+    else
+        AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
+    payload[8] = fresh;
     SendFrame(AUV_MSG_DEPTH, payload, sizeof(payload));
 }
 
@@ -224,6 +257,7 @@ void AuvLink_Init(void)
     UART_HandleTypeDef *uart = LinkUart();
     AuvSafety_Init(HAL_GetTick());
     AuvMotionTarget_Init();
+    AuvDepth_Init();
     AuvProtocolParser_Init(&parser);
     ack_pending = 0U;
     status_sequence = 0U;
@@ -231,6 +265,11 @@ void AuvLink_Init(void)
     last_depth_ms = last_status_ms;
     last_imu_ms = last_status_ms;
     last_imu_sequence = imu_sample_sequence;
+    last_imu_update_ms = last_status_ms;
+    external_safety_seen = 0U;
+    external_leak_detected = 0U;
+    external_kill_active = 0U;
+    external_sensors_valid = 0U;
     depth_sequence = 0U;
     actuator_sequence = 0U;
     last_actuator_ms = last_status_ms;
@@ -271,6 +310,13 @@ void AuvLink_RxComplete(UART_HandleTypeDef *huart)
 void AuvLink_Task(void)
 {
     uint32_t now_ms = HAL_GetTick();
+    AuvDepthSample depth;
+    const uint8_t depth_fresh = AuvDepth_CopyFresh(now_ms, &depth);
+    const uint8_t imu_fresh = (last_imu_sequence != 0U) &&
+        ((uint32_t)(now_ms - last_imu_update_ms) <= AUV_IMU_TIMEOUT_MS);
+    AuvSafety_SetInputs(external_leak_detected, external_kill_active,
+        (external_safety_seen != 0U && external_sensors_valid != 0U &&
+         depth_fresh != 0U && imu_fresh != 0U) ? 1U : 0U, now_ms);
     AuvSafety_Tick(now_ms);
     SendPendingAck();
     if ((uint32_t)(now_ms - last_imu_ms) >= AUV_IMU_PERIOD_MS) {
@@ -283,7 +329,7 @@ void AuvLink_Task(void)
     }
     if ((uint32_t)(now_ms - last_depth_ms) >= AUV_DEPTH_PERIOD_MS) {
         last_depth_ms = now_ms;
-        SendDepthUnavailable();
+        SendDepth(now_ms);
     }
     if ((uint32_t)(now_ms - last_actuator_ms) >= AUV_ACTUATOR_PERIOD_MS) {
         last_actuator_ms = now_ms;
@@ -295,5 +341,18 @@ void AuvLink_SetSafetyInputs(uint8_t leak_detected,
                              uint8_t kill_active,
                              uint8_t sensors_valid)
 {
-    AuvSafety_SetInputs(leak_detected, kill_active, sensors_valid, HAL_GetTick());
+    external_leak_detected = (leak_detected != 0U) ? 1U : 0U;
+    external_kill_active = (kill_active != 0U) ? 1U : 0U;
+    external_sensors_valid = (sensors_valid != 0U) ? 1U : 0U;
+    external_safety_seen = 1U;
+}
+
+uint8_t AuvLink_UpdateDepth(float depth_m)
+{
+    return AuvDepth_Update(depth_m, HAL_GetTick());
+}
+
+void AuvLink_InvalidateDepth(void)
+{
+    AuvDepth_Invalidate(HAL_GetTick());
 }

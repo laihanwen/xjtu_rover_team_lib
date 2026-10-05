@@ -531,6 +531,16 @@
               <FilePath>.\AuvCameraServoConfig.h</FilePath>
             </File>
             <File>
+              <FileName>AuvDepth.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\AuvDepth.c</FilePath>
+            </File>
+            <File>
+              <FileName>AuvDepth.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\AuvDepth.h</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/main.c</FilePath>
