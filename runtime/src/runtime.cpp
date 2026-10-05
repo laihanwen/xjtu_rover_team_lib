@@ -12,6 +12,7 @@
 #include "auv_vision/apriltag_detector.hpp"
 #include "auv_vision/camera_source.hpp"
 #include "auv_vision/cone_detector.hpp"
+#include "rpicam_source.hpp"
 #include <yaml-cpp/yaml.h>
 #include <atomic>
 #include <algorithm>
@@ -96,6 +97,13 @@ struct Config {
   double segment_time{0.5};
   std::uint64_t max_event_bytes{10*1024*1024};
   std::vector<double> camera_matrix, distortion;
+  bool front_camera_enabled{}, front_camera_required{};
+  std::string front_camera_source{"rpicam:"};
+  int front_camera_width{640}, front_camera_height{480}, front_camera_fps{30};
+  std::string front_camera_pixel_format{"MJPG"};
+  double front_camera_ev{}, front_camera_gain{}, front_camera_brightness{0.4};
+  std::string front_camera_denoise{"cdn_fast"};
+  int front_camera_quality{50};
 };
 static Config load_config(const std::string& path) {
   const auto y = YAML::LoadFile(path);
@@ -174,8 +182,38 @@ static Config load_config(const std::string& path) {
   c.max_event_bytes = y["logging"]["max_event_bytes"].as<std::uint64_t>();
   if (y["camera"]["camera_matrix"]) c.camera_matrix = y["camera"]["camera_matrix"].as<std::vector<double>>();
   if (y["camera"]["distortion_coefficients"]) c.distortion = y["camera"]["distortion_coefficients"].as<std::vector<double>>();
+  if (const auto front = y["front_camera"]) {
+    c.front_camera_enabled = front["enabled"].as<bool>(false);
+    c.front_camera_required = front["required"].as<bool>(false);
+    c.front_camera_source = front["source"].as<std::string>("rpicam:");
+    c.front_camera_width = front["width"].as<int>(640);
+    c.front_camera_height = front["height"].as<int>(480);
+    c.front_camera_fps = front["fps"].as<int>(30);
+    c.front_camera_pixel_format = front["pixel_format"].as<std::string>("MJPG");
+    c.front_camera_ev = front["exposure_compensation"].as<double>(0.0);
+    c.front_camera_gain = front["gain"].as<double>(0.0);
+    c.front_camera_brightness = front["brightness"].as<double>(0.4);
+    c.front_camera_denoise = front["denoise"].as<std::string>("cdn_fast");
+    c.front_camera_quality = front["quality"].as<int>(50);
+  }
   if (c.camera.rfind("/dev/v4l/by-id/", 0) != 0 && c.camera.rfind("file:", 0) != 0)
     throw std::runtime_error("camera source must be /dev/v4l/by-id/... or file:...");
+  const bool front_source_valid = c.front_camera_source == "rpicam:" ||
+    c.front_camera_source.rfind("/dev/v4l/by-id/", 0) == 0 ||
+    c.front_camera_source.rfind("file:", 0) == 0;
+  if (c.front_camera_enabled && !front_source_valid)
+    throw std::runtime_error("front camera source must be rpicam:, /dev/v4l/by-id/... or file:...");
+  if (c.front_camera_required && !c.front_camera_enabled)
+    throw std::runtime_error("required front camera must be enabled");
+  if (c.mission.full_mission && !c.front_camera_required)
+    throw std::runtime_error("full mission requires front_camera.required=true");
+  if (c.front_camera_width <= 0 || c.front_camera_width > 1920 ||
+      c.front_camera_height <= 0 || c.front_camera_height > 1080 ||
+      c.front_camera_fps <= 0 || c.front_camera_fps > 120 ||
+      c.front_camera_pixel_format.size() != 4 || c.front_camera_gain < 0 ||
+      c.front_camera_brightness < -1 || c.front_camera_brightness > 1 ||
+      c.front_camera_quality < 1 || c.front_camera_quality > 100)
+    throw std::runtime_error("invalid front camera configuration");
   if (c.camera_width <= 0 || c.camera_width > 1920 || c.camera_height <= 0 ||
       c.camera_height > 1080 || c.camera_fps <= 0 || c.camera_fps > 120 ||
       c.camera_pixel_format.size() != 4 || c.grid.stable_frames <= 0 ||
@@ -249,6 +287,7 @@ class Runtime {
     event("BOOT", "mode=" + cfg_.operation_mode + " DISARM");
     std::thread logger(&Runtime::logger_loop, this);
     std::thread capture(&Runtime::capture_loop, this);
+    std::thread front_capture(&Runtime::front_capture_loop, this);
     std::thread vision(&Runtime::vision_loop, this);
     std::thread serial(&Runtime::serial_loop, this);
     std::thread control([this] {
@@ -282,7 +321,7 @@ class Runtime {
     if (auto* server=web_server_.load()) server->stop();
     web.join();
 #endif
-    capture.join(); vision.join(); control.join(); serial.join(); video.join();
+    capture.join(); front_capture.join(); vision.join(); control.join(); serial.join(); video.join();
     event("SHUTDOWN", "DISARM requested");
     log_stop_=true;
     log_cv_.notify_all(); logger.join();
@@ -342,6 +381,10 @@ class Runtime {
   bool gripper_status_fresh(double now) const {
     return gripper_time_ > 0 && now-gripper_time_ <= cfg_.actuator_status_timeout;
   }
+  bool front_camera_fresh(double now) const {
+    return !cfg_.front_camera_required ||
+      (front_frame_time_ > 0 && now-front_frame_time_ <= cfg_.frame_timeout);
+  }
   bool arm_gate_ready(double now) const {
     return cfg_.motion_enabled && cfg_.directions_calibrated && cfg_.limits_calibrated &&
       !cfg_.serial.empty() && fault_.empty() && safe_status(now) && !status_.armed &&
@@ -387,6 +430,70 @@ class Runtime {
         camera.close(); fault(std::string("camera: ")+e.what());
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
       }
+    }
+  }
+  void set_front_camera_detail(const std::string & detail) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    front_camera_detail_ = detail;
+  }
+  void publish_front_frame(cv::Mat image) {
+    const double now = seconds();
+    std::lock_guard<std::mutex> lock(front_frame_mutex_);
+    front_frame_ = std::move(image);
+    if (front_frame_time_ > 0 && now > front_frame_time_) {
+      const double instantaneous = 1.0 / (now-front_frame_time_.load());
+      front_camera_hz_ = front_camera_hz_ <= 0 ? instantaneous :
+        0.9*front_camera_hz_+0.1*instantaneous;
+    }
+    front_frame_time_ = now;
+    ++front_frame_sequence_;
+  }
+  void front_capture_loop() {
+    if (!cfg_.front_camera_enabled) return;
+    if (cfg_.front_camera_source == "rpicam:") {
+      RpicamSource camera({cfg_.front_camera_width, cfg_.front_camera_height,
+        cfg_.front_camera_fps, cfg_.front_camera_ev, cfg_.front_camera_gain,
+        cfg_.front_camera_brightness, cfg_.front_camera_denoise,
+        cfg_.front_camera_quality});
+      while (running) {
+        if (!camera.is_open() && !camera.open()) {
+          set_front_camera_detail("cannot start rpicam-vid");
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          continue;
+        }
+        cv::Mat image;
+        if (camera.read(image, 250)) {
+          publish_front_frame(std::move(image));
+          set_front_camera_detail("");
+        } else if (!camera.is_open()) {
+          set_front_camera_detail("rpicam-vid exited; retrying");
+          camera.close();
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+      }
+      camera.close();
+      return;
+    }
+    const bool file = cfg_.front_camera_source.rfind("file:", 0) == 0;
+    const auto source = file ? cfg_.front_camera_source.substr(5) : cfg_.front_camera_source;
+    auv_vision::CameraSource camera({source, cfg_.front_camera_width,
+      cfg_.front_camera_height, static_cast<double>(cfg_.front_camera_fps),
+      cfg_.front_camera_pixel_format, file});
+    while (running) {
+      if (!camera.is_open() && !camera.open()) {
+        set_front_camera_detail("cannot open front camera");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
+      }
+      cv::Mat image;
+      if (!camera.read(image)) {
+        camera.close();
+        set_front_camera_detail("front camera read failed; retrying");
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        continue;
+      }
+      publish_front_frame(std::move(image));
+      set_front_camera_detail("");
     }
   }
   void vision_loop() {
@@ -613,7 +720,8 @@ class Runtime {
         if (cfg_.auto_start && !autonomous_start_attempted_ && phase == auv_mission::MissionPhase::kInit) {
           const bool gripper_ready = !cfg_.mission.full_mission ||
             (gripper_status_fresh(now) && gripper_.calibrated && gripper_.error_flags == 0);
-          const bool startup_ready = safe_status(now) && gripper_ready && frame_time_ > 0 &&
+          const bool startup_ready = safe_status(now) && gripper_ready && front_camera_fresh(now) &&
+            frame_time_ > 0 &&
             now-frame_time_ <= cfg_.frame_timeout && processed_time_ > 0 &&
             now-processed_time_ <= cfg_.frame_timeout;
           if (startup_ready) {
@@ -641,6 +749,10 @@ class Runtime {
           if (!fault_.empty()) { armed_requested_ = false; disarm_pending_ = true; }
           if (frame_time_ <= 0 || now - frame_time_ > cfg_.frame_timeout) {
             set_fault_locked("camera frame timeout"); armed_requested_ = false; disarm_pending_ = true;
+          }
+          if (!front_camera_fresh(now)) {
+            set_fault_locked("required front camera frame timeout");
+            armed_requested_ = false; disarm_pending_ = true;
           }
           if (phase == auv_mission::MissionPhase::kVisitCones && (!pose_valid_ || now - pose_time_ > cfg_.pose_timeout)) {
             set_fault_locked("grid pose timeout"); armed_requested_ = false; disarm_pending_ = true;
@@ -770,6 +882,11 @@ class Runtime {
         << ",\"telemetry_valid\":" << (status_.telemetry_valid ? "true":"false")
         << ",\"voltage_valid\":" << (status_.voltage_valid ? "true":"false")
         << ",\"camera_age_sec\":" << (frame_time_ ? now-frame_time_ : -1)
+        << ",\"front_camera_enabled\":" << (cfg_.front_camera_enabled ? "true":"false")
+        << ",\"front_camera_required\":" << (cfg_.front_camera_required ? "true":"false")
+        << ",\"front_camera_age_sec\":" << (front_frame_time_ ? now-front_frame_time_ : -1)
+        << ",\"front_camera_frames\":" << front_frame_sequence_.load()
+        << ",\"front_camera_hz\":" << front_camera_hz_.load()
         << ",\"vision_frames\":" << processed_frames_
         << ",\"vision_hz\":" << vision_hz_
         << ",\"vision_latency_p99_ms\":" << p99
@@ -804,6 +921,7 @@ class Runtime {
         << ",\"video_degraded\":" << (video_detail_.empty() ? "false":"true")
         << ",\"log_degraded\":" << (log_degraded_ ? "true":"false")
         << ",\"video_detail\":\"" << json_escape(video_detail_)
+        << "\",\"front_camera_detail\":\"" << json_escape(front_camera_detail_)
         << "\",\"web_detail\":\"" << json_escape(web_detail_)
         << "\",\"fault\":\"" << json_escape(fault_) << "\"}\n";
       return s.str();
@@ -945,6 +1063,24 @@ class Runtime {
       if (!in) { res.status=503; return; }
       res.set_content(std::string(std::istreambuf_iterator<char>(in),{}),"application/javascript");
     });
+    server.Get("/camera/down.jpg",[this](const httplib::Request&,httplib::Response& res){
+      cv::Mat image;
+      { std::lock_guard<std::mutex> lock(frame_mutex_); image=frame_.clone(); }
+      if (image.empty()) { res.status=503; return; }
+      std::vector<std::uint8_t> jpeg;
+      if (!cv::imencode(".jpg",image,jpeg)) { res.status=500; return; }
+      res.set_content(std::string(reinterpret_cast<const char*>(jpeg.data()),jpeg.size()),"image/jpeg");
+      res.set_header("Cache-Control","no-store");
+    });
+    server.Get("/camera/front.jpg",[this](const httplib::Request&,httplib::Response& res){
+      cv::Mat image;
+      { std::lock_guard<std::mutex> lock(front_frame_mutex_); image=front_frame_.clone(); }
+      if (image.empty()) { res.status=503; return; }
+      std::vector<std::uint8_t> jpeg;
+      if (!cv::imencode(".jpg",image,jpeg)) { res.status=500; return; }
+      res.set_content(std::string(reinterpret_cast<const char*>(jpeg.data()),jpeg.size()),"image/jpeg");
+      res.set_header("Cache-Control","no-store");
+    });
     server.set_mount_point("/hls",cfg_.video_dir);
     if (!server.listen(cfg_.web_bind, cfg_.web_port) && running) {
       std::lock_guard<std::mutex> lock(state_mutex_); web_detail_="HTTP bind failed";
@@ -982,13 +1118,16 @@ class Runtime {
     ::close(fd); ::unlink(cfg_.socket.c_str());
   }
   Config cfg_;
-  std::mutex frame_mutex_,video_mutex_,state_mutex_,log_mutex_;
+  std::mutex frame_mutex_,front_frame_mutex_,video_mutex_,state_mutex_,log_mutex_;
   std::condition_variable log_cv_;
   std::deque<std::string> log_queue_;
   std::atomic<bool> log_degraded_{false};
   std::atomic<bool> log_stop_{false};
   double log_started_{seconds()};
   cv::Mat frame_; std::atomic<double> frame_time_{0}; double pose_time_{},processed_time_{},status_time_{},gripper_time_{};
+  cv::Mat front_frame_;
+  std::atomic<double> front_frame_time_{0},front_camera_hz_{0};
+  std::atomic<std::uint64_t> front_frame_sequence_{0};
   cv::Mat video_frame_;
   std::uint64_t video_sequence_{};
   double vision_hz_{};
@@ -1022,7 +1161,7 @@ class Runtime {
   bool gripper_ack_{},gripper_close_requested_{},gripper_open_requested_{},gripper_stop_requested_{};
   std::optional<auv_stm32_bridge::GripperAction> gripper_pending_;
   float row_{},col_{};
-  std::string fault_,video_detail_,web_detail_;
+  std::string fault_,video_detail_,front_camera_detail_,web_detail_;
   bool running_video_{true};
 #ifdef AUV_HAVE_HTTPLIB
   std::atomic<httplib::Server*> web_server_{nullptr};
@@ -1031,7 +1170,13 @@ class Runtime {
   std::ofstream log_;
 };
 int main(int argc,char** argv) {
-  try { if (argc != 2) { std::cerr << "usage: auv_runtime CONFIG.yaml\n"; return 2; }
+  try {
+    if (argc == 3 && std::string(argv[1]) == "--check-config") {
+      (void)load_config(argv[2]);
+      std::cout << "configuration valid\n";
+      return 0;
+    }
+    if (argc != 2) { std::cerr << "usage: auv_runtime [--check-config] CONFIG.yaml\n"; return 2; }
     Runtime(load_config(argv[1])).run(); return 0;
   } catch (const std::exception& e) { std::cerr << "auv_runtime: " << e.what() << '\n'; return 1; }
 }

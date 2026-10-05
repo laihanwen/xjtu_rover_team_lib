@@ -28,6 +28,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 | 第一次构建和启动 | [快速开始](#快速开始) |
 | 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
 | 验收任务一闭环 | [AprilTag 与交通锥遍历](docs/testing/task1-apriltag-cones.md) |
+| 部署树莓派轻量系统 | [轻量运行时](runtime/README.md) · [真机验收](runtime/deploy/TESTING.md) |
 | 查找架构、协议、网络和测试文档 | [文档中心](docs/README.md) |
 | 理解目录职责和 ROS package 边界 | [仓库布局](docs/architecture/repository-layout.md) |
 | 配置 P12 数据标注环境 | [P12 打标教程](docs/p12-annotation-guide.md) |
@@ -58,6 +59,8 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高速姿态控制、
 推力分配和最终 PWM 必须留在 STM32，不由 ROS 2 调度承担。
 树莓派轻量模式以 `auv_runtime` 运行任务一；PC 仍使用 ROS 2 Lyrical 做开发、可视化与调试。
+轻量模式已接入 USB 下视相机和 OV5647 CSI 前视相机；下视参与任务一识别，前视在任务一中
+用于健康检查和只读监看，为后续海参、转盘视觉保留独立输入。
 
 ### 关键数据流
 

@@ -6,7 +6,7 @@ reports=${AUV_REPORT_DIR:-"$HOME/auv-test-reports"}
 mkdir -p "$reports"
 
 usage() {
-  echo 'usage: run_bench.sh preflight|camera|serial|endurance|collect|fault-watch [seconds|fault-kind]' >&2
+  echo 'usage: run_bench.sh preflight|camera|serial|serial-probe|endurance|collect|fault-watch [seconds|fault-kind]' >&2
   echo 'All checks are read only. START, ARM and hardware fault injection remain manual.' >&2
   exit 2
 }
@@ -23,6 +23,11 @@ case "$stage" in
     duration=${1:-15}
     [ "$#" -le 1 ] || usage
     exec python3 "$root/runtime/deploy/bench_checks.py" "$stage" --duration "$duration" --output-dir "$reports"
+    ;;
+  serial-probe)
+    duration=${1:-5}
+    [ "$#" -le 1 ] || usage
+    exec python3 "$root/runtime/deploy/probe_serial.py" --duration "$duration"
     ;;
   fault-watch)
     [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage

@@ -7,7 +7,23 @@ camera:
   pixel_format: MJPG
   camera_matrix: []
   distortion_coefficients: []
+# The proven Pi setup uses CSI for the front view and USB/V4L2 above for task-one down vision.
+front_camera:
+  enabled: true
+  # task_one may continue if the front camera is absent; full mission must set this true.
+  required: false
+  source: "rpicam:"
+  width: 640
+  height: 480
+  fps: 30
+  pixel_format: MJPG
+  exposure_compensation: 0.0
+  gain: 0.0
+  brightness: 0.4
+  denoise: cdn_fast
+  quality: 50
 serial:
+  # /dev/serial0 is proven on the Pi, but it must be wired to the STM32 CRC AUV link UART.
   device: ""
   baud: 115200
 control:

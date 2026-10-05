@@ -18,6 +18,8 @@
 ## 运行指南
 
 - [PC 与树莓派有线联调](wired-network.md)
+- [树莓派轻量任务一运行时](../runtime/README.md)
+- [树莓派双摄像头、串口与故障验收](../runtime/deploy/TESTING.md)
 - [P12 水下目标打标教程](p12-annotation-guide.md)
 - [新人 AI 辅助开发教程](newcomer-ai-development-guide.md)
 

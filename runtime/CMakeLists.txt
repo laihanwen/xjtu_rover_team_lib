@@ -1,5 +1,5 @@
 find_package(yaml-cpp REQUIRED)
-add_executable(auv_runtime src/runtime.cpp)
+add_executable(auv_runtime src/runtime.cpp src/rpicam_source.cpp)
 find_path(HTTPLIB_INCLUDE_DIR httplib.h HINTS ${HTTPLIB_ROOT}/usr/include)
 find_library(HTTPLIB_LIBRARY NAMES cpp-httplib
   HINTS ${HTTPLIB_ROOT}/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}

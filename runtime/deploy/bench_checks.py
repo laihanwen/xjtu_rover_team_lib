@@ -13,6 +13,7 @@ from pathlib import Path
 import socket
 import stat
 import subprocess
+import shutil
 import sys
 import time
 from urllib.error import URLError
@@ -105,9 +106,16 @@ def preflight(args, config):
     except (OSError, URLError, ValueError) as exc:
         checks.append(check("web_status", False, exc))
     camera = config.get("camera.source", "")
+    front_enabled = config.get("front_camera.enabled") == "true"
+    front_source = config.get("front_camera.source", "")
     serial = config.get("serial.device", "")
     checks.append(check("camera_device", camera.startswith("/dev/v4l/by-id/") and Path(camera).exists(),
                         camera or "not configured", required=args.strict_hardware))
+    if front_enabled:
+        front_ready = ((front_source == "rpicam:" and bool(shutil.which("rpicam-vid"))) or
+                       (front_source.startswith("/dev/v4l/by-id/") and Path(front_source).exists()))
+        checks.append(check("front_camera_source", front_ready, front_source,
+                            required=args.strict_hardware or config.get("front_camera.required") == "true"))
     checks.append(check("serial_device", bool(serial) and Path(serial).exists(),
                         serial or "not configured", required=args.strict_hardware))
     return checks, {"status": status, "camera_device": camera, "serial_device": serial}
@@ -138,6 +146,26 @@ def camera_check(args, config):
         check("video_pipeline", not last.get("video_degraded") and not last.get("web_detail"),
               last.get("video_detail") or last.get("web_detail") or "healthy"),
     ])
+    if config.get("front_camera.enabled") == "true":
+        front_hz = (last.get("front_camera_frames", 0) - first.get("front_camera_frames", 0)) / elapsed
+        checks.extend([
+            check("front_camera_rate", front_hz >= args.min_front_camera_hz,
+                  f"{front_hz:.2f} Hz"),
+            check("front_camera_fresh",
+                  all(0 <= s.get("front_camera_age_sec", -1) < args.max_frame_age
+                      for s in samples[1:]),
+                  last.get("front_camera_detail") or f"limit {args.max_frame_age}s"),
+        ])
+        try:
+            code, body, headers = http_get(args.web_url.rstrip("/") + "/camera/front.jpg")
+            content_type = headers.get("Content-Type", "")
+            checks.append(check(
+                "front_camera_snapshot",
+                code == 200 and content_type.startswith("image/jpeg") and
+                body.startswith(b"\xff\xd8") and body.endswith(b"\xff\xd9"),
+                f"HTTP {code}, {len(body)} bytes, {content_type}"))
+        except (OSError, URLError, ValueError) as exc:
+            checks.append(check("front_camera_snapshot", False, exc))
     url = args.web_url.rstrip("/") + "/hls/index.m3u8"
     try:
         code, body, _ = http_get(url)
@@ -159,7 +187,9 @@ def camera_check(args, config):
             checks.append(check("hls_segment", False, "playlist has no segment"))
     except (OSError, URLError, ValueError, UnicodeError) as exc:
         checks.append(check("hls_playlist", False, exc))
-    return checks, {"vision_hz": round(hz, 2), "start_status": first, "end_status": last}
+    return checks, {"vision_hz": round(hz, 2),
+                    "front_camera_hz": round(front_hz, 2) if config.get("front_camera.enabled") == "true" else None,
+                    "start_status": first, "end_status": last}
 
 
 def serial_check(args, config):
@@ -210,7 +240,8 @@ def fault_watch(args, _config):
 
 def collect(args, config):
     result = {"config_fields": {name: config.get(name, "") for name in
-              ("camera.source", "serial.device", "motion.motion_commands_enabled",
+              ("camera.source", "front_camera.enabled", "front_camera.source",
+               "serial.device", "motion.motion_commands_enabled",
                "video.encoder", "web.bind", "web.port")}}
     try:
         result["status"] = runtime_status(args.socket)
@@ -225,7 +256,8 @@ def collect(args, config):
     for name, command in {
         "service": ["systemctl", "status", args.service, "--no-pager", "-l"],
         "journal": ["journalctl", "-u", args.service, "-b", "--no-pager", "-n", "100"],
-        "devices": ["sh", "-c", "ls -l /dev/v4l/by-id /dev/serial/by-id 2>&1"],
+        "devices": ["sh", "-c", "ls -l /dev/v4l/by-id /dev/serial/by-id /dev/serial0 2>&1"],
+        "csi_cameras": ["rpicam-vid", "--list-cameras"],
         "temperature": ["vcgencmd", "measure_temp"],
         "throttling": ["vcgencmd", "get_throttled"],
     }.items():
@@ -249,6 +281,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, default=Path.home() / "auv-test-reports")
     parser.add_argument("--duration", type=float, default=15)
     parser.add_argument("--min-vision-hz", type=float, default=10)
+    parser.add_argument("--min-front-camera-hz", type=float, default=10)
     parser.add_argument("--min-heartbeat-hz", type=float, default=19)
     parser.add_argument("--max-frame-age", type=float, default=0.5)
     parser.add_argument("--strict-hardware", action="store_true")

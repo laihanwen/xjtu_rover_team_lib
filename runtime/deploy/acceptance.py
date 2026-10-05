@@ -123,6 +123,10 @@ def main():
             faults.append('STM32 STATUS unavailable or invalid')
         if state['camera_age_sec'] < 0 or state['camera_age_sec'] > .5:
             faults.append('camera frame stale')
+        if state.get('front_camera_required') and (
+                state.get('front_camera_age_sec', -1) < 0 or
+                state.get('front_camera_age_sec', -1) > .5):
+            faults.append('required front camera frame stale')
         if state['leak'] or state['error_flags']:
             faults.append('STM32 unsafe status')
         if state['log_degraded']:

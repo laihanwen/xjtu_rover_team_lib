@@ -11,17 +11,37 @@ runtime/deploy/run_bench.sh collect
 
 ## 摄像头和视频
 
-接入下视 USB 摄像头后，先确认 `ls -l /dev/v4l/by-id/` 有稳定路径。把该路径写入 `/etc/auv-runtime/runtime.yaml` 的 `camera.source`，配置实际标定值，然后 `sudo systemctl restart auv-runtime`。重启后仍应为 DISARM。执行：
+接入下视 USB 摄像头和前视 CSI 摄像头后，先确认 `ls -l /dev/v4l/by-id/` 有稳定的 USB
+路径，并确认 `rpicam-vid --list-cameras` 能识别 OV5647。把 USB 路径写入
+`camera.source`，前视保持 `front_camera.source: "rpicam:"`，配置实际标定值，然后
+`sudo systemctl restart auv-runtime`。重启后仍应为 DISARM。执行：
 
 ```sh
 runtime/deploy/run_bench.sh camera 30
 ```
 
-脚本检查稳定设备路径、持续帧新鲜度、视觉平均速率至少 10 Hz、HLS 播放列表和分片可访问、编码状态正常。网页地址由配置中的 `web.bind` 和 `web.port` 决定。这一步不需要启动 Mission。
+脚本检查稳定 USB 设备路径、两路帧新鲜度、两路平均速率至少 10 Hz、HLS 播放列表和
+分片可访问、编码状态正常。网页地址由配置中的 `web.bind` 和 `web.port` 决定；页面同时
+显示下视任务画面和前视 CSI 快照。这一步不需要启动 Mission。
 
 ## STM32（推进器电源断开）
 
 连接 STM32，确认 `ls -l /dev/serial/by-id/`，把稳定串口路径填到 `serial.device`。保持 `motion_commands_enabled: false` 并重启服务，随后执行：
+
+如果使用参考代码已经验证过的 `/dev/serial0` 接线，先停止服务并做只读协议探测：
+
+```sh
+sudo systemctl stop auv-runtime
+runtime/deploy/run_bench.sh serial-probe 5
+sudo systemctl start auv-runtime
+```
+
+结果必须是 `protocol: auv_crc` 才能接入自主运行时。若结果为 `legacy_a6_a7`，说明当前仍是
+旧版 PA2/PA3、USART2 遥控转发/文本遥测链路；它可以证明物理串口连通，但不能发送安全
+ARM、heartbeat 和运动目标，应改接当前固件 AUV link UART 或完成经评审的串口复用设计。
+探测器全程只读，不会向 STM32 发送任何字节。
+
+随后执行正式只读状态检查：
 
 ```sh
 runtime/deploy/run_bench.sh serial 30

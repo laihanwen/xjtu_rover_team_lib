@@ -18,6 +18,9 @@ check_pi_power() {
 check_pi_power
 sudo apt-get update
 sudo apt-get install -y cmake ninja-build g++ pkg-config libopencv-dev libyaml-cpp-dev libcpp-httplib-dev ffmpeg
+if ! command -v rpicam-vid >/dev/null 2>&1; then
+  sudo apt-get install -y rpicam-apps
+fi
 if ! getent group auv >/dev/null 2>&1; then
   sudo groupadd --system auv
 fi
@@ -44,11 +47,15 @@ sudo cmake --install build-lightweight --prefix /usr/local
 sudo install -d -m 0750 -o auv -g auv /etc/auv-runtime
 if [ "$restore_config" -eq 1 ]; then
   sudo cp "$backup_config" /etc/auv-runtime/runtime.yaml
+  if ! grep -q '^front_camera:' /etc/auv-runtime/runtime.yaml; then
+    printf '%s\n' 'WARNING: preserved runtime.yaml has no front_camera section; merge it from runtime/config/runtime.yaml before dual-camera testing.' >&2
+  fi
 else
   sudo cp /usr/local/etc/auv-runtime/runtime.yaml /etc/auv-runtime/runtime.yaml
 fi
 sudo chown root:auv /etc/auv-runtime/runtime.yaml
 sudo chmod 0640 /etc/auv-runtime/runtime.yaml
+sudo -u auv /usr/local/bin/auv_runtime --check-config /etc/auv-runtime/runtime.yaml
 sudo cp runtime/deploy/auv-runtime.service /etc/systemd/system/auv-runtime.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now auv-runtime.service
