@@ -5,6 +5,7 @@
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
+#include "auv_stm32_bridge/gripper_protocol.hpp"
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
 #include "auv_stm32_bridge/stream_parser.hpp"
@@ -52,6 +53,24 @@ static std::string json_escape(const std::string& s) {
   for (char c : s) { if (c == '"' || c == '\\') out += '\\'; if (c >= 32) out += c; }
   return out;
 }
+static bool propulsion_phase(auv_mission::MissionPhase phase) {
+  switch (phase) {
+    case auv_mission::MissionPhase::kVisitCones:
+    case auv_mission::MissionPhase::kSearchCucumber:
+    case auv_mission::MissionPhase::kAlignCucumber:
+    case auv_mission::MissionPhase::kGrab:
+    case auv_mission::MissionPhase::kTransport:
+    case auv_mission::MissionPhase::kRelease:
+    case auv_mission::MissionPhase::kSearchValve:
+    case auv_mission::MissionPhase::kAlignValve:
+    case auv_mission::MissionPhase::kRotateValve:
+    case auv_mission::MissionPhase::kReturnHome:
+    case auv_mission::MissionPhase::kSurface:
+      return true;
+    default:
+      return false;
+  }
+}
 struct Config {
   std::string camera, serial, socket, log, debug_dir;
   std::string operation_mode{"debug"};
@@ -62,12 +81,14 @@ struct Config {
   std::string camera_pixel_format{"MJPG"}, apriltag_family{"tag36h11"};
   int baud{}, expected_cones{4};
   double status_timeout{0.5}, frame_timeout{0.5}, pose_timeout{0.5}, control_watchdog_timeout{0.25};
+  double actuator_status_timeout{0.5};
   bool motion_enabled{}, directions_calibrated{}, limits_calibrated{};
   auv_control::RouteExecutorConfig route;
   auv_mapping::GridMapperConfig grid;
   auv_vision::ConeDetectorConfig cone;
   auv_vision::ConeTrackerConfig tracker;
   auv_mission::MissionFsmConfig mission;
+  std::string mission_profile{"task_one"};
   auv_planning::GridPlannerConfig planner;
   bool video_enabled{}, software_fallback{};
   std::string video_dir,video_encoder,web_bind,web_assets;
@@ -109,6 +130,7 @@ static Config load_config(const std::string& path) {
   c.frame_timeout = y["safety"]["frame_timeout_sec"].as<double>();
   c.pose_timeout = y["safety"]["pose_timeout_sec"].as<double>();
   c.control_watchdog_timeout = y["safety"]["control_watchdog_timeout_sec"].as<double>();
+  c.actuator_status_timeout = y["safety"]["actuator_status_timeout_sec"].as<double>();
   c.motion_enabled = y["motion"]["motion_commands_enabled"].as<bool>();
   c.directions_calibrated = y["motion"]["directions_calibrated"].as<bool>();
   c.limits_calibrated = y["motion"]["limits_calibrated"].as<bool>();
@@ -124,6 +146,17 @@ static Config load_config(const std::string& path) {
   c.mission.map_timeout_sec = y["mission"]["map_timeout_sec"].as<double>();
   c.mission.planning_timeout_sec = y["mission"]["planning_timeout_sec"].as<double>();
   c.mission.cone_visit_timeout_sec = y["mission"]["cone_visit_timeout_sec"].as<double>();
+  c.mission_profile = y["mission"]["profile"].as<std::string>();
+  c.mission.full_mission = c.mission_profile == "full";
+  c.mission.cucumber_search_timeout_sec = y["mission"]["cucumber_search_timeout_sec"].as<double>();
+  c.mission.cucumber_align_timeout_sec = y["mission"]["cucumber_align_timeout_sec"].as<double>();
+  c.mission.gripper_timeout_sec = y["mission"]["gripper_timeout_sec"].as<double>();
+  c.mission.transport_timeout_sec = y["mission"]["transport_timeout_sec"].as<double>();
+  c.mission.valve_search_timeout_sec = y["mission"]["valve_search_timeout_sec"].as<double>();
+  c.mission.valve_align_timeout_sec = y["mission"]["valve_align_timeout_sec"].as<double>();
+  c.mission.valve_rotate_timeout_sec = y["mission"]["valve_rotate_timeout_sec"].as<double>();
+  c.mission.return_home_timeout_sec = y["mission"]["return_home_timeout_sec"].as<double>();
+  c.mission.surface_timeout_sec = y["mission"]["surface_timeout_sec"].as<double>();
   c.mission.status_timeout_sec = c.status_timeout;
   c.mission.allow_armed_during_visit = true;
   c.video_enabled = y["video"]["enabled"].as<bool>();
@@ -149,6 +182,7 @@ static Config load_config(const std::string& path) {
       c.cone.minimum_confidence <= 0 || c.cone.minimum_confidence > 1 ||
       c.baud <= 0 || c.expected_cones < 1 || c.expected_cones > 9 || c.status_timeout <= 0 ||
       c.frame_timeout <= 0 || c.pose_timeout <= 0 || c.control_watchdog_timeout <= 0 ||
+      c.actuator_status_timeout <= 0 ||
       c.control_watchdog_timeout >= c.status_timeout || c.socket.empty() ||
       c.log.empty() || c.debug_dir.empty() || c.startup_delay < 0 ||
       c.startup_timeout <= c.startup_delay || c.startup_stable <= 0 ||
@@ -156,6 +190,8 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("invalid runtime configuration");
   if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
     throw std::runtime_error("operation.mode must be debug or autonomous");
+  if (c.mission_profile != "task_one" && c.mission_profile != "full")
+    throw std::runtime_error("mission.profile must be task_one or full");
   if (c.operation_mode == "debug" && (c.auto_start || c.auto_arm))
     throw std::runtime_error("automatic operation is only valid in autonomous mode");
   if (c.operation_mode == "autonomous" && !c.auto_start)
@@ -303,6 +339,9 @@ class Runtime {
     return serial_connected_ && status_fresh(now) && !status_.leak_detected &&
       status_.error_flags == 0 && status_.telemetry_valid;
   }
+  bool gripper_status_fresh(double now) const {
+    return gripper_time_ > 0 && now-gripper_time_ <= cfg_.actuator_status_timeout;
+  }
   bool arm_gate_ready(double now) const {
     return cfg_.motion_enabled && cfg_.directions_calibrated && cfg_.limits_calibrated &&
       !cfg_.serial.empty() && fault_.empty() && safe_status(now) && !status_.armed &&
@@ -445,11 +484,20 @@ class Runtime {
             status_ = std::move(status); status_time_ = seconds(); serial_connected_ = true;
           } else if (frame.message_type == AUV_PROTOCOL_MSG_ACK && frame.payload.size() == 6) {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            if (auv_protocol_read_u32_le(frame.payload.data()+2) == arm_sequence_ &&
-                frame.payload[0] == AUV_PROTOCOL_MSG_SET_ARMED) {
+            const auto acknowledged_sequence=auv_protocol_read_u32_le(frame.payload.data()+2);
+            if (acknowledged_sequence == arm_sequence_ && frame.payload[0] == AUV_PROTOCOL_MSG_SET_ARMED) {
               arm_ack_ = frame.payload[1] == 0;
               if (!arm_ack_) { armed_requested_ = false; disarm_pending_ = true; set_fault_locked("STM32 rejected ARM"); }
+            } else if (acknowledged_sequence == gripper_command_sequence_ &&
+                       frame.payload[0] == AUV_PROTOCOL_MSG_ACTUATOR_COMMAND) {
+              gripper_ack_=frame.payload[1] == 0;
+              if (!gripper_ack_) set_fault_locked("STM32 rejected gripper command");
             }
+          } else if (frame.message_type == AUV_PROTOCOL_MSG_ACTUATOR_STATUS) {
+            auv_stm32_bridge::GripperTelemetry telemetry;
+            if (!auv_stm32_bridge::decode_gripper_status(frame.payload,telemetry)) continue;
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            gripper_=telemetry; gripper_time_=seconds();
           }
         }
         const auto now = seconds();
@@ -457,6 +505,8 @@ class Runtime {
         bool send_motion = false, send_disarm = false, send_neutral = false,
           send_arm_request = false, reconnect = false;
         bool control_healthy = false;
+        std::optional<auv_stm32_bridge::GripperAction> gripper_command;
+        std::uint32_t gripper_sequence=0;
         {
           std::lock_guard<std::mutex> lock(state_mutex_);
           control_healthy = now-last_control_time_.load() <= cfg_.control_watchdog_timeout;
@@ -479,8 +529,18 @@ class Runtime {
             neutral.depth=status_.depth; neutral.yaw=status_.yaw;
           }
           if (arm_pending_) { send_arm_request = true; arm_pending_ = false; }
-          send_motion = cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed && safe_status(now) &&
-            mission_.snapshot().phase == auv_mission::MissionPhase::kVisitCones && fault_.empty();
+          if (gripper_pending_) {
+            gripper_command=gripper_pending_;
+            gripper_pending_.reset();
+            gripper_sequence=++sequence_;
+            gripper_command_sequence_=gripper_sequence;
+            gripper_command_time_=now;
+            gripper_ack_=false;
+          }
+          if (gripper_command_time_ > 0 && !gripper_ack_ && now-gripper_command_time_ > 0.5)
+            set_fault_locked("gripper command acknowledgement timeout");
+          send_motion = cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed &&
+            safe_status(now) && propulsion_phase(mission_.snapshot().phase) && fault_.empty();
           motion = send_motion ? motion_ : auv_stm32_bridge::MotionTarget{};
         }
         if (control_healthy) {
@@ -500,6 +560,10 @@ class Runtime {
         if (send_arm_request) {
           std::lock_guard<std::mutex> lock(state_mutex_);
           if (armed_requested_ && fault_.empty()) { arm_sequence_ = sequence_ + 1; arm_time_=seconds(); send_arm(true); }
+        }
+        if (gripper_command) {
+          const auto payload=auv_stm32_bridge::encode_gripper_command(gripper_sequence,*gripper_command);
+          send_frame(AUV_PROTOCOL_MSG_ACTUATOR_COMMAND,payload.data(),payload.size());
         }
         if (send_motion) {
           const auto p = auv_stm32_bridge::encode_motion_target_payload(++sequence_,motion);
@@ -522,6 +586,9 @@ class Runtime {
           const auto payload=auv_stm32_bridge::encode_motion_target_payload(++sequence_,neutral);
           send_frame(AUV_PROTOCOL_MSG_MOTION_TARGET,payload.data(),payload.size());
         }
+        const auto stop_payload=auv_stm32_bridge::encode_gripper_command(
+          ++sequence_,auv_stm32_bridge::GripperAction::kStop);
+        send_frame(AUV_PROTOCOL_MSG_ACTUATOR_COMMAND,stop_payload.data(),stop_payload.size());
         send_arm(false);
       }
       catch (...) {}
@@ -544,7 +611,9 @@ class Runtime {
         } else missed_deadlines=0;
         auto phase = mission_.snapshot().phase;
         if (cfg_.auto_start && !autonomous_start_attempted_ && phase == auv_mission::MissionPhase::kInit) {
-          const bool startup_ready = safe_status(now) && frame_time_ > 0 &&
+          const bool gripper_ready = !cfg_.mission.full_mission ||
+            (gripper_status_fresh(now) && gripper_.calibrated && gripper_.error_flags == 0);
+          const bool startup_ready = safe_status(now) && gripper_ready && frame_time_ > 0 &&
             now-frame_time_ <= cfg_.frame_timeout && processed_time_ > 0 &&
             now-processed_time_ <= cfg_.frame_timeout;
           if (startup_ready) {
@@ -599,9 +668,32 @@ class Runtime {
           event("PLAN",route_detail.str());
         }
         mission_.update_route(route_ready_,route_ready_,now);
+        if (gripper_status_fresh(now)) {
+          mission_.update_gripper(gripper_.state == 3U,gripper_.state == 5U,now);
+        }
         if (fault_.empty()) mission_.tick(now);
         else mission_.force_fault(fault_,now);
         phase = mission_.snapshot().phase;
+        if (phase == auv_mission::MissionPhase::kGrab && !gripper_close_requested_) {
+          if (!armed_requested_ || !status_.armed || !gripper_status_fresh(now) ||
+              !gripper_.calibrated || gripper_.error_flags != 0) {
+            set_fault_locked("gripper unavailable, uncalibrated, or faulted");
+            mission_.force_fault(fault_,now); phase=mission_.snapshot().phase;
+          } else {
+            gripper_pending_=auv_stm32_bridge::GripperAction::kClose;
+            gripper_close_requested_=true; event("GRIPPER_COMMAND","close");
+          }
+        }
+        if (phase == auv_mission::MissionPhase::kRelease && !gripper_open_requested_) {
+          if (!armed_requested_ || !status_.armed || !gripper_status_fresh(now) ||
+              !gripper_.calibrated || gripper_.error_flags != 0) {
+            set_fault_locked("gripper unavailable, uncalibrated, or faulted");
+            mission_.force_fault(fault_,now); phase=mission_.snapshot().phase;
+          } else {
+            gripper_pending_=auv_stm32_bridge::GripperAction::kOpen;
+            gripper_open_requested_=true; event("GRIPPER_COMMAND","open");
+          }
+        }
         if (cfg_.auto_arm && !autonomous_arm_attempted_ &&
             phase == auv_mission::MissionPhase::kVisitCones) {
           autonomous_arm_attempted_ = true;
@@ -615,6 +707,10 @@ class Runtime {
         }
         if (!fault_.empty() || phase == auv_mission::MissionPhase::kFault) {
           armed_requested_ = false; disarm_pending_ = true; motion_ = {};
+          if (!gripper_stop_requested_) {
+            gripper_pending_=auv_stm32_bridge::GripperAction::kStop;
+            gripper_stop_requested_=true;
+          }
         } else {
           route_.set_mission_active(phase == auv_mission::MissionPhase::kVisitCones);
           route_.set_vehicle_ready(cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed && safe_status(now));
@@ -630,6 +726,7 @@ class Runtime {
           all_visited_ = !plan_.targets.empty();
           for (const auto& t : plan_.targets) all_visited_ &= visited_[static_cast<std::size_t>(t.row*3+t.col)];
           motion_ = {};
+          if (armed_requested_) { motion_.depth=hold_depth_; motion_.yaw=hold_yaw_; }
           if (step.state == auv_control::RouteStep::State::kRunning && armed_requested_ && fault_.empty()) {
             motion_.vx = static_cast<float>(step.surge); motion_.vy = static_cast<float>(step.sway);
             motion_.depth = hold_depth_; motion_.yaw = hold_yaw_;
@@ -663,6 +760,7 @@ class Runtime {
       double p99=latency.empty() ? -1.0 : latency[static_cast<std::size_t>(0.99*(latency.size()-1))];
       s << "{\"phase\":\"" << auv_mission::mission_phase_name(mission_.snapshot().phase)
         << "\",\"operation_mode\":\"" << cfg_.operation_mode
+        << "\",\"mission_profile\":\"" << cfg_.mission_profile
         << "\",\"auto_start\":" << (cfg_.auto_start ? "true":"false")
         << ",\"auto_arm\":" << (cfg_.auto_arm ? "true":"false")
         << ",\"serial\":" << (serial_connected_ ? "true":"false")
@@ -689,6 +787,10 @@ class Runtime {
         << ",\"next_row\":" << (waypoint_index_ < plan_.path.size() ? static_cast<int>(plan_.path[waypoint_index_].row) : -1)
         << ",\"next_col\":" << (waypoint_index_ < plan_.path.size() ? static_cast<int>(plan_.path[waypoint_index_].col) : -1)
         << ",\"error_flags\":" << status_.error_flags
+        << ",\"gripper_fresh\":" << (gripper_status_fresh(now) ? "true":"false")
+        << ",\"gripper_calibrated\":" << (gripper_.calibrated ? "true":"false")
+        << ",\"gripper_state\":" << static_cast<unsigned>(gripper_.state)
+        << ",\"gripper_error_flags\":" << static_cast<unsigned>(gripper_.error_flags)
         << ",\"cells\":[";
       for (std::size_t i=0;i<map_.grid.cells.size();++i) {
         if (i) s << ',';
@@ -714,6 +816,8 @@ class Runtime {
       armed_requested_ = false; arm_ack_ = false; arm_pending_ = false;
       arm_time_=0;
       disarm_pending_ = true; motion_ = {};
+      gripper_pending_=auv_stm32_bridge::GripperAction::kStop;
+      gripper_stop_requested_=true;
     }
     if (cmd == "arm SAFE_TO_ARM") {
       if (!cfg_.motion_enabled || !cfg_.directions_calibrated || !cfg_.limits_calibrated || cfg_.serial.empty()) return "ERR motion configuration disabled or uncalibrated\n";
@@ -742,6 +846,9 @@ class Runtime {
       fault_.clear(); route_.reset(); route_ready_=false; plan_={}; map_={};
       visited_.fill(false); all_visited_=false; tag_found_=false;
       pose_valid_=false; pose_time_=0; waypoint_index_=0;
+      gripper_close_requested_=false; gripper_open_requested_=false;
+      gripper_stop_requested_=false;
+      gripper_pending_.reset(); gripper_ack_=false; gripper_command_time_=0;
       map_image_saved_=false;
     }
     event("COMMAND",cmd+": "+r.message);
@@ -881,7 +988,7 @@ class Runtime {
   std::atomic<bool> log_degraded_{false};
   std::atomic<bool> log_stop_{false};
   double log_started_{seconds()};
-  cv::Mat frame_; std::atomic<double> frame_time_{0}; double pose_time_{},processed_time_{},status_time_{};
+  cv::Mat frame_; std::atomic<double> frame_time_{0}; double pose_time_{},processed_time_{},status_time_{},gripper_time_{};
   cv::Mat video_frame_;
   std::uint64_t video_sequence_{};
   double vision_hz_{};
@@ -897,19 +1004,23 @@ class Runtime {
   auv_planning::GridPlanner planner_;
   auv_core::SemanticMap map_;
   auv_core::Stm32Status status_;
+  auv_stm32_bridge::GripperTelemetry gripper_;
   auv_planning::PlanResult plan_;
   std::array<bool,9> visited_{};
   auv_stm32_bridge::MotionTarget motion_{};
   auv_stm32_bridge::SerialPort serial_;
-  std::uint32_t sequence_{},arm_sequence_{},map_revision_{};
+  std::uint32_t sequence_{},arm_sequence_{},gripper_command_sequence_{},map_revision_{};
   double arm_time_{};
   double boot_time_{seconds()};
   double startup_ready_since_{};
+  double gripper_command_time_{};
   std::atomic<double> last_control_time_{seconds()};
   float hold_depth_{},hold_yaw_{};
   std::size_t waypoint_index_{};
   bool tag_found_{},pose_valid_{},route_ready_{},all_visited_{},serial_connected_{},armed_requested_{},arm_ack_{},arm_pending_{},disarm_pending_{true};
   bool autonomous_start_attempted_{},autonomous_arm_attempted_{};
+  bool gripper_ack_{},gripper_close_requested_{},gripper_open_requested_{},gripper_stop_requested_{};
+  std::optional<auv_stm32_bridge::GripperAction> gripper_pending_;
   float row_{},col_{};
   std::string fault_,video_detail_,web_detail_;
   bool running_video_{true};

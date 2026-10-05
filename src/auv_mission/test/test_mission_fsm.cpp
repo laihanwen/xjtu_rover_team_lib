@@ -56,6 +56,73 @@ TEST(MissionFsm, RunsConeMissionToCompletion)
   EXPECT_FALSE(fsm.snapshot().faulted);
 }
 
+TEST(MissionFsm, RunsFullCompetitionMissionToCompletion)
+{
+  MissionFsmConfig config;
+  config.full_mission = true;
+  config.allow_armed_during_visit = true;
+  MissionFsm fsm(config);
+  ASSERT_TRUE(fsm.command(MissionCommand::kStart, 0.0).accepted);
+  provide_safe_status(fsm, 0.1);
+  fsm.tick(0.1);
+  fsm.update_apriltag(true, 0.2);
+  provide_safe_status(fsm, 0.2);
+  fsm.tick(0.2);
+  fsm.update_map(true, false, 0.3);
+  provide_safe_status(fsm, 0.3);
+  fsm.tick(0.3);
+  fsm.update_route(true, true, 0.4);
+  provide_safe_status(fsm, 0.4);
+  fsm.tick(0.4);
+  ASSERT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
+
+  fsm.update_map(true, true, 0.5);
+  fsm.update_status(true, true, false, 0U, 0.5);
+  fsm.tick(0.5);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSearchCucumber);
+  fsm.update_cucumber(true, false, 0.6);
+  fsm.update_status(true, true, false, 0U, 0.6);
+  fsm.tick(0.6);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kAlignCucumber);
+  fsm.update_cucumber(true, true, 0.7);
+  fsm.update_status(true, true, false, 0U, 0.7);
+  fsm.tick(0.7);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kGrab);
+  fsm.update_gripper(true, false, 0.8);
+  fsm.update_status(true, true, false, 0U, 0.8);
+  fsm.tick(0.8);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kTransport);
+  fsm.update_transport(true, 0.9);
+  fsm.update_status(true, true, false, 0U, 0.9);
+  fsm.tick(0.9);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kRelease);
+  fsm.update_gripper(false, true, 1.0);
+  fsm.update_status(true, true, false, 0U, 1.0);
+  fsm.tick(1.0);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSearchValve);
+  fsm.update_valve(true, false, false, 1.1);
+  fsm.update_status(true, true, false, 0U, 1.1);
+  fsm.tick(1.1);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kAlignValve);
+  fsm.update_valve(true, true, false, 1.2);
+  fsm.update_status(true, true, false, 0U, 1.2);
+  fsm.tick(1.2);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kRotateValve);
+  fsm.update_valve(true, true, true, 1.3);
+  fsm.update_status(true, true, false, 0U, 1.3);
+  fsm.tick(1.3);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kReturnHome);
+  fsm.update_home(true, 1.4);
+  fsm.update_status(true, true, false, 0U, 1.4);
+  fsm.tick(1.4);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSurface);
+  fsm.update_surface(true, 1.5);
+  fsm.update_status(true, true, false, 0U, 1.5);
+  fsm.tick(1.5);
+  EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kComplete);
+  EXPECT_FALSE(fsm.snapshot().faulted);
+}
+
 TEST(MissionFsm, FaultsWhenPlannerHasNoTargets)
 {
   MissionFsm fsm;

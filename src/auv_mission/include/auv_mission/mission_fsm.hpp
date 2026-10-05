@@ -29,6 +29,16 @@ enum class MissionPhase
   kBuildMap,
   kPlanCones,
   kVisitCones,
+  kSearchCucumber,
+  kAlignCucumber,
+  kGrab,
+  kTransport,
+  kRelease,
+  kSearchValve,
+  kAlignValve,
+  kRotateValve,
+  kReturnHome,
+  kSurface,
   kPaused,
   kComplete,
   kFault,
@@ -51,8 +61,18 @@ struct MissionFsmConfig
   double map_timeout_sec{30.0};
   double planning_timeout_sec{10.0};
   double cone_visit_timeout_sec{120.0};
+  double cucumber_search_timeout_sec{60.0};
+  double cucumber_align_timeout_sec{30.0};
+  double gripper_timeout_sec{15.0};
+  double transport_timeout_sec{120.0};
+  double valve_search_timeout_sec{60.0};
+  double valve_align_timeout_sec{30.0};
+  double valve_rotate_timeout_sec{30.0};
+  double return_home_timeout_sec{120.0};
+  double surface_timeout_sec{60.0};
   double status_timeout_sec{1.0};
   bool allow_armed_during_visit{false};
+  bool full_mission{false};
 };
 
 struct CommandResult
@@ -84,6 +104,12 @@ public:
   void update_apriltag(bool found, double now_sec);
   void update_map(bool complete, bool all_cones_visited, double now_sec);
   void update_route(bool valid, bool has_targets, double now_sec);
+  void update_cucumber(bool found, bool aligned, double now_sec);
+  void update_gripper(bool grabbed, bool released, double now_sec);
+  void update_transport(bool complete, double now_sec);
+  void update_valve(bool found, bool aligned, bool rotated, double now_sec);
+  void update_home(bool reached, double now_sec);
+  void update_surface(bool surfaced, double now_sec);
 
   MissionSnapshot snapshot() const;
 
@@ -101,6 +127,12 @@ private:
   double apriltag_received_sec_{-1.0};
   double map_received_sec_{-1.0};
   double route_received_sec_{-1.0};
+  double cucumber_received_sec_{-1.0};
+  double gripper_received_sec_{-1.0};
+  double transport_received_sec_{-1.0};
+  double valve_received_sec_{-1.0};
+  double home_received_sec_{-1.0};
+  double surface_received_sec_{-1.0};
   bool connected_{false};
   bool armed_{false};
   bool leak_detected_{false};
@@ -110,6 +142,16 @@ private:
   bool all_cones_visited_{false};
   bool route_valid_{false};
   bool route_has_targets_{false};
+  bool cucumber_found_{false};
+  bool cucumber_aligned_{false};
+  bool grabbed_{false};
+  bool released_{false};
+  bool transport_complete_{false};
+  bool valve_found_{false};
+  bool valve_aligned_{false};
+  bool valve_rotated_{false};
+  bool home_reached_{false};
+  bool surfaced_{false};
 };
 
 std::string mission_phase_name(MissionPhase phase);

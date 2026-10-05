@@ -35,6 +35,26 @@ std::string mission_phase_name(MissionPhase phase)
       return "PLAN_CONES";
     case MissionPhase::kVisitCones:
       return "VISIT_CONES";
+    case MissionPhase::kSearchCucumber:
+      return "SEARCH_CUCUMBER";
+    case MissionPhase::kAlignCucumber:
+      return "ALIGN_CUCUMBER";
+    case MissionPhase::kGrab:
+      return "GRAB";
+    case MissionPhase::kTransport:
+      return "TRANSPORT";
+    case MissionPhase::kRelease:
+      return "RELEASE";
+    case MissionPhase::kSearchValve:
+      return "SEARCH_VALVE";
+    case MissionPhase::kAlignValve:
+      return "ALIGN_VALVE";
+    case MissionPhase::kRotateValve:
+      return "ROTATE_VALVE";
+    case MissionPhase::kReturnHome:
+      return "RETURN_HOME";
+    case MissionPhase::kSurface:
+      return "SURFACE";
     case MissionPhase::kPaused:
       return "PAUSED";
     case MissionPhase::kComplete:
@@ -52,7 +72,12 @@ MissionFsm::MissionFsm(MissionFsmConfig config)
 {
   if (config_.self_check_timeout_sec <= 0.0 || config_.apriltag_timeout_sec <= 0.0 ||
     config_.map_timeout_sec <= 0.0 || config_.planning_timeout_sec <= 0.0 ||
-    config_.cone_visit_timeout_sec <= 0.0 || config_.status_timeout_sec <= 0.0)
+    config_.cone_visit_timeout_sec <= 0.0 || config_.cucumber_search_timeout_sec <= 0.0 ||
+    config_.cucumber_align_timeout_sec <= 0.0 || config_.gripper_timeout_sec <= 0.0 ||
+    config_.transport_timeout_sec <= 0.0 || config_.valve_search_timeout_sec <= 0.0 ||
+    config_.valve_align_timeout_sec <= 0.0 || config_.valve_rotate_timeout_sec <= 0.0 ||
+    config_.return_home_timeout_sec <= 0.0 || config_.surface_timeout_sec <= 0.0 ||
+    config_.status_timeout_sec <= 0.0)
   {
     throw std::invalid_argument("mission timeouts must be positive");
   }
@@ -87,7 +112,17 @@ bool MissionFsm::is_active() const
          snapshot_.phase == MissionPhase::kSearchAprilTag ||
          snapshot_.phase == MissionPhase::kBuildMap ||
          snapshot_.phase == MissionPhase::kPlanCones ||
-         snapshot_.phase == MissionPhase::kVisitCones;
+         snapshot_.phase == MissionPhase::kVisitCones ||
+         snapshot_.phase == MissionPhase::kSearchCucumber ||
+         snapshot_.phase == MissionPhase::kAlignCucumber ||
+         snapshot_.phase == MissionPhase::kGrab ||
+         snapshot_.phase == MissionPhase::kTransport ||
+         snapshot_.phase == MissionPhase::kRelease ||
+         snapshot_.phase == MissionPhase::kSearchValve ||
+         snapshot_.phase == MissionPhase::kAlignValve ||
+         snapshot_.phase == MissionPhase::kRotateValve ||
+         snapshot_.phase == MissionPhase::kReturnHome ||
+         snapshot_.phase == MissionPhase::kSurface;
 }
 
 double MissionFsm::phase_timeout() const
@@ -103,6 +138,25 @@ double MissionFsm::phase_timeout() const
       return config_.planning_timeout_sec;
     case MissionPhase::kVisitCones:
       return config_.cone_visit_timeout_sec;
+    case MissionPhase::kSearchCucumber:
+      return config_.cucumber_search_timeout_sec;
+    case MissionPhase::kAlignCucumber:
+      return config_.cucumber_align_timeout_sec;
+    case MissionPhase::kGrab:
+    case MissionPhase::kRelease:
+      return config_.gripper_timeout_sec;
+    case MissionPhase::kTransport:
+      return config_.transport_timeout_sec;
+    case MissionPhase::kSearchValve:
+      return config_.valve_search_timeout_sec;
+    case MissionPhase::kAlignValve:
+      return config_.valve_align_timeout_sec;
+    case MissionPhase::kRotateValve:
+      return config_.valve_rotate_timeout_sec;
+    case MissionPhase::kReturnHome:
+      return config_.return_home_timeout_sec;
+    case MissionPhase::kSurface:
+      return config_.surface_timeout_sec;
     default:
       return 0.0;
   }
@@ -156,6 +210,11 @@ CommandResult MissionFsm::command(MissionCommand command_value, double now_sec)
       apriltag_received_sec_ = -1.0;
       map_received_sec_ = -1.0;
       route_received_sec_ = -1.0;
+      cucumber_received_sec_ = gripper_received_sec_ = transport_received_sec_ = -1.0;
+      valve_received_sec_ = home_received_sec_ = surface_received_sec_ = -1.0;
+      cucumber_found_ = cucumber_aligned_ = grabbed_ = released_ = false;
+      transport_complete_ = valve_found_ = valve_aligned_ = valve_rotated_ = false;
+      home_reached_ = surfaced_ = false;
       transition(MissionPhase::kInit, "mission reset; waiting for START", now_sec);
       return {true, "mission reset"};
   }
@@ -193,6 +252,46 @@ void MissionFsm::update_route(bool valid, bool has_targets, double now_sec)
   route_received_sec_ = now_sec;
 }
 
+void MissionFsm::update_cucumber(bool found, bool aligned, double now_sec)
+{
+  cucumber_found_ = found;
+  cucumber_aligned_ = found && aligned;
+  cucumber_received_sec_ = now_sec;
+}
+
+void MissionFsm::update_gripper(bool grabbed, bool released, double now_sec)
+{
+  grabbed_ = grabbed;
+  released_ = released;
+  gripper_received_sec_ = now_sec;
+}
+
+void MissionFsm::update_transport(bool complete, double now_sec)
+{
+  transport_complete_ = complete;
+  transport_received_sec_ = now_sec;
+}
+
+void MissionFsm::update_valve(bool found, bool aligned, bool rotated, double now_sec)
+{
+  valve_found_ = found;
+  valve_aligned_ = found && aligned;
+  valve_rotated_ = aligned && rotated;
+  valve_received_sec_ = now_sec;
+}
+
+void MissionFsm::update_home(bool reached, double now_sec)
+{
+  home_reached_ = reached;
+  home_received_sec_ = now_sec;
+}
+
+void MissionFsm::update_surface(bool surfaced, double now_sec)
+{
+  surfaced_ = surfaced;
+  surface_received_sec_ = now_sec;
+}
+
 void MissionFsm::tick(double now_sec)
 {
   const bool running_or_paused = is_active() || snapshot_.phase == MissionPhase::kPaused;
@@ -205,8 +304,9 @@ void MissionFsm::tick(double now_sec)
       fault("STM32 error flags are nonzero", now_sec);
       return;
     }
-    const bool allowed_visit_arm = config_.allow_armed_during_visit &&
-      snapshot_.phase == MissionPhase::kVisitCones;
+    const bool after_route = snapshot_.phase >= MissionPhase::kVisitCones &&
+      snapshot_.phase <= MissionPhase::kSurface;
+    const bool allowed_visit_arm = config_.allow_armed_during_visit && after_route;
     const bool pause_disarm_grace = snapshot_.phase == MissionPhase::kPaused &&
       now_sec - phase_entered_sec_ <= 0.5;
     if (armed_ && !allowed_visit_arm && !pause_disarm_grace) {
@@ -261,7 +361,60 @@ void MissionFsm::tick(double now_sec)
       break;
     case MissionPhase::kVisitCones:
       if (map_received_sec_ >= 0.0 && map_complete_ && all_cones_visited_) {
-        transition(MissionPhase::kComplete, "all cone targets visited", now_sec);
+        transition(
+          config_.full_mission ? MissionPhase::kSearchCucumber : MissionPhase::kComplete,
+          config_.full_mission ? "cone targets visited; searching for cucumber" :
+          "all cone targets visited", now_sec);
+      }
+      break;
+    case MissionPhase::kSearchCucumber:
+      if (cucumber_received_sec_ >= 0.0 && cucumber_found_) {
+        transition(MissionPhase::kAlignCucumber, "sea cucumber found", now_sec);
+      }
+      break;
+    case MissionPhase::kAlignCucumber:
+      if (cucumber_received_sec_ >= 0.0 && cucumber_aligned_) {
+        transition(MissionPhase::kGrab, "sea cucumber aligned", now_sec);
+      }
+      break;
+    case MissionPhase::kGrab:
+      if (gripper_received_sec_ >= 0.0 && grabbed_) {
+        transition(MissionPhase::kTransport, "grab confirmed", now_sec);
+      }
+      break;
+    case MissionPhase::kTransport:
+      if (transport_received_sec_ >= 0.0 && transport_complete_) {
+        transition(MissionPhase::kRelease, "transport destination reached", now_sec);
+      }
+      break;
+    case MissionPhase::kRelease:
+      if (gripper_received_sec_ >= 0.0 && released_) {
+        transition(MissionPhase::kSearchValve, "release confirmed", now_sec);
+      }
+      break;
+    case MissionPhase::kSearchValve:
+      if (valve_received_sec_ >= 0.0 && valve_found_) {
+        transition(MissionPhase::kAlignValve, "valve found", now_sec);
+      }
+      break;
+    case MissionPhase::kAlignValve:
+      if (valve_received_sec_ >= 0.0 && valve_aligned_) {
+        transition(MissionPhase::kRotateValve, "valve aligned", now_sec);
+      }
+      break;
+    case MissionPhase::kRotateValve:
+      if (valve_received_sec_ >= 0.0 && valve_rotated_) {
+        transition(MissionPhase::kReturnHome, "valve rotation confirmed", now_sec);
+      }
+      break;
+    case MissionPhase::kReturnHome:
+      if (home_received_sec_ >= 0.0 && home_reached_) {
+        transition(MissionPhase::kSurface, "home reached", now_sec);
+      }
+      break;
+    case MissionPhase::kSurface:
+      if (surface_received_sec_ >= 0.0 && surfaced_) {
+        transition(MissionPhase::kComplete, "surface confirmed", now_sec);
       }
       break;
     default:
