@@ -6,6 +6,7 @@ command, including START, ARM or DISARM.
 """
 import argparse
 import datetime as dt
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -63,6 +64,12 @@ def check(name, passed, detail, required=True):
 
 def preflight(args, config):
     checks = []
+    try:
+        power = subprocess.check_output(["vcgencmd", "get_throttled"], timeout=2, text=True).strip()
+        flags = int(power.split("=", 1)[1], 16)
+        checks.append(check("pi_power", flags == 0, power))
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+        checks.append(check("pi_power", False, exc))
     service = subprocess.run(["systemctl", "is-active", args.service], capture_output=True, text=True)
     checks.append(check("service", service.returncode == 0, service.stdout.strip() or service.stderr.strip()))
     try:
@@ -77,9 +84,19 @@ def preflight(args, config):
     except OSError as exc:
         checks.append(check("socket_mode", False, exc))
     checks.append(check("motion_disabled", config.get("motion.motion_commands_enabled") == "false",
-                        config.get("motion.motion_commands_enabled", "missing")))
+                        "motion_commands_enabled=" + config.get("motion.motion_commands_enabled", "missing")))
+    try:
+        address = ipaddress.IPv4Address(config.get("web.bind", ""))
+        wired_bind = (address in ipaddress.IPv4Network("192.168.137.0/24") or
+                      address in ipaddress.IPv4Network("192.168.50.0/24")) and 2 <= (int(address) & 255) <= 254
+    except ipaddress.AddressValueError:
+        wired_bind = False
+    checks.append(check("wired_web_bind", wired_bind, config.get("web.bind", "missing")))
     if status:
-        checks.append(check("disarmed", status.get("armed") is False, status.get("armed")))
+        checks.append(check("disarmed", status.get("armed") is False,
+                            "armed=" + str(status.get("armed"))))
+        checks.append(check("runtime_motion_disabled", status.get("motion_enabled") is False,
+                            "motion_enabled=" + str(status.get("motion_enabled"))))
         checks.append(check("mission_idle", status.get("phase") == "INIT", status.get("phase")))
         checks.append(check("no_fault", not status.get("fault"), status.get("fault", "")))
     try:
@@ -114,6 +131,7 @@ def camera_check(args, config):
     hz = (last["vision_frames"] - first["vision_frames"]) / elapsed
     checks.extend([
         check("disarmed", all(s.get("armed") is False for s in samples), "all samples"),
+        check("motion_disabled", all(s.get("motion_enabled") is False for s in samples), "all samples"),
         check("vision_rate", hz >= args.min_vision_hz, f"{hz:.2f} Hz"),
         check("fresh_frames", all(0 <= s.get("camera_age_sec", -1) < args.max_frame_age
                                   for s in samples[1:]), f"limit {args.max_frame_age}s"),
@@ -123,6 +141,9 @@ def camera_check(args, config):
     url = args.web_url.rstrip("/") + "/hls/index.m3u8"
     try:
         code, body, _ = http_get(url)
+        playlist_path = Path(config.get("video.directory", "")) / "index.m3u8"
+        age = time.time() - playlist_path.stat().st_mtime
+        checks.append(check("hls_fresh", -2 <= age < 5, f"playlist age {age:.1f}s"))
         playlist = body.decode("utf-8")
         entries = [line.strip() for line in playlist.splitlines() if line.strip() and not line.startswith("#")]
         checks.append(check("hls_playlist", code == 200 and "#EXTM3U" in playlist and bool(entries),
@@ -145,12 +166,13 @@ def serial_check(args, config):
     device = config.get("serial.device", "")
     checks = [check("serial_device", bool(device) and Path(device).exists(), device or "not configured")]
     checks.append(check("motion_disabled", config.get("motion.motion_commands_enabled") == "false",
-                        config.get("motion.motion_commands_enabled", "missing")))
+                        "motion_commands_enabled=" + config.get("motion.motion_commands_enabled", "missing")))
     samples, elapsed = sample_status(args.socket, args.duration)
     first, last = samples[0], samples[-1]
     hz = (last["heartbeats"] - first["heartbeats"]) / elapsed
     checks.extend([
         check("disarmed", all(s.get("armed") is False for s in samples), "all samples"),
+        check("runtime_motion_disabled", all(s.get("motion_enabled") is False for s in samples), "all samples"),
         check("serial_connected", all(s.get("serial") is True for s in samples[1:]), "all later samples"),
         check("telemetry_valid", all(s.get("telemetry_valid") is True for s in samples[1:]), "all later samples"),
         check("safe_status", all(not s.get("leak") and s.get("error_flags") == 0
@@ -194,6 +216,12 @@ def collect(args, config):
         result["status"] = runtime_status(args.socket)
     except (OSError, ValueError) as exc:
         result["status_error"] = str(exc)
+    events = config.get("logging.events", "")
+    if events:
+        try:
+            result["event_log_tail"] = Path(events).read_text().splitlines()[-100:]
+        except OSError as exc:
+            result["event_log_error"] = str(exc)
     for name, command in {
         "service": ["systemctl", "status", args.service, "--no-pager", "-l"],
         "journal": ["journalctl", "-u", args.service, "-b", "--no-pager", "-n", "100"],
@@ -211,11 +239,12 @@ def collect(args, config):
 
 
 def main(argv=None):
+    os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=("preflight", "camera", "serial", "fault-watch", "collect"))
     parser.add_argument("--config", default="/etc/auv-runtime/runtime.yaml")
     parser.add_argument("--socket", default="/run/auv-runtime/control.sock")
-    parser.add_argument("--web-url", default="http://192.168.137.201:8080")
+    parser.add_argument("--web-url", help="default: use web.bind and web.port from the runtime config")
     parser.add_argument("--service", default="auv-runtime.service")
     parser.add_argument("--output-dir", type=Path, default=Path.home() / "auv-test-reports")
     parser.add_argument("--duration", type=float, default=15)
@@ -232,6 +261,8 @@ def main(argv=None):
         parser.error("fault-watch requires --expect")
     try:
         config = config_values(args.config)
+        if args.web_url is None:
+            args.web_url = "http://{}:{}".format(config.get("web.bind", ""), config.get("web.port", ""))
         function = {"preflight": preflight, "camera": camera_check, "serial": serial_check,
                     "fault-watch": fault_watch, "collect": collect}[args.stage]
         checks, details = function(args, config)
@@ -240,8 +271,8 @@ def main(argv=None):
     report = {"timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
               "stage": args.stage, "checks": checks, "details": details,
               "passed": all(item["result"] != "FAIL" for item in checks)}
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    name = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + args.stage
+    args.output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    name = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "_" + args.stage
     path = args.output_dir / (name + ".json")
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     for item in checks:

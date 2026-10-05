@@ -33,7 +33,7 @@ case "$stage" in
   endurance)
     duration=${1:-1800}
     [ "$#" -le 1 ] || usage
-    report="$reports/$(date -u +%Y%m%dT%H%M%SZ)_endurance.json"
+    report="$reports/$(date -u +%Y%m%dT%H%M%S%NZ)_endurance.json"
     python3 "$root/runtime/deploy/acceptance.py" --duration "$duration" --output "$report"
     ;;
   *) usage ;;

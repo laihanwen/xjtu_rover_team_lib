@@ -31,6 +31,7 @@
 #include <optional>
 #include <sstream>
 #include <thread>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -139,7 +140,14 @@ static Config load_config(const std::string& path) {
       c.frame_timeout <= 0 || c.pose_timeout <= 0 || c.socket.empty() ||
       c.log.empty() || c.debug_dir.empty())
     throw std::runtime_error("invalid runtime configuration");
-  if (c.web_bind != "192.168.137.201" || c.web_port <= 0 || c.web_port > 65535 ||
+  in_addr web_addr{};
+  const bool web_ip_valid = ::inet_pton(AF_INET,c.web_bind.c_str(),&web_addr) == 1;
+  const auto web_ip = ntohl(web_addr.s_addr);
+  const bool wired_web_address = web_ip_valid &&
+    ((web_ip & 0xffffff00U) == 0xc0a88900U ||
+     (web_ip & 0xffffff00U) == 0xc0a83200U) &&
+    (web_ip & 0xffU) >= 2U && (web_ip & 0xffU) <= 254U;
+  if (!wired_web_address || c.web_port <= 0 || c.web_port > 65535 ||
       c.video_dir.empty() || c.web_assets.empty() ||
       c.video_width <= 0 || c.video_width > 1920 ||
       c.video_height <= 0 || c.video_height > 1080 ||
@@ -276,7 +284,7 @@ class Runtime {
   void capture_loop() {
     auto source_name = cfg_.camera.rfind("file:", 0) == 0 ? cfg_.camera.substr(5) : cfg_.camera;
     auv_vision::CameraSource camera({source_name,cfg_.camera_width,cfg_.camera_height,
-      cfg_.camera_fps,cfg_.camera_pixel_format,false});
+      cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0) == 0});
     while (running) {
       try {
       if (!camera.is_open() && !camera.open()) { std::this_thread::sleep_for(std::chrono::seconds(1)); continue; }
