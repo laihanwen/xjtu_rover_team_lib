@@ -41,6 +41,7 @@ firmware/stm32/
 │   ├── AuvGripperConfig.h   # 标定门、端点、缓启动和遥控阈值
 │   ├── AuvCameraServo.c/.h  # 摄像头舵机限位、斜率限制与命令校验
 │   ├── AuvCameraServoConfig.h # 摄像头舵机标定门与 CCR 端点
+│   ├── AuvDepth.c/.h        # 深度样本校验、缓存与 250 ms 新鲜度门
 │   └── Move_Manual.md       # 安装和控制说明
 ├── CMakeLists.txt           # 编辑器代码模型 / 编译检查
 ├── COLCON_IGNORE            # 防止 ROS colcon 误构建固件
@@ -95,7 +96,7 @@ USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任�
 - Pi link 当前通过 `AUV_LINK_UART_HANDLE` 配置，默认使用未被原基线占用的 `huart3`。
 - 遥控兼容链路使用 `huart2`（PA2/PA3）115200 8N1，与 Pi CRC 链路相互独立。
 - 当前 CubeMX 映射为 USART3 TX=PC10、RX=PC11；`AuvLink_Init()` 将其配置为 115200 8N1。
-- 上电默认 DISARMED，传感器有效标志默认 false，因此 P5 接入前 ARM 会返回 unsafe。
+- 上电默认 DISARMED；只有外部漏水/急停输入已经上报，而且 IMU、深度及外部传感器状态均有效且新鲜时，ARM 才可能成功。
 - 上电后的前 2 秒为强制 ARM 抑制期；期间即使心跳和传感器状态正常也拒绝 ARM。
 - 只有 CRC、version、type 和长度均合法的 HEARTBEAT 才更新时间。
 - 超过 500 ms 无合法 heartbeat，状态进入 FAILSAFE。
@@ -107,6 +108,8 @@ USART3 上带 CRC16 的 Pi 协议，不应把 0xA5 遥控帧扩展成自主任�
 - `vx/vy` 当前通过 `Mate.h` 中可标定的前馈增益转换为受统一限幅保护的动力指令；
   yaw 使用 IMU 闭环。真实深度驱动接入前，depth target 不产生垂向输出。
 - STATUS 现在返回经过 ARM 门控后的 T1–T8 归一化输出，便于拆桨验收。
+- STATUS 的姿态字段来自新鲜 H30 IMU；未收到 IMU 时发送 NaN，不再用零伪装有效姿态。
+- 深度驱动应通过 `AuvLink_UpdateDepth()` 提交米制读数；超过 250 ms 未更新后 STATUS/DEPTH 自动转为无效并阻止 ARM。当前尚未绑定具体深度传感器和总线。
 - T35-L 信号使用 PA8/TIM1_CH1；未标定固件固定保持 1500 μs 并拒绝开合。
 - 遥控模式中 SB=1 启用夹爪，SA 低位闭合、高位张开、中间区停止保持。
 - 摄像头舵机使用 PC7/TIM8_CH2；SB=0 时由 SA 控制，也可使用执行器 ID 2 的 Pi 命令。

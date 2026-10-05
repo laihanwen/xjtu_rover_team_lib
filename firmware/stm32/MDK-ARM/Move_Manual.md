@@ -191,6 +191,9 @@ UART1 的 `MOTION_TARGET` 负载依次为 `sequence、vx、vy、depth、yaw`。
 `AUV_SURGE_PWM_PER_MPS` 和 `AUV_SWAY_PWM_PER_MPS`，必须在拆桨或约束水槽中标定。
 `yaw` 使用现有 IMU 航向 PID。`depth` 已完成协议校验与缓存，但在深度传感器和深度
 闭环接入前，固件强制保持 `Fz=0`；因此当前版本不能宣称具备深度控制。
+深度驱动接入边界已经固定为 `AuvLink_UpdateDepth(depth_m)`：输入必须是有限的米制正值，
+超过 250 ms 未更新即自动失效。具体传感器、总线和标定参数仍须按实物确定，禁止用固定值
+绕过 ARM 安全门。
 
 ### 7.2 原始遥控通道
 
