@@ -59,3 +59,18 @@ scp -r pi@192.168.137.150:/home/pi/auv-test-reports ./auv-test-reports-pi
 ```
 
 正式运动输出测试需要完成标定和独立安全流程；这些只读脚本不会解锁运动。
+
+## 自主模式验收
+
+只有上述相机、串口、故障和耐久测试全部通过后，才可制作自主比赛配置。第一次自主模式测试仍必须断开推进器电源或拆桨。确认启动后无需 `auvctl start`，状态自动从 `INIT` 前进，并验证远程 `start`、`arm`、`pause` 和 `reset` 均被拒绝。随后执行紧急 `auvctl disarm`，应进入 `FAULT` 并保持 DISARM。
+
+在同一次开机中重启服务：
+
+```sh
+sudo systemctl restart auv-runtime
+auvctl status
+```
+
+状态必须报告 `autonomous mission already started since boot`，不得再次自动开始或 ARM。只有整机重启才会清除 `/run` 中的自主启动锁存。正式有桨或下水测试必须另行执行现场安全评审。
+
+自主启动前还应从事件日志确认 `AUTO_START` 仅出现在相机、视觉和STM32状态连续稳定之后，并从状态中的 `control_age_sec` 验证控制循环健康。控制循环超时会停止Linux侧heartbeat；必须同时在真实STM32上验证其约500 ms heartbeat failsafe确实输出中性值并解除武装。

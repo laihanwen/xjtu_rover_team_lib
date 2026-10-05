@@ -9,6 +9,7 @@ Group=auv
 SupplementaryGroups=video dialout
 RuntimeDirectory=auv-runtime
 RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=restart
 LogsDirectory=auv-runtime
 ExecStart=/usr/local/bin/auv_runtime /etc/auv-runtime/runtime.yaml
 Restart=on-failure

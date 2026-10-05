@@ -15,7 +15,7 @@ import time
 from offline_replay import crc, frame, make_video, request
 
 
-def main(binary):
+def main(binary, autonomous=False):
     master, slave = pty.openpty()
     stop = threading.Event()
     targets = []
@@ -46,6 +46,13 @@ def main(binary):
         }
         for old, new in replacements.items():
             config = config.replace(old, new)
+        if autonomous:
+            config = config.replace('mode: debug', 'mode: autonomous')
+            config = config.replace('auto_start: false', 'auto_start: true')
+            config = config.replace('auto_arm: false', 'auto_arm: true')
+            config = config.replace('startup_delay_sec: 5.0', 'startup_delay_sec: 0.1')
+            config = config.replace('startup_timeout_sec: 30.0', 'startup_timeout_sec: 5.0')
+            config = config.replace('startup_stable_sec: 1.0', 'startup_stable_sec: 0.1')
         path = root / 'runtime.yaml'
         path.write_text(config)
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -96,7 +103,10 @@ def main(binary):
                 if preflight['serial'] and preflight['camera_age_sec'] >= 0:
                     break
                 time.sleep(.02)
-            assert request(str(root / 'control.sock'), 'start').startswith('OK')
+            if autonomous:
+                assert request(str(root / 'control.sock'), 'start').startswith('ERR')
+            else:
+                assert request(str(root / 'control.sock'), 'start').startswith('OK')
             deadline = time.monotonic() + 6
             while time.monotonic() < deadline:
                 snapshot = json.loads(request(str(root / 'control.sock'), 'status'))
@@ -107,7 +117,12 @@ def main(binary):
                 time.sleep(.1)
             else:
                 raise AssertionError(f'no route: {snapshot}')
-            assert request(str(root / 'control.sock'), 'arm SAFE_TO_ARM').startswith('OK')
+            if autonomous:
+                assert snapshot['operation_mode'] == 'autonomous'
+                assert snapshot['auto_start'] and snapshot['auto_arm']
+                assert request(str(root / 'control.sock'), 'arm SAFE_TO_ARM').startswith('ERR')
+            else:
+                assert request(str(root / 'control.sock'), 'arm SAFE_TO_ARM').startswith('OK')
             deadline = time.monotonic() + 4
             while time.monotonic() < deadline and not any(abs(t[1]) > .001 or abs(t[2]) > .001 for t in targets):
                 time.sleep(.05)
@@ -116,6 +131,35 @@ def main(binary):
             assert all(abs(t[1]) <= .10001 and abs(t[2]) <= .10001 for t in targets)
             moving = [t for t in targets if abs(t[1]) > .001 or abs(t[2]) > .001]
             assert all(t[3] == 1.0 and t[4] == 0.0 for t in moving)
+            if autonomous:
+                assert request(str(root / 'control.sock'), 'pause').startswith('ERR')
+                assert request(str(root / 'control.sock'), 'reset').startswith('ERR')
+                assert request(str(root / 'control.sock'), 'disarm').startswith('OK')
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    snapshot = json.loads(request(str(root / 'control.sock'), 'status'))
+                    if snapshot['phase'] == 'FAULT' and not state['armed']:
+                        break
+                    time.sleep(.02)
+                assert snapshot['phase'] == 'FAULT' and not state['armed'], snapshot
+                assert (root / 'control.sock.autonomous-started').exists()
+                proc.send_signal(signal.SIGTERM)
+                proc.wait(timeout=5)
+                proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL)
+                for _ in range(100):
+                    if (root / 'control.sock').exists():
+                        break
+                    time.sleep(.01)
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    snapshot = json.loads(request(str(root / 'control.sock'), 'status'))
+                    if snapshot['phase'] == 'FAULT':
+                        break
+                    time.sleep(.02)
+                assert snapshot['phase'] == 'FAULT'
+                assert 'already started since boot' in snapshot['fault'], snapshot
+                return
             assert request(str(root / 'control.sock'), 'pause').startswith('OK')
             deadline = time.monotonic() + 1
             while time.monotonic() < deadline and state['armed']:
@@ -185,4 +229,4 @@ def main(binary):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    main(sys.argv[1], len(sys.argv) > 2 and sys.argv[2] == 'autonomous')
