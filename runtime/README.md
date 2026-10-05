@@ -2,6 +2,8 @@
 
 这个 C++ 进程与 ROS 节点共享 `auv_core`。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
 
+`mission.profile` 默认为 `task_one`。共享Mission FSM已经定义完整比赛阶段；设置为`full`后，四锥阶段会继续进入海参、抓取、运输、释放、转盘、返航和上浮流程。但在前视视觉和后续运动控制接通前，完整模式会按阶段超时进入FAULT，不能视为可下水的完整任务配置。
+
 ## 原生构建
 
 在 Debian 13 / Raspberry Pi OS 上，确保已安装 `cmake`、`ninja-build`、`g++`、`libopencv-dev`、`libyaml-cpp-dev`、`libcpp-httplib-dev` 和 `ffmpeg`，然后执行：
@@ -34,6 +36,8 @@ STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超�
 每次系统上电最多允许一次自主任务启动。首次自动 START 会建立 `/run/auv-runtime/control.sock.autonomous-started` 锁存；服务崩溃或被 systemd 重启后不会再次自动开始或 ARM。锁存只在整机重启后清除。不要手工删除锁存来绕过现场安全流程。
 
 自主模式不会降低任何运动标定要求，且 `auto_arm: true` 必须同时启用经过标定的运动配置。仓库默认配置始终保持调试模式和运动禁用。
+
+完整任务模式还要求持续有效且已标定的夹爪遥测，否则不会通过自主启动就绪门。运行时在`GRAB`发送一次关闭命令、在`RELEASE`发送一次打开命令，并以STM32的`CLOSED/OPENED`状态作为Mission确认。暂停、终止、DISARM、FAULT和进程退出都会发送夹爪STOP；非ARM状态不会执行抓取或释放。
 
 网页地址为 `http://192.168.137.201:8080/`，它是只读页面。`hls.js` 已本地打包。视频采用 FFmpeg 的 `h264_v4l2m2m` 编码，分辨率为 640×480，20 fps，码率 2 Mbit/s，HLS 分段长度为 0.5 s。若编码失败，状态会报告视频降级。软件编码 `libx264` 需要开启 `video.software_fallback_enabled: true`，或者显式修改 `video.encoder: libx264`。若构建时缺少 cpp-httplib，或网络地址不可用，HTTP 也会被降级处理。上述任一失败都不会中断任务控制。NDJSON 会记录带时间戳的事件、路径和周期性状态，并按大小或日期自动轮转。已完成的网格调试帧保存在 `logging.debug_dir`。
 

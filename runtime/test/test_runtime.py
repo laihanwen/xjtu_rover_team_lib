@@ -92,6 +92,15 @@ def main(binary):
             assert marker >= 0, 'neutral target missing before DISARM'
             assert received[marker + 9:marker + 17] == b'\x00' * 8, 'nonzero velocity emitted'
             assert command(str(root / 'control.sock'), 'disarm').startswith('OK')
+            deadline = time.monotonic() + .5
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], .05)
+                if ready:
+                    received.extend(os.read(master, 4096))
+            actuator = received.find(b'\xaa\x55\x01\x04\x09')
+            assert actuator >= 0, 'gripper STOP missing on DISARM'
+            assert received[actuator + 9] == 1
+            assert received[actuator + 10:actuator + 14] == b'\x00' * 4
             time.sleep(1.2)
             state = command(str(root / 'control.sock'), 'status')
             assert 'STATUS timeout' in state and '"phase":"FAULT"' in state

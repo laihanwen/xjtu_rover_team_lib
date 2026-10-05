@@ -1,7 +1,7 @@
 # auv_mission
 
-P11 safety-gated mission orchestration for the capabilities implemented through
-P10. The current autonomous sequence is:
+Safety-gated mission orchestration shared by the ROS and lightweight runtimes.
+The default `task_one` sequence is:
 
 ```text
 INIT → SELF_CHECK → SEARCH_APRILTAG → BUILD_MAP
@@ -15,8 +15,23 @@ disconnect, or an unexpected ARM state sends the mission to `FAULT`.
 Mission itself does not publish `/cmd_vel`, `/cmd_depth`, `/cmd_yaw`, or an ARM request. The
 separate, default-disabled `auv_control/route_executor_node` executes the frozen route and marks
 cone cells visited. ARM is allowed only during `VISIT_CONES` when configured, remains explicit,
-and is never requested automatically. P12–P14 will extend the FSM with sea cucumber,
-grab, valve, return-home, and surface states after those capabilities exist.
+and is never requested automatically by the ROS node.
+
+The core FSM also supports the complete competition sequence when
+`MissionFsmConfig::full_mission` is enabled:
+
+```text
+VISIT_CONES → SEARCH_CUCUMBER → ALIGN_CUCUMBER → GRAB
+→ TRANSPORT → RELEASE → SEARCH_VALVE → ALIGN_VALVE → ROTATE_VALVE
+→ RETURN_HOME → SURFACE → COMPLETE
+```
+
+These transitions require explicit confirmations from perception, gripper,
+transport, valve, home and surface inputs. Enabling the core sequence alone does
+not synthesize those inputs or make unfinished hardware operational. The
+lightweight runtime currently consumes real gripper telemetry and issues guarded
+close/open/stop commands; front-camera alignment, transport, valve actuation,
+return-home and surface controllers remain integration work.
 
 ## Run
 

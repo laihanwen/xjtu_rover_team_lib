@@ -20,6 +20,7 @@ def main(binary, autonomous=False):
     stop = threading.Event()
     targets = []
     arm_messages = []
+    gripper_messages = []
     with tempfile.TemporaryDirectory() as temp:
         root = pathlib.Path(temp)
         video = root / 'scene.avi'
@@ -88,6 +89,10 @@ def main(binary, autonomous=False):
                             os.write(master, frame(0x7f, bytes([2, 0]) + data[:4]))
                         elif kind == 3:
                             targets.append(struct.unpack('<Iffff', data))
+                        elif kind == 4:
+                            sequence, actuator, value = struct.unpack('<IBf', data)
+                            gripper_messages.append((actuator, value))
+                            os.write(master, frame(0x7f, bytes([4, 0]) + struct.pack('<I', sequence)))
                 except OSError:
                     return
 
@@ -142,6 +147,7 @@ def main(binary, autonomous=False):
                         break
                     time.sleep(.02)
                 assert snapshot['phase'] == 'FAULT' and not state['armed'], snapshot
+                assert gripper_messages and gripper_messages[-1] == (1, 0.0)
                 assert (root / 'control.sock.autonomous-started').exists()
                 proc.send_signal(signal.SIGTERM)
                 proc.wait(timeout=5)
