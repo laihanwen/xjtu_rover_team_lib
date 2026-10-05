@@ -1,6 +1,6 @@
 # 树莓派轻量运行框架测试脚本
 
-在树莓派仓库目录 `/home/ziyupan/auv` 下执行。脚本只读取状态、网页和系统信息，**不会发送 START、ARM 或运动目标**。每次运行将 JSON 报告写到 `~/auv-test-reports/`，可用 `AUV_REPORT_DIR` 改位置。
+在树莓派仓库目录（例如 `/home/pi/auv`）下执行。脚本只读取状态、网页和系统信息，**不会发送 START、ARM 或运动目标**。每次运行将 JSON 报告写到 `~/auv-test-reports/`，可用 `AUV_REPORT_DIR` 改位置。
 
 ```sh
 runtime/deploy/run_bench.sh preflight
@@ -17,7 +17,7 @@ runtime/deploy/run_bench.sh collect
 runtime/deploy/run_bench.sh camera 30
 ```
 
-脚本检查稳定设备路径、持续帧新鲜度、视觉平均速率至少 10 Hz、HLS 播放列表和分片可访问、编码状态正常。网页为 `http://192.168.137.201:8080/`。这一步不需要启动 Mission。
+脚本检查稳定设备路径、持续帧新鲜度、视觉平均速率至少 10 Hz、HLS 播放列表和分片可访问、编码状态正常。网页地址由配置中的 `web.bind` 和 `web.port` 决定。这一步不需要启动 Mission。
 
 ## STM32（推进器电源断开）
 
@@ -55,7 +55,7 @@ runtime/deploy/run_bench.sh endurance 1800
 从 PC 收集报告：
 
 ```sh
-scp -r ziyupan@192.168.137.201:/home/ziyupan/auv-test-reports ./auv-test-reports-pi
+scp -r pi@192.168.137.150:/home/pi/auv-test-reports ./auv-test-reports-pi
 ```
 
 正式运动输出测试需要完成标定和独立安全流程；这些只读脚本不会解锁运动。

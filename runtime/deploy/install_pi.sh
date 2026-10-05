@@ -5,6 +5,17 @@ if [ ! -f src/auv_core/CMakeLists.txt ]; then
   echo 'Run from the AUV repository root' >&2
   exit 2
 fi
+check_pi_power() {
+  if command -v vcgencmd >/dev/null 2>&1; then
+    power_flags=$(vcgencmd get_throttled)
+    power_flags=${power_flags#*=}
+    if [ "$((power_flags))" -ne 0 ]; then
+      echo "Pi reports undervoltage or throttling ($power_flags); fix power and reboot before installation" >&2
+      exit 1
+    fi
+  fi
+}
+check_pi_power
 sudo apt-get update
 sudo apt-get install -y cmake ninja-build g++ pkg-config libopencv-dev libyaml-cpp-dev libcpp-httplib-dev ffmpeg
 if ! getent group auv >/dev/null 2>&1; then
@@ -20,6 +31,7 @@ fi
 cmake -S . -B build-lightweight -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build-lightweight -j 3
 ctest --test-dir build-lightweight --output-on-failure
+check_pi_power
 if [ -f /etc/auv-runtime/runtime.yaml ]; then
   backup_config=$(mktemp)
   sudo cp /etc/auv-runtime/runtime.yaml "$backup_config"

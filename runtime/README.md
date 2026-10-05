@@ -1,10 +1,10 @@
-# Lightweight mission-one runtime
+# 轻量级 mission-one 运行时
 
-This C++ process shares `auv_core` with the ROS nodes. It implements the first task only: AprilTag, 3×3 grid, cone classification, route planning and grid traversal. STM32 retains attitude/depth PID, mixer and the hardware heartbeat failsafe.
+这个 C++ 进程与 ROS 节点共享 `auv_core`。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
 
-## Native build
+## 原生构建
 
-On Debian 13 / Raspberry Pi OS with `cmake`, `ninja-build`, `g++`, `libopencv-dev`, `libyaml-cpp-dev`, `libcpp-httplib-dev` and `ffmpeg` installed:
+在 Debian 13 / Raspberry Pi OS 上，确保已安装 `cmake`、`ninja-build`、`g++`、`libopencv-dev`、`libyaml-cpp-dev`、`libcpp-httplib-dev` 和 `ffmpeg`，然后执行：
 
 ```sh
 cmake -S . -B build-lightweight -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -12,9 +12,9 @@ cmake --build build-lightweight -j 3
 ctest --test-dir build-lightweight --output-on-failure
 ```
 
-Native CTest covers core mapping/planning/status validation and PTY serial faults. If the system Python also has OpenCV and NumPy, it adds a synthetic AprilTag/grid/cone video replay and a virtual STM32 ARM/ACK/limit/leak/process-exit test. These tests use only a pseudoterminal, never a real serial port.
+原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 漏水 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
 
-Copy and edit `runtime/config/runtime.yaml`. The sample refuses motion: `motion_commands_enabled: false`, empty serial device, uncalibrated control directions and camera intrinsics. A production camera source must be a stable `/dev/v4l/by-id/...` symlink. `file:/absolute/path/video.mp4` can be used for offline replay, but motion remains disabled without calibration. The process starts in INIT and DISARM, and requires `auvctl start`; it never auto arms or resumes movement after a fault or restart.
+复制并编辑 `runtime/config/runtime.yaml`。示例配置默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。生产环境中的相机源必须使用稳定的 `/dev/v4l/by-id/...` 符号链接。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成校准，运动仍然保持禁用状态。进程启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障或重启后自动上电或恢复运动。
 
 ```sh
 ./build-lightweight/runtime/auv_runtime runtime/config/runtime.yaml
@@ -23,16 +23,16 @@ Copy and edit `runtime/config/runtime.yaml`. The sample refuses motion: `motion_
 ./build-lightweight/runtime/auvctl disarm
 ```
 
-`auvctl` uses `/run/auv-runtime/control.sock` (mode `0660`) and is intended over SSH. The SSH user must belong to the `auv` group. ARM additionally requires `auvctl arm --confirm SAFE_TO_ARM`, a fresh safe STM32 STATUS, VISIT_CONES, calibrated motion config and explicit motion enablement. `pause`, `abort`, `disarm` and faults withdraw motion and request DISARM. STM32 heartbeat loss remains the final safety barrier if Linux exits abruptly.
+`auvctl` 通过 `/run/auv-runtime/control.sock`（模式 `0660`）进行控制，适合通过 SSH 使用。SSH 用户必须属于 `auv` 组。执行 ARM 还需要满足额外条件：`auvctl arm --confirm SAFE_TO_ARM`，并且必须具备新鲜且安全的 STM32 STATUS、VISIT_CONES、已校准的运动配置，以及显式启用的运动控制。`pause`、`abort`、`disarm` 和故障条件都会撤销运动并请求 DISARM。若 Linux 异常退出，STM32 心跳丢失仍然是最终的安全屏障。
 
-The web page at `http://192.168.137.201:8080/` is read only. `hls.js` is packaged locally. Video uses FFmpeg `h264_v4l2m2m`, 640×480 at 20 fps, 2 Mbit/s and 0.5 s HLS segments. If encoding fails, status reports video degradation. Software `libx264` requires `video.software_fallback_enabled: true` or an explicit `video.encoder: libx264` change. HTTP is also degraded if cpp-httplib is absent at build time or the wired address is unavailable. Neither failure stops mission control. NDJSON records timestamped events, route and periodic state; it rotates by size or day. The completed grid debug frame is saved under `logging.debug_dir`.
+网页地址为 `http://192.168.137.201:8080/`，它是只读页面。`hls.js` 已本地打包。视频采用 FFmpeg 的 `h264_v4l2m2m` 编码，分辨率为 640×480，20 fps，码率 2 Mbit/s，HLS 分段长度为 0.5 s。若编码失败，状态会报告视频降级。软件编码 `libx264` 需要开启 `video.software_fallback_enabled: true`，或者显式修改 `video.encoder: libx264`。若构建时缺少 cpp-httplib，或网络地址不可用，HTTP 也会被降级处理。上述任一失败都不会中断任务控制。NDJSON 会记录带时间戳的事件、路径和周期性状态，并按大小或日期自动轮转。已完成的网格调试帧保存在 `logging.debug_dir`。
 
-## Deployment
+## 部署
 
-On the Pi checkout, run `runtime/deploy/install_pi.sh`. It installs dependencies, builds, tests, installs the service and starts it DISARMED. Existing `/etc/auv-runtime/runtime.yaml` is preserved. Check `systemctl status auv-runtime`, `journalctl -u auv-runtime`, and `/var/log/auv-runtime/events.ndjson`. Use SSH keys for remote access; this repository contains no password handling.
+在树莓派上检出代码后，执行 `runtime/deploy/install_pi.sh`。它会安装依赖、构建项目、运行测试、安装服务，并以 DISARMED 状态启动。现有的 `/etc/auv-runtime/runtime.yaml` 会被保留。检查状态可用：`systemctl status auv-runtime`、`journalctl -u auv-runtime` 和 `/var/log/auv-runtime/events.ndjson`。远程访问请使用 SSH 密钥；本仓库不包含任何密码处理逻辑。
 
-From the PC, `runtime/deploy/deploy_from_pc.sh pi-user@192.168.137.201 /home/pi/auv` copies the current checkout over SSH and runs the Pi installer. SSH password login is disabled for the script; remote `sudo` may prompt through the terminal.
+从 PC 端执行：`runtime/deploy/deploy_from_pc.sh pi-user@192.168.137.201 /home/pi/auv`，它会通过 SSH 拷贝当前代码并执行 Pi 安装脚本。脚本禁用了 SSH 密码登录；远程 `sudo` 可能会通过终端提示。
 
-Use the staged, read-only Pi checks in [deploy/TESTING.md](deploy/TESTING.md). `run_bench.sh preflight` verifies deployment safety and reports missing hardware as pending; `camera`, `serial`, `fault-watch`, `endurance`, and `collect` provide focused checks and saved JSON reports. The endurance script calls `acceptance.py`, measures vision/control/heartbeat rates, rolling frame latency, process-tree CPU and RSS, temperature and throttling, and requires a valid camera and STM32 status. Missing throttling data does not count as a pass.
+请参考 [deploy/TESTING.md](deploy/TESTING.md) 中分阶段、只读的 Pi 检查流程。`run_bench.sh preflight` 会验证部署安全性，并将缺失的硬件标记为 pending；`camera`、`serial`、`fault-watch`、`endurance` 和 `collect` 提供聚焦检查和保存的 JSON 报告。耐久测试脚本会调用 `acceptance.py`，测量视觉/控制/心跳速率、滚动帧延迟、进程树 CPU 和 RSS、温度及节流状态，并要求具备有效的相机和 STM32 状态。缺失节流数据不计入通过。
 
-Do not set `motion_commands_enabled: true` until the camera calibration, row/column to body-frame signs, speed limit and serial device have been measured. First motion tests must have thruster power disconnected, propellers removed or thrusters firmly secured. The Debian 13 native build and two Pi CTests passed on 2026-10-04. The 30-minute thermal/performance run, real camera/HLS test, real STM32 bench run and no-prop closed-loop acceptance remain pending hardware.
+在校准相机、行/列到机体坐标系的符号方向、速度限制和串口设备之前，不要设置 `motion_commands_enabled: true`。首次运动测试必须断开推进器电源，移除螺旋桨，或确保推进器牢固固定。2026-10-04 日，Debian 13 原生构建和两次 Pi CTest 已通过。30 分钟热性能运行、真实相机/HLS 测试、真实 STM32 试验台运行，以及无螺旋桨闭环验收仍待硬件完成。

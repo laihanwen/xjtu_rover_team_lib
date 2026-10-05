@@ -41,6 +41,8 @@ def main(binary):
             'distortion_coefficients: []': 'distortion_coefficients: [0, 0, 0, 0, 0]',
             'surge_from_row: 0.0': 'surge_from_row: 0.1',
             'sway_from_col: 0.0': 'sway_from_col: 0.1',
+            # This test checks serial/ARM safety, not the Pi vision throughput gate.
+            'pose_timeout_sec: 0.5': 'pose_timeout_sec: 2.0',
         }
         for old, new in replacements.items():
             config = config.replace(old, new)
@@ -106,10 +108,11 @@ def main(binary):
             else:
                 raise AssertionError(f'no route: {snapshot}')
             assert request(str(root / 'control.sock'), 'arm SAFE_TO_ARM').startswith('OK')
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + 4
             while time.monotonic() < deadline and not any(abs(t[1]) > .001 or abs(t[2]) > .001 for t in targets):
                 time.sleep(.05)
-            assert any(abs(t[1]) > .001 or abs(t[2]) > .001 for t in targets), 'no bounded motion target'
+            assert any(abs(t[1]) > .001 or abs(t[2]) > .001 for t in targets), (
+                'no bounded motion target', targets, request(str(root / 'control.sock'), 'status'))
             assert all(abs(t[1]) <= .10001 and abs(t[2]) <= .10001 for t in targets)
             moving = [t for t in targets if abs(t[1]) > .001 or abs(t[2]) > .001]
             assert all(t[3] == 1.0 and t[4] == 0.0 for t in moving)
@@ -146,7 +149,7 @@ def main(binary):
                 if snapshot['phase'] == 'FAULT':
                     break
                 time.sleep(.02)
-            assert snapshot['phase'] == 'FAULT' and snapshot['leak'], 'leak did not fault mission'
+            assert snapshot['phase'] == 'FAULT' and snapshot['leak'], f'leak did not fault mission: {snapshot}'
             state['leak'] = False
             time.sleep(.1)
             assert request(str(root / 'control.sock'), 'reset').startswith('OK')

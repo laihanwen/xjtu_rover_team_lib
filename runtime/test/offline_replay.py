@@ -100,6 +100,14 @@ def main(binary):
                 if (root / 'control.sock').exists():
                     break
                 time.sleep(.01)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                ready = json.loads(request(str(root / 'control.sock'), 'status'))
+                if ready['serial'] and ready['telemetry_valid'] and ready['camera_age_sec'] >= 0:
+                    break
+                time.sleep(.05)
+            else:
+                raise AssertionError(f'camera or STM32 not ready: {ready}')
             assert request(str(root / 'control.sock'), 'start').startswith('OK')
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:

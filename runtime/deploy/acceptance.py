@@ -73,6 +73,7 @@ def throttled():
 
 
 def main():
+    os.umask(0o077)
     parser = argparse.ArgumentParser()
     parser.add_argument('--duration', type=int, default=1800)
     parser.add_argument('--socket', default='/run/auv-runtime/control.sock')
@@ -155,7 +156,7 @@ def main():
     )
     output = json.dumps(metrics, indent=2) + '\n'
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         args.output.write_text(output)
     print(output, end='')
     raise SystemExit(0 if metrics['passed'] else 1)
