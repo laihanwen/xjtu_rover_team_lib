@@ -288,7 +288,6 @@ private:
       return;
     }
     status_.armed = decoded.armed;
-    status_.leak_detected = decoded.leak_detected;
     status_.error_flags = decoded.error_flags;
     status_.voltage = decoded.voltage;
     status_.depth = decoded.depth;

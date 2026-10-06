@@ -99,7 +99,7 @@ public:
   void tick(double now_sec);
   void force_fault(const std::string & detail, double now_sec);
   void update_status(
-    bool connected, bool armed, bool leak_detected, std::uint32_t error_flags,
+    bool connected, bool armed, std::uint32_t error_flags,
     double now_sec);
   void update_apriltag(bool found, double now_sec);
   void update_map(bool complete, bool all_cones_visited, double now_sec);
@@ -135,7 +135,6 @@ private:
   double surface_received_sec_{-1.0};
   bool connected_{false};
   bool armed_{false};
-  bool leak_detected_{false};
   std::uint32_t error_flags_{0U};
   bool apriltag_found_{false};
   bool map_complete_{false};

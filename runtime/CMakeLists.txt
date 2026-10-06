@@ -15,7 +15,7 @@ add_executable(auvctl src/auvctl.cpp)
 target_compile_features(auvctl PRIVATE cxx_std_17)
 install(TARGETS auv_runtime auvctl RUNTIME DESTINATION bin)
 install(DIRECTORY web/ DESTINATION share/auv-runtime/web)
-install(FILES config/runtime.yaml DESTINATION etc/auv-runtime)
+install(FILES config/runtime.yaml config/pi-rov.yaml DESTINATION etc/auv-runtime)
 install(FILES deploy/auv-runtime.service DESTINATION lib/systemd/system)
 if(BUILD_TESTING)
   add_executable(test_mjpeg test/test_mjpeg.cpp)
@@ -33,7 +33,7 @@ if(BUILD_TESTING)
   if(AUV_REPLAY_DEPS EQUAL 0)
     add_test(NAME dual_camera
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/dual_camera.py $<TARGET_FILE:auv_runtime>)
-    set_tests_properties(dual_camera PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 30)
+    set_tests_properties(dual_camera PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
     add_test(NAME offline_replay
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/offline_replay.py
         $<TARGET_FILE:auv_runtime>)

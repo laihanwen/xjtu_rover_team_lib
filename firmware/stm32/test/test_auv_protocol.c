@@ -18,6 +18,20 @@ static void TestGoldenVector(void)
     assert(size == sizeof(heartbeat_golden));
     assert(memcmp(encoded, heartbeat_golden, size) == 0);
     assert(AuvProtocol_Crc16((const uint8_t *)"123456789", 9U) == 0x29B1U);
+    {
+        const uint8_t level[]={4,3,2,1,1};
+        const uint8_t golden[]={0xaa,0x55,1,8,5,4,3,2,1,1,0xeb,0xf9};
+        AuvProtocolParser parser;
+        AuvProtocolFrame frame={0};
+        size=AuvProtocol_Encode(AUV_MSG_CALIBRATE_LEVEL,level,sizeof(level),encoded,sizeof(encoded));
+        assert(size==sizeof(golden) && memcmp(encoded,golden,size)==0);
+        AuvProtocolParser_Init(&parser);
+        for(size_t i=0;i<size;++i) {
+            AuvParseResult result=AuvProtocolParser_Push(&parser,encoded[i],&frame);
+            assert(result==(i+1==size ? AUV_PARSE_FRAME_READY : AUV_PARSE_INCOMPLETE));
+        }
+        assert(frame.message_type==AUV_MSG_CALIBRATE_LEVEL && frame.payload_length==5);
+    }
 }
 
 static void TestGripperGoldenVector(void)

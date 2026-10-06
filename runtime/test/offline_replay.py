@@ -71,7 +71,7 @@ def main(binary):
         video = root / 'scene.avi'
         make_video(video)
         config = pathlib.Path('runtime/config/runtime.yaml').read_text()
-        config = config.replace('/dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA', f'file:{video}')
+        config = config.replace('csi:0', f'file:{video}')
         config = config.replace('device: ""', f'device: "{os.ttyname(slave)}"')
         config = config.replace('/run/auv-runtime/control.sock', str(root / 'control.sock'))
         config = config.replace('/run/auv-runtime/hls', str(root / 'hls'))

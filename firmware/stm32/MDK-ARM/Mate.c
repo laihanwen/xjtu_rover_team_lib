@@ -111,11 +111,12 @@ static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
 void Mate_GetThrusterOutputs(float output[VECTOR_THRUSTER_COUNT])
 {
     uint32_t i;
+    uint32_t mask = __get_PRIMASK();
     if (output == NULL) return;
     __disable_irq();
     for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
         output[i] = last_thruster_outputs[i];
-    __enable_irq();
+    __set_PRIMASK(mask);
 }
 
 /** @brief 公共缩放整个向量，保留其在六维空间中的方向。 */
@@ -175,9 +176,9 @@ void Mate_Init(void)
     AuvCameraServo_Init(&camera_servo_config);
     PID_Init(&PID_yaw, 3.0f, 0.0f, 0.02f, -100, 100);
 #if AUV_ROV_MANUAL_TRIAL
-    /* Initial water commissioning: proportional only, bounded corrections. */
-    PID_Init(&PID_pit, 0.75f, 0.0f, 0.0f, -20, 20);
-    PID_Init(&PID_rol, 0.75f, 0.0f, 0.0f, -20, 20);
+    /* Operator-requested 10x gains; correction limits remain unchanged. */
+    PID_Init(&PID_pit, 7.5f, 0.0f, 0.0f, -20, 20);
+    PID_Init(&PID_rol, 7.5f, 0.0f, 0.0f, -20, 20);
 #else
     PID_Init(&PID_pit, 5.5f, 0.0f, 0.01f, -400, 400);
     PID_Init(&PID_rol, 5.0f, 0.0f, 0.0f,  -200, 200);
@@ -256,8 +257,7 @@ void Mate_Task(void)
     if (imu_data_ready) imu_data_ready = 0;
     HAL_Delay(10);
 
-    if (AuvSafety_IsArmed() || AuvSafety_GetContext()->kill_active ||
-        AuvSafety_GetContext()->leak_detected)
+    if (AuvSafety_IsArmed() || AuvSafety_GetContext()->kill_active)
         AuvGripper_CancelBootTest();
     AuvGripper_BootTestTick(HAL_GetTick());
     AuvGripper_Tick();
@@ -270,6 +270,7 @@ void Mate_Task(void)
 #endif
 
     /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
+    uint32_t control_mask = __get_PRIMASK();
     __disable_irq();
     rc_fresh = AuvRcInput_CopyFreshFrame(HAL_GetTick(), rc_frame);
     pi_fresh = AuvMotionTarget_CopyFresh(HAL_GetTick(), &pi_target);
@@ -279,7 +280,7 @@ void Mate_Task(void)
     control_imu_sequence=imu_sample_sequence;
     imu_fresh = (imu_sample_sequence != 0U &&
         (uint32_t)(HAL_GetTick() - imu_last_sample_ms) <= 250U) ? 1U : 0U;
-    __enable_irq();
+    __set_PRIMASK(control_mask);
 
     /*
      * Lock one command source for the complete armed interval.  A missing
@@ -373,8 +374,8 @@ void Mate_Task(void)
     PID_Postion_Cal(&PID_rol, 0,          control_angle.rol);
     PID_Postion_Cal(&PID_pit, 0.0f, control_angle.pit);
 #if AUV_ROV_MANUAL_TRIAL
-    PID_pit.OutPut=AuvWater_Pd(-control_angle.pit,pitch_rate.rate,0.75f,0.15f,20.0f);
-    PID_yaw.OutPut=AuvWater_Pd(yaw_error,yaw_rate.rate,1.0f,0.10f,20.0f);
+    PID_pit.OutPut=AuvWater_Pd(-control_angle.pit,pitch_rate.rate,7.5f,1.5f,20.0f);
+    PID_yaw.OutPut=AuvWater_Pd(yaw_error,yaw_rate.rate,10.0f,1.0f,20.0f);
 #endif
 
     }

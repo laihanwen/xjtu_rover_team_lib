@@ -1,7 +1,6 @@
 std_msgs/Header header
 bool connected
 bool armed
-bool leak_detected
 float32 voltage
 float32 depth
 float32 roll

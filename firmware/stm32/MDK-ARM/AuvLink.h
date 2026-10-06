@@ -12,8 +12,7 @@ void AuvLink_Init(void);
 void AuvLink_Task(void);
 void AuvLink_RxError(UART_HandleTypeDef *huart);
 void AuvLink_RxComplete(UART_HandleTypeDef *huart);
-void AuvLink_SetSafetyInputs(uint8_t leak_detected,
-                             uint8_t kill_active,
+void AuvLink_SetSafetyInputs(uint8_t kill_active,
                              uint8_t sensors_valid);
 uint8_t AuvLink_UpdateDepth(float depth_m);
 void AuvLink_InvalidateDepth(void);

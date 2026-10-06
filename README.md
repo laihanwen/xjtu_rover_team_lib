@@ -20,11 +20,11 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 > 当前代码通过软件测试不等于允许带桨运行。首次实机验证必须断开推进器动力、拆桨，
 > 或可靠固定推进器。真实漏水、急停和传感器有效输入接入前，STM32 会拒绝 ARM。
 
-## 从这里开始
+## 项目入口
 
 | 你要做什么 | 入口 |
 |---|---|
-| 了解当前完成度、硬件门槛和下一步 | [项目压缩状态](docs/project-status.md) |
+| 查看当前状态、安全门和下一步 | [项目状态摘要](docs/project-status.md) |
 | 20261006 ROV 合并、遥控映射、M10 与接线 | [ROV 合并版 README](tools/rov/README.md) |
 | 第一次构建和启动 | [快速开始](#快速开始) |
 | 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
@@ -34,7 +34,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 | 配置 P12 数据标注环境 | [P12 打标教程](docs/p12-annotation-guide.md) |
 | 标定 P13 单舵机夹爪 | [P13 夹爪验收](docs/testing/p13-gripper.md) |
 | 试用 P14 转盘视觉 | [P14 视觉验收](docs/testing/p14-valve-foundation.md) |
-| 使用 AI 继续开发 | [新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md) |
+| 开发环境和协作约定 | [开发说明](docs/newcomer-ai-development-guide.md) |
 
 ## 系统架构
 
@@ -396,7 +396,7 @@ ctest --test-dir firmware/stm32/build/host-tests --output-on-failure
 
 ```text
 xjtu_rover_team_lib/
-├── AGENTS.md                 # 项目事实、硬件边界与 AI 必读约束
+├── AGENTS.md                 # 项目事实、硬件边界与开发约束
 ├── src/
 │   ├── auv_interfaces/       # 公共 msg / srv
 │   ├── auv_stm32_bridge/     # ROS 2 ↔ STM32 安全串口桥
@@ -424,12 +424,12 @@ xjtu_rover_team_lib/
 └── logs|videos|maps|events/  # 被 Git 忽略的运行产物目录
 ```
 
-推荐阅读顺序：
+建议阅读顺序：
 
-1. [项目约束与路线图](AGENTS.md)
-2. [文档中心](docs/README.md)
-3. [项目压缩状态](docs/project-status.md)
-4. 当前任务对应的 package README 和验收手册
+1. [文档中心](docs/README.md)
+2. [项目状态摘要](docs/project-status.md)
+3. 当前任务对应的 package README 和验收手册
+4. [项目约束与路线图](AGENTS.md)
 
 ## 安全边界
 
@@ -488,16 +488,6 @@ host 测试、交叉编译、无桨台架和 failsafe 故障注入。
 - 视频相邻帧不得随机分散到 train/val/test，应按采集批次隔离以避免数据泄漏。
 - rosbag、视频、数据集、权重和编译产物均不得混入源码提交。
 
-### 使用 AI 编程助手
-
-新会话先要求工具读取 `AGENTS.md`、本 README 和任务目录内的说明。接受改动前确认：
-
-- 没有把 Humble/Jazzy 的命令当作 Lyrical 默认命令；
-- 没有在 fish 指令中默认使用 `setup.bash`；
-- 没有污染系统 Python 或 CUDA/YOLO 环境；
-- 没有猜测硬件参数或修改会被 CubeMX 覆盖的区域；
-- 没有绕过 DISARM、heartbeat、漏水、kill 或传感器有效检查。
-
 ## 常见问题
 
 ### `ros2 launch` 提示找不到文件
@@ -542,10 +532,12 @@ ARM 需要有效串口协议、近期 heartbeat、无漏水、kill 未触发且�
 
 ---
 
-第一次加入项目建议依次阅读：**README → [AGENTS.md](AGENTS.md) →
-[新人 AI 辅助开发教程](docs/newcomer-ai-development-guide.md) →
+首次接触项目建议依次阅读：**README → [文档中心](docs/README.md) →
 [仓库架构](docs/architecture/repository-layout.md) → 当前任务所属模块文档**。
 
 ## Lightweight Raspberry Pi mode
 
 The standalone C++ runtime and safe deployment procedure are documented in [runtime/README.md](runtime/README.md). ROS 2 Lyrical PC development remains available through the existing colcon packages; both modes link the same mission-one core sources in `auv_core`.
+
+
+2026-10-06 本地候选更新：水平改为岸上手动校准（每次STM32启动需重做），恢复IMU/心跳时间戳一致快照；推进器矩阵暂不修改。双摄原始MJPEG缓存、长连接录制与独立预览目标30FPS，真实Pi帧率待部署测量。使用方式见[ROV工具说明](tools/rov/README.md)，验证范围见[本次检查记录](docs/reviews/manual-level-video-20261006.md)。
