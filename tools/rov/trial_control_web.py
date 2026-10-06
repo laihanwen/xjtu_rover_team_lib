@@ -10,6 +10,7 @@ from pathlib import Path
 from Re_control import RemoteControl, load_mapping
 from trial_protocol import manual_frame, centered
 from video_recorder import DatasetRecorder
+from telemetry_log import TelemetryLog
 
 HTML = '''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ROV 遥控驾驶台</title>
 <style>*{box-sizing:border-box}body{margin:0;padding:36px clamp(18px,4vw,64px);max-width:1440px;margin-inline:auto;background:#0b1421;color:#e6eef8;font:16px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}h1{font-size:clamp(26px,4vw,42px);letter-spacing:-1px;margin:6px 0 12px}h2{font-size:18px;margin:0 0 14px}p{color:#a8bacd}a{color:#61d9c4;text-underline-offset:4px}section,.card{background:#121f30;border:1px solid #26364a;padding:24px;border-radius:18px;margin:20px 0;box-shadow:0 8px 28px #0002}button{padding:13px 22px;font-family:inherit;font-size:15px;font-weight:600;border:1px solid #35516b;border-radius:10px;background:#20354a;color:#e6eef8;cursor:pointer;min-height:48px}button:hover{filter:brightness(1.15)}button:focus-visible,a:focus-visible{outline:3px solid #61d9c4;outline-offset:4px}button:disabled{opacity:.4;cursor:not-allowed}#arm{background:#217869;border-color:#40bba3}#stop{background:#b73749;border-color:#d96673;margin-left:8px}.warn,.bad{color:#ffc594}.axis{display:grid;grid-template-columns:180px 1fr 75px;gap:14px;align-items:center;margin:18px 0}meter{width:100%;height:24px;accent-color:#61d9c4}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.8 Consolas,monospace;color:#a8bacd}.eyebrow{font-size:12px;letter-spacing:3px;color:#61d9c4;font-weight:700}.subtitle{margin-bottom:26px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.stat{background:#152438;border:1px solid #2a3e54;border-radius:14px;padding:18px}.stat span{display:block;color:#91a8bd;font-size:12px}.stat strong{display:block;font-size:26px;line-height:1.4;color:#f0f7ff;margin-top:8px}.layout{display:grid;grid-template-columns:1.7fr 1fr;gap:22px;align-items:start}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cell{min-height:86px;padding:12px;background:#182b40;border:1px solid #35516b;border-radius:10px;font-size:13px}.cell.current{border:2px solid #61d9c4}.cell.next{background:#254764}.small{font-size:13px;color:#a8bacd}video{width:100%;aspect-ratio:16/9;object-fit:contain;background:#050b12;border-radius:12px}details summary{cursor:pointer;color:#c7d8e9;padding:8px 0}#mode{margin-top:20px}#detail{min-height:24px}@media(max-width:760px){body{padding:20px 16px}.stats{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}.axis{grid-template-columns:1fr 60px}.axis span:first-child{grid-column:1/-1}section,.card{padding:18px}#stop{margin:8px 0}}</style>
@@ -22,10 +23,11 @@ HTML = '''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewp
 <h2 id="mode" aria-live="polite">正在连接</h2><p id="detail"></p><p id="device"></p></section>
 <section><h2>YOLO 数据采集</h2><p>CSI 下视与 USB 前视分别录制到 PC；视频不叠加识别标注，每分钟分段保存。录制独立于 ARM 和遥控许可。</p><button id="record-start" onclick="recordAction('start')">开始双摄录制</button> <button id="record-stop" onclick="recordAction('stop')">结束并保存</button><p id="record-state" aria-live="polite">录制未开始</p><details><summary>保存目录与采集详情</summary><pre id="record-detail"></pre></details></section><section><h2>双摄像头回传</h2><a href="http://192.168.137.150:8080/" target="_blank" rel="noopener">打开双摄像头实时画面（左侧 CSI 下视，右侧 USB 前视）</a></section>
 <section><p>八路起转补偿±48 μs（岸上实测），实际总限幅±100 μs；水中需复核。标定脉冲已禁用；混控优先保留调平纠正，升降/侧移方向已反转。</p></section><section><h2>手柄输入</h2><div id="axes"></div><p id="gate"></p></section>
-<section><h2>通信与设备状态</h2><details><summary>查看完整 STM32 遥测</summary><pre id="telemetry"></pre></details></section>
+<section><h2>IMU / PID 日志</h2><p id="log-state">日志启动中</p><pre id="log-detail"></pre></section><section><h2>通信与设备状态</h2><details><summary>查看完整 STM32 遥测</summary><pre id="telemetry"></pre></details></section>
 <script>async function pulse(){const r=await fetch('/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'pulse',motor:Number(document.querySelector('#motor').value),offset:Number(document.querySelector('#offset').value)})});if(!r.ok)alert(await r.text())}async function act(action){const r=await fetch('/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...(action==='level'?{shore_confirmed:document.querySelector('#shore').checked}:{})})});if(!r.ok)alert(await r.text())}
 async function recordAction(action){try{const r=await fetch('/recording',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});const data=await r.json();if(!r.ok)document.getElementById('record-state').textContent=data.error||'录制操作失败';else await recordingState()}catch(e){document.getElementById('record-state').textContent='录制连接失败'}}
 async function recordingState(){try{const r=await fetch('/recording',{cache:'no-store'});if(!r.ok)throw Error('状态不可用');const s=await r.json();document.getElementById('record-start').disabled=s.active;document.getElementById('record-stop').disabled=!s.active;document.getElementById('record-state').textContent=s.error||((s.active?'正在录制':'录制已停止')+' · 下视 '+(s.cameras.down?.frames||0)+' 帧 · 前视 '+(s.cameras.front?.frames||0)+' 帧 · 实收 下视 '+(s.cameras.down?.received_fps||0)+' / 前视 '+(s.cameras.front?.received_fps||0)+' FPS');document.getElementById('record-detail').textContent=JSON.stringify(s,null,2)}catch(e){document.getElementById('record-state').textContent='录制状态不可用'}}setInterval(recordingState,1000);recordingState();
+async function logState(){try{const s=await(await fetch('/logs',{cache:'no-store'})).json();document.getElementById('log-state').textContent=s.error?'日志错误：'+s.error:'每 '+s.interval_s+' 秒记录一次 · 已保存 '+s.records+' 条';document.getElementById('log-detail').textContent=s.directory}catch(e){document.getElementById('log-state').textContent='日志状态不可用'}}setInterval(logState,1000);logState();
 document.addEventListener('keydown' ,e=>{if(e.key==='Escape')act('stop')});
 const labels=['右杆左右 · 偏航','右杆前后 · 前后','左杆前后 · 升沉','左杆左右 · 横移'];
 labels.forEach((l,i)=>{const d=document.createElement('div');d.className='axis';const label=document.createElement('span');label.textContent=l;const m=document.createElement('meter');m.min=-1;m.max=1;m.value=0;m.id='a'+i;const v=document.createElement('span');v.id='v'+i;d.append(label,m,v);document.querySelector('#axes').append(d)});
@@ -40,6 +42,7 @@ def main():
     parser.add_argument('--mapping-config', default=str(Path(__file__).with_name('radiomaster-pocket.json')))
     parser.add_argument('--camera-port', type=int, default=8080)
     parser.add_argument('--record-dir', default=str(Path(__file__).resolve().parents[2] / 'data' / 'rov-recordings'))
+    parser.add_argument('--log-dir', default=str(Path(__file__).resolve().parents[2] / 'logs' / 'rov'))
     args = parser.parse_args()
     recorder = DatasetRecorder(f'http://{args.host}:{args.camera_port}',args.record_dir)
     os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = '1'
@@ -49,6 +52,15 @@ def main():
     state = {'connected':False,'telemetry':{},'error':'','detail':'等待手柄',
              'axes':[],'deadman':False,'centered':False,'can_arm':False}
     operator = {'last_poll':0.0,'action':None}
+    def log_snapshot():
+        with lock:
+            result = dict(state)
+            # Reply ages are relative to arrival; account for a stalled TCP loop.
+            elapsed = time.monotonic()-state.get('_received_at',time.monotonic())
+            for name in ('telemetry_age','pid_age'):
+                if result.get(name) is not None: result[name] += elapsed
+            return result
+    telemetry_log = TelemetryLog(args.log_dir,log_snapshot)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args):
             pass
@@ -59,6 +71,7 @@ def main():
         def do_GET(self):
             if self.path=='/':return self.reply(HTML,html=True)
             if self.path=='/recording':return self.reply(recorder.status())
+            if self.path=='/logs':return self.reply(telemetry_log.status())
             if self.path!='/state':return self.reply({'error':'not found'},404)
             with lock:
                 operator['last_poll']=time.monotonic()
@@ -122,6 +135,7 @@ def main():
                         reply=json.loads(line);lease=reply['lease'];last_reply=now
                         with lock:
                             state.update({k:v for k,v in reply.items() if k!='lease'})
+                            state['_received_at']=time.monotonic()
                 if lease is not None and now-last_reply<=.2:
                     sequence+=1
                     message={'lease':lease,'sequence':sequence,'frame':list(frame),'deadman':deadman}
@@ -144,6 +158,7 @@ def main():
     finally:
         if conn:conn.close()
         recorder.close()
+        telemetry_log.close()
         server.shutdown()
 
 

@@ -294,6 +294,18 @@ static void SendStatus(uint32_t now_ms)
     SendFrame(AUV_MSG_STATUS, payload, sizeof(payload));
 }
 
+static void SendPidDiagnostic(void)
+{
+    uint8_t payload[49];
+    MatePidSnapshot snapshot;
+    Mate_GetPidSnapshot(&snapshot);
+    AuvProtocol_WriteU32Le(payload, snapshot.tick_ms);
+    payload[4] = snapshot.flags;
+    for (uint32_t i=0; i<11; ++i)
+        AuvProtocol_WriteF32Le(&payload[5+4*i], snapshot.values[i]);
+    SendFrame(AUV_MSG_PID_DIAGNOSTIC, payload, sizeof(payload));
+}
+
 static void SendImu(void)
 {
     uint8_t payload[40] = {0};
@@ -461,6 +473,7 @@ void AuvLink_Task(void)
     if ((uint32_t)(now_ms - last_status_ms) >= AUV_STATUS_PERIOD_MS) {
         last_status_ms = now_ms;
         SendStatus(now_ms);
+        SendPidDiagnostic();
     }
     if ((uint32_t)(now_ms - last_depth_ms) >= AUV_DEPTH_PERIOD_MS) {
         last_depth_ms = now_ms;

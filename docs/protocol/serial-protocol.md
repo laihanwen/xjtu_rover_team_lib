@@ -1,5 +1,7 @@
 # Raspberry Pi ↔ STM32 串口协议 v1
 
+2026-10-06 新增 `0x84 PID_DIAGNOSTIC`（49字节，随STATUS以10Hz回传），用于PC每5秒日志。包含MCU控制周期时间、ARM/IMU/三轴闭环标志、三轴角度/误差/混控前纠正量及俯仰/偏航角速度。完整字节定义与有效性规则见 [ROV日志说明](../../tools/rov/LOGGING.md)。原STATUS布局不变，旧端可忽略新诊断帧。
+
 状态：v1 已冻结，heartbeat、ARM、MOTION_TARGET 和状态遥测均已接入。
 MCU 为 STM32F405RGT6；实机接线和台架安全测试仍需人工确认。
 
