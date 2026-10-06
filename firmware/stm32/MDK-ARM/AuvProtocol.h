@@ -21,6 +21,8 @@ typedef enum {
     AUV_MSG_SET_ARMED       = 0x02,
     AUV_MSG_MOTION_TARGET   = 0x03,
     AUV_MSG_ACTUATOR_COMMAND = 0x04,
+    AUV_MSG_RC_TARGET       = 0x05,
+    AUV_MSG_REMOTE_KILL     = 0x06,
     AUV_MSG_ACK             = 0x7F,
     AUV_MSG_STATUS          = 0x80,
     AUV_MSG_IMU             = 0x81,

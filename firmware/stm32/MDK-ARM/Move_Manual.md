@@ -2,6 +2,8 @@
 
 > 适用于 `MDK-ARM/Copy_cup.uvprojx`，更新日期：2026-08-30。机械构型采用 `(±180,±120,±58) mm` 近等姿态力臂方案；控制流程吸收 Gao 等 ICRA 2024 的“统一六维动力输入后单次分配”结构，并保留经典八推匹配增益。
 
+2026-10-06 合并更新：T3=右前下、T4=左前下由用户确认；遥控与定深新行为见 [ROV 合并版 README](../../../tools/rov/README.md)。
+
 ## 1. 工程中的唯一有效源码
 
 Keil 工程实际编译的自定义控制文件位于 `MDK-ARM`：
@@ -36,7 +38,7 @@ Keil 工程实际编译的自定义控制文件位于 `MDK-ARM`：
 - 推进器 PWM 中位 `1488` 与逻辑偏差 `±450`；
 - T1..T8 的定时器通道映射；
 - `Motor_1Polarity` 至 `Motor_8Polarity`；
-- PID 参数、Yaw/Pitch 开关行为和舵机功能；
+- PID 参数、Yaw/Depth 开关行为与舵机功能（2026105 合并后的映射见第7节）；
 - 原 9/10 号附加推进通道始终输出中位，不参与混控。
 
 ## 3. 坐标系与方向定义
@@ -189,8 +191,7 @@ UART1 的 `MOTION_TARGET` 负载依次为 `sequence、vx、vy、depth、yaw`。
 
 当前 `vx/vy` 是开环 PWM 前馈，默认系数位于 `Mate.h` 的
 `AUV_SURGE_PWM_PER_MPS` 和 `AUV_SWAY_PWM_PER_MPS`，必须在拆桨或约束水槽中标定。
-`yaw` 使用现有 IMU 航向 PID。`depth` 已完成协议校验与缓存，但在深度传感器和深度
-闭环接入前，固件强制保持 `Fz=0`；因此当前版本不能宣称具备深度控制。
+`yaw` 使用现有 IMU 航向 PID。`depth` 已接入 STM32 定深控制；`AUV_DEPTH_CONTROL_CALIBRATED=0` 默认强制保持 `Fz=0`，尚未完成实机定深标定。
 深度驱动接入边界已经固定为 `AuvLink_UpdateDepth(depth_m)`：输入必须是有限的米制正值，
 超过 250 ms 未更新即自动失效。具体传感器、总线和标定参数仍须按实物确定，禁止用固定值
 绕过 ARM 安全门。
@@ -206,8 +207,8 @@ UART1 的 `MOTION_TARGET` 负载依次为 `sequence、vx、vy、depth、yaw`。
 | `RcData[5]` | SA 舵机拨盘 | `MyRCKey[9]` |
 | `RcData[6]` | SC 速度档 | `MyRCKey[10]` |
 | `RcData[7]` | SB 舵机选择 | `MyRCKey[11]` |
-| `RcData[8]` | SD/Pitch 目标开关 | `MyRCKey[12]` |
-| `RcData[9]` | Yaw PID 开关 | `MyRCKey[13]` |
+| `RcData[8]` | btn0 / Yaw 锁定 | `MyRCKey[12]` |
+| `RcData[9]` | btn1 / Depth 锁定 | `MyRCKey[14]` |
 
 ### 7.3 SC 对遥控指令的保留系数
 
@@ -259,20 +260,16 @@ Yaw PID 开启时，偏航摇杆不再直接生成 `Mz`，而是以每秒最大 
 P13 夹爪信号固定使用 `PA8/TIM1_CH1`。TIM1 以 2 MHz 计数，因此
 `CCR = pulse_us × 2`，周期 20 ms。脉宽增大张开，减小闭合。
 
-实际开合端点保存在 `AuvGripperConfig.h`。在
-`AUV_GRIPPER_CALIBRATED=0` 时，固件保持 1500 μs 并拒绝 OPEN/CLOSE；不得使用理论
-500/2500 μs 代替机械实测值。标定启用后，上电从中位限速移动到闭合目标。
+实际开合端点保存在 `AuvGripperConfig.h`。`AUV_GRIPPER_CALIBRATED=0` 时关闭PWM并拒绝运动；标定后默认保持配置中间位置，不再开机自动走到关闭端点。
 
-遥控状态下 `SB=1` 才接受夹爪输入：SA≤80 请求闭合，SA≥175 请求张开，中间区停止
-并保持。Pi 链路通过 `ACTUATOR_COMMAND` 发送离散 OPEN/CLOSE/STOP，两种来源继续遵守
-ARM 周期控制源锁定，不在运行中静默切换。
+需要开机小幅动作时，设置已验证的 `BOOT_START_US`、`BOOT_EXCURSION_US`，同时启用 `AUV_GRIPPER_BOOT_TEST_ENABLED` 与标定门。启动位置→等待→限速移到自检位置→停留→返回启动位置，每次初始化仅执行一次。两位置都必须在实测开合端点内；无效配置禁用输出。STOP、漏水、急停或ARM会取消自检，远端运动命令在自检期间被拒绝。自检专用授权不ARM推进器。
 
-详细安全步骤见 `docs/testing/p13-gripper.md`。
+这些位置是绝对PWM指令；无位置反馈舵机无法读取上电前真实角度，也不能保证首次到启动位置的移动很小。自检完成表示指令序列完成，不证明舵机实际到位或无卡滞。角度到PWM必须实测换算，不用通用500..2500μs假定机械限位。默认自检关闭，两个PWM均为TODO占位0。
 
 ## 11. 摄像头俯仰舵机
 
 从“八推矢量_代码开发_可改_摄像”参考工程确认的信号通道为 `PC7/TIM8_CH2`，当前
-`Copy_cup.ioc` 也配置为该通道。参考工程给出的候选范围是 CCR `2250..3000`，但该数值
+`Copy_cup.ioc` 也配置为该通道。参考工程给出的候选范围是 CCR `2550..3100`，但该数值
 尚未在当前摄像头连杆上完成机械端点验证，因此 `AuvCameraServoConfig.h` 默认设置
 `AUV_CAMERA_SERVO_CALIBRATED=0`。此状态下不启动 TIM8_CH2 PWM，Pi 和遥控转动命令均被拒绝。
 

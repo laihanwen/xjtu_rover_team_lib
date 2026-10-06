@@ -43,9 +43,11 @@ extern UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN Private defines */
 void USART1_Receive_IT_Init(void);
+void USART1_Receive_Service(void);
 void USART2_Receive_IT_Init(void);
 void USART1_SetBaudRate_460800(void);
 uint8_t h30_data_callback(uint8_t byte);
+void h30_reset_rx(void);
 /* USER CODE END Private defines */
 
 void MX_USART1_UART_Init(void);

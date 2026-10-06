@@ -15,6 +15,15 @@ static volatile AuvGripperStatus active_status;
 static volatile uint8_t command_seen;
 static volatile uint8_t initialized;
 static uint8_t last_remote_action;
+static AuvGripperBootTestConfig boot_test;
+static uint32_t boot_phase_ms;
+static uint8_t boot_test_configured;
+
+static uint8_t BootTestActive(void)
+{
+    return active_status.boot_test_state >= AUV_GRIPPER_TEST_WAIT &&
+        active_status.boot_test_state <= AUV_GRIPPER_TEST_RETURN;
+}
 
 static uint8_t SequenceNewer(uint32_t incoming, uint32_t previous)
 {
@@ -39,11 +48,13 @@ static uint8_t ConfigValid(const AuvGripperConfig *config)
 static AuvArmResult ApplyAction(AuvGripperAction action, uint8_t armed)
 {
     if (action == AUV_GRIPPER_ACTION_STOP) {
+        AuvGripper_CancelBootTest();
         active_status.target_us = active_status.current_us;
         active_status.state = (active_status.calibrated != 0U)
             ? AUV_GRIPPER_STOPPED : AUV_GRIPPER_UNCALIBRATED;
         return AUV_ARM_ACCEPTED;
     }
+    if (BootTestActive()) return AUV_ARM_UNSAFE;
     if (armed == 0U) return AUV_ARM_DISARMED;
     if (active_status.calibrated == 0U) return AUV_ARM_UNSAFE;
     if (active_status.state == AUV_GRIPPER_FAULT) return AUV_ARM_UNSAFE;
@@ -72,9 +83,12 @@ void AuvGripper_Init(const AuvGripperConfig *config)
     active_status.last_command_sequence = 0U;
     command_seen = 0U;
     last_remote_action = 0xFFU;
+    boot_test_configured = 0U;
+    active_status.boot_test_state = AUV_GRIPPER_TEST_DISABLED;
 
     if (ConfigValid(config) == 0U) {
         active_status.state = AUV_GRIPPER_FAULT;
+        active_status.calibrated = 0U;
         active_status.error_flags |= AUV_GRIPPER_ERROR_CONFIG;
         initialized = 1U;
         return;
@@ -87,9 +101,80 @@ void AuvGripper_Init(const AuvGripperConfig *config)
 
     active_status.calibrated = 1U;
     active_status.error_flags = 0U;
-    active_status.target_us = active_config.close_us;
-    active_status.state = (active_status.current_us == active_status.target_us)
-        ? AUV_GRIPPER_CLOSED : AUV_GRIPPER_MOVING_CLOSE;
+    /* Calibration does not authorize an automatic full-close boot movement. */
+    active_status.state = AUV_GRIPPER_STOPPED;
+}
+
+uint8_t AuvGripper_PwmEnabled(void)
+{
+    return initialized && active_status.calibrated &&
+        active_status.state != AUV_GRIPPER_FAULT;
+}
+
+uint8_t AuvGripper_ConfigureBootTest(const AuvGripperBootTestConfig *config,
+                                    uint32_t now_ms)
+{
+    if (config == NULL || boot_test_configured) return 0U;
+    boot_test_configured = 1U;
+    if (!config->enabled) return 1U;
+    if (!AuvGripper_PwmEnabled() ||
+        config->start_us < active_config.close_us ||
+        config->start_us > active_config.open_us ||
+        config->excursion_us < active_config.close_us ||
+        config->excursion_us > active_config.open_us ||
+        config->start_us == config->excursion_us) {
+        active_status.state = AUV_GRIPPER_FAULT;
+        active_status.calibrated = 0U;
+        active_status.error_flags |= AUV_GRIPPER_ERROR_CONFIG;
+        return 0U;
+    }
+    boot_test = *config;
+    boot_phase_ms = now_ms;
+    active_status.current_us = config->start_us;
+    active_status.target_us = config->start_us;
+    active_status.boot_test_state = AUV_GRIPPER_TEST_WAIT;
+    return 1U;
+}
+
+void AuvGripper_CancelBootTest(void)
+{
+    if (!BootTestActive()) return;
+    active_status.target_us = active_status.current_us;
+    active_status.state = AUV_GRIPPER_STOPPED;
+    active_status.boot_test_state = AUV_GRIPPER_TEST_CANCELLED;
+}
+
+void AuvGripper_BootTestTick(uint32_t now_ms)
+{
+    switch (active_status.boot_test_state) {
+    case AUV_GRIPPER_TEST_WAIT:
+        if ((uint32_t)(now_ms - boot_phase_ms) >= boot_test.startup_wait_ms) {
+            active_status.target_us = boot_test.excursion_us;
+            active_status.state = (boot_test.excursion_us > boot_test.start_us)
+                ? AUV_GRIPPER_MOVING_OPEN : AUV_GRIPPER_MOVING_CLOSE;
+            active_status.boot_test_state = AUV_GRIPPER_TEST_OUT;
+        }
+        break;
+    case AUV_GRIPPER_TEST_OUT:
+        if (active_status.current_us == active_status.target_us) {
+            boot_phase_ms = now_ms;
+            active_status.boot_test_state = AUV_GRIPPER_TEST_HOLD;
+        }
+        break;
+    case AUV_GRIPPER_TEST_HOLD:
+        if ((uint32_t)(now_ms - boot_phase_ms) >= boot_test.endpoint_hold_ms) {
+            active_status.target_us = boot_test.start_us;
+            active_status.state = (boot_test.start_us > boot_test.excursion_us)
+                ? AUV_GRIPPER_MOVING_OPEN : AUV_GRIPPER_MOVING_CLOSE;
+            active_status.boot_test_state = AUV_GRIPPER_TEST_RETURN;
+        }
+        break;
+    case AUV_GRIPPER_TEST_RETURN:
+        if (active_status.current_us == active_status.target_us)
+            active_status.boot_test_state = AUV_GRIPPER_TEST_COMPLETE;
+        break;
+    default: break;
+    }
 }
 
 AuvArmResult AuvGripper_Accept(const uint8_t *payload,
@@ -130,7 +215,7 @@ AuvArmResult AuvGripper_Accept(const uint8_t *payload,
 void AuvGripper_CommandRemote(uint8_t dial, uint8_t enabled, uint8_t armed)
 {
     uint8_t requested = AUV_GRIPPER_ACTION_STOP;
-    if ((enabled == 0U) || (armed == 0U)) {
+    if ((enabled == 0U) || (armed == 0U) || BootTestActive()) {
         last_remote_action = 0xFFU;
         return;
     }
@@ -181,4 +266,5 @@ void AuvGripper_GetStatus(AuvGripperStatus *status)
     status->target_us = active_status.target_us;
     status->error_flags = active_status.error_flags;
     status->last_command_sequence = active_status.last_command_sequence;
+    status->boot_test_state = active_status.boot_test_state;
 }

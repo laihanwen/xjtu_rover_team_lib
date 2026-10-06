@@ -1,0 +1,38 @@
+{
+  "sample_count": 120,
+  "state_after": "State.RUNNING",
+  "error": null,
+  "duration_s": 51.951,
+  "first_sequence": 642,
+  "last_sequence": 5837,
+  "safety_states": [
+    3
+  ],
+  "max_imu_age_ms": 58,
+  "tick_decreased": false,
+  "pwm_values": [
+    1488
+  ],
+  "counters_first": {
+    "imu_sample_sequence": 642,
+    "imu_last_sample_ms": 6474,
+    "imu_uart_errors": 0,
+    "imu_rx_restart_failures": 0,
+    "imu_checksum_errors": 0,
+    "imu_frame_timeouts": 0
+  },
+  "counters_last": {
+    "imu_sample_sequence": 5837,
+    "imu_last_sample_ms": 58872,
+    "imu_uart_errors": 0,
+    "imu_rx_restart_failures": 0,
+    "imu_checksum_errors": 0,
+    "imu_frame_timeouts": 0
+  },
+  "read_only_application": true,
+  "atomic_snapshot": false,
+  "arm_sent": false,
+  "safety_state_meaning": "FAILSAFE: no external valid safety/depth/heartbeat input",
+  "hex_sha256": "40a2a68e082d0d286451f783cf7dd80cdd046a6ed0a47ece599f83d6d2d402cf",
+  "imu_rate_hz": 99.99807510923755
+}

@@ -50,7 +50,7 @@ uint8_t AuvDepth_CopyFresh(uint32_t now_ms, AuvDepthSample *sample)
     uint32_t after;
     AuvDepthSample snapshot;
     if (sample == NULL) return 0U;
-    do {
+    for (;;) {
         before = generation;
         if ((before & 1U) != 0U) continue;
         snapshot.depth_m = active_depth_m;
@@ -58,7 +58,8 @@ uint8_t AuvDepth_CopyFresh(uint32_t now_ms, AuvDepthSample *sample)
         snapshot.last_update_ms = active_update_ms;
         snapshot.valid = active_valid;
         after = generation;
-    } while (before != after || (after & 1U) != 0U);
+        if (before == after && (after & 1U) == 0U) break;
+    }
     *sample = snapshot;
     return (snapshot.valid != 0U &&
             (uint32_t)(now_ms - snapshot.last_update_ms) <= AUV_DEPTH_TIMEOUT_MS) ? 1U : 0U;

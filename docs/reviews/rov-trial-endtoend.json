@@ -1,0 +1,35 @@
+{
+  "arm_sent": false,
+  "count": 77,
+  "last": {
+    "lease": 77,
+    "telemetry": {
+      "armed": false,
+      "failsafe": true,
+      "error_flags": 8,
+      "depth_m": null,
+      "roll_deg": -0.0016480683885436269,
+      "pitch_deg": -0.011375904344991044,
+      "yaw_deg": 0.003257989812054502,
+      "outputs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "telemetry_age": 0.05242107099996929,
+    "detail": "ARM/DISARM\u54cd\u5e94\u7801 0",
+    "uart_crc_errors": 0,
+    "pwm_limit": 50,
+    "servos_enabled": false,
+    "attitude_hold": false,
+    "depth_hold": false,
+    "leak_sensor_present": false
+  },
+  "ever_armed": false
+}

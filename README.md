@@ -25,6 +25,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 | 你要做什么 | 入口 |
 |---|---|
 | 了解当前完成度、硬件门槛和下一步 | [项目压缩状态](docs/project-status.md) |
+| 2026105 ROV 合并、遥控映射、M10 与接线 | [ROV 合并版 README](tools/rov/README.md) |
 | 第一次构建和启动 | [快速开始](#快速开始) |
 | 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
 | 验收任务一闭环 | [AprilTag 与交通锥遍历](docs/testing/task1-apriltag-cones.md) |
@@ -58,6 +59,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高速姿态控制、
 推力分配和最终 PWM 必须留在 STM32，不由 ROS 2 调度承担。
 树莓派轻量模式以 `auv_runtime` 运行任务一；PC 仍使用 ROS 2 Lyrical 做开发、可视化与调试。
+轻量模式现支持同时采集 USB 与 CSI，参考 `two_camera` 的独立采集与最新帧覆盖方式；网页左右显示双路画面，共用一个 H.264 编码器。配置与接口见 [轻量运行时说明](runtime/README.md)，实机结果见 [树莓派部署记录](docs/deployment/pi-20261006/README.md)。
 
 ### 关键数据流
 

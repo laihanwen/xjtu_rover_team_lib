@@ -27,6 +27,20 @@ ctest --test-dir build-lightweight --output-on-failure
 
 `auvctl` 通过 `/run/auv-runtime/control.sock`（模式 `0660`）进行控制，适合通过 SSH 使用。SSH 用户必须属于 `auv` 组。执行 ARM 还需要满足额外条件：`auvctl arm --confirm SAFE_TO_ARM`，并且必须具备新鲜且安全的 STM32 STATUS、VISIT_CONES、已校准的运动配置，以及显式启用的运动控制。`pause`、`abort`、`disarm` 和故障条件都会撤销运动并请求 DISARM。若 Linux 异常退出，STM32 心跳丢失仍然是最终的安全屏障。
 
+## 双摄像头
+
+参考补充代码 `two_camera.py` / `two_camera_fast.py` 的独立采集、最新帧覆盖和 CSI MJPEG 管道方式，运行时可同时采集 USB 与 CSI。USB 保留为任务一视觉输入；CSI 作为前视采集与预览，尚未接入海参或转盘识别。这里是逻辑命名，实际安装朝向需现场核对。
+
+在配置中启用 `camera_front.enabled: true`，使用 `source: csi:0`（或 `csi:1`），并配置宽、高和帧率；树莓派部署使用 320×240、15 fps。CSI 需要系统提供 `rpicam-vid`。默认配置关闭第二相机，兼容单相机与离线测试。
+
+两路独立采集，只保留最新帧；CSI 使用有界 MJPEG 缓冲、超时读取、进程重启和退出清理，避免 CSI 堵塞拖住 USB 视觉或控制。USB 使用 V4L2 单帧缓冲。显示固定节奏取最新帧，两路共用一个 H.264 编码器；部署输出 640×240，左侧 USB、右侧 CSI。超过帧时限的画面置黑。
+
+CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相机进程。服务等待 `network-online.target` 后启动，避免开机静态 IP 尚未就绪导致网页绑定失败。实际 Pi 的硬件编码存在后续 HLS 分段缺少 SPS/PPS 的问题，当前部署显式选择 `libx264`、`ultrafast`、单线程、15 fps；硬件编码 HLS 尚未验收，不能只凭 HTTP 200 判定视频可播放。软件编码添加关键帧参数头，机制参考 [FFmpeg bitstream filter 文档](https://ffmpeg.org/ffmpeg-bitstream-filters.html#dump_005fextra)，实机需通过后续分段独立解码检查。
+
+只读接口 `/api/camera/down.jpg` 和 `/api/camera/front.jpg` 返回各自最新 JPEG；过期时返回 HTTP 503。`/api/status` 增加 `down_capture_frames`、`front_frames`、`front_hz`、`front_camera_age_sec`、`front_degraded` 和 `front_detail`。采集帧率、视觉处理帧率与视频输出帧率分别统计，不能相互代替。
+
+`ctest --test-dir build-lightweight --output-on-failure` 包含 MJPEG 分包/缓冲上限测试，以及双相机模拟、CSI 卡住后的 USB/控制持续运行、子进程退出清理测试；这些测试不访问真实硬件或串口。
+
 ## 自主模式
 
 完成相机、控制方向、速度限制和真实 STM32 安全验收后，比赛配置可以设置 `operation.mode: autonomous`、`auto_start: true` 和 `auto_arm: true`。自主模式会先保持 DISARM，等待启动延时，并要求相机采集、视觉处理与安全 STM32 STATUS 在 `startup_stable_sec` 内持续新鲜，然后自动启动 Mission；进入 `VISIT_CONES` 且完整 ARM 安全门仍满足时，才自动发送一次 ARM 请求。自主模式拒绝远程 `start`、`arm`、`pause`、`resume`、`abort` 和 `reset`，只保留只读 `status` 与紧急 `disarm`。紧急 DISARM 会把任务锁定到 FAULT。

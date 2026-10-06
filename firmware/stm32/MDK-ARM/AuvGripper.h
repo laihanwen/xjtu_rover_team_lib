@@ -42,15 +42,39 @@ typedef struct {
 } AuvGripperConfig;
 
 typedef struct {
+    uint8_t enabled;
+    uint16_t start_us;
+    uint16_t excursion_us;
+    uint32_t startup_wait_ms;
+    uint32_t endpoint_hold_ms;
+} AuvGripperBootTestConfig;
+
+typedef enum {
+    AUV_GRIPPER_TEST_DISABLED = 0,
+    AUV_GRIPPER_TEST_WAIT,
+    AUV_GRIPPER_TEST_OUT,
+    AUV_GRIPPER_TEST_HOLD,
+    AUV_GRIPPER_TEST_RETURN,
+    AUV_GRIPPER_TEST_COMPLETE,
+    AUV_GRIPPER_TEST_CANCELLED
+} AuvGripperBootTestState;
+
+typedef struct {
     uint8_t calibrated;
     AuvGripperState state;
     uint16_t current_us;
     uint16_t target_us;
     uint8_t error_flags;
     uint32_t last_command_sequence;
+    AuvGripperBootTestState boot_test_state;
 } AuvGripperStatus;
 
 void AuvGripper_Init(const AuvGripperConfig *config);
+uint8_t AuvGripper_ConfigureBootTest(const AuvGripperBootTestConfig *config,
+                                    uint32_t now_ms);
+void AuvGripper_BootTestTick(uint32_t now_ms);
+void AuvGripper_CancelBootTest(void);
+uint8_t AuvGripper_PwmEnabled(void);
 AuvArmResult AuvGripper_Accept(const uint8_t *payload,
                                uint8_t payload_length,
                                uint8_t armed,

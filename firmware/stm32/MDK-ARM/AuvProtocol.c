@@ -32,6 +32,9 @@ uint8_t AuvProtocol_IsKnownType(uint8_t message_type)
     case AUV_MSG_SET_ARMED:
     case AUV_MSG_MOTION_TARGET:
     case AUV_MSG_ACTUATOR_COMMAND:
+    case AUV_MSG_RC_TARGET:
+    case AUV_MSG_REMOTE_KILL:
+    case 0x07U: /* Single-thruster commissioning pulse. */
     case AUV_MSG_ACK:
     case AUV_MSG_STATUS:
     case AUV_MSG_IMU:

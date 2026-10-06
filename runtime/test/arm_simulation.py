@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+from startup import wait_for_socket
 from offline_replay import crc, frame, make_video, request
 
 
@@ -99,10 +100,7 @@ def main(binary, autonomous=False):
         worker = threading.Thread(target=emulator, daemon=True)
         worker.start()
         try:
-            for _ in range(100):
-                if (root / 'control.sock').exists():
-                    break
-                time.sleep(.01)
+            wait_for_socket(proc, root / 'control.sock')
             for _ in range(100):
                 preflight = json.loads(request(str(root / 'control.sock'), 'status'))
                 if preflight['serial'] and preflight['camera_age_sec'] >= 0:
@@ -153,10 +151,7 @@ def main(binary, autonomous=False):
                 proc.wait(timeout=5)
                 proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL,
                                         stderr=subprocess.DEVNULL)
-                for _ in range(100):
-                    if (root / 'control.sock').exists():
-                        break
-                    time.sleep(.01)
+                wait_for_socket(proc, root / 'control.sock')
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
                     snapshot = json.loads(request(str(root / 'control.sock'), 'status'))

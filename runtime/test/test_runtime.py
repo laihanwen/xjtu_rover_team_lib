@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from startup import wait_for_socket
 
 
 def crc(data):
@@ -52,12 +53,7 @@ def main(binary):
         path.write_text(config)
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
-            for _ in range(100):
-                if (root / 'control.sock').exists():
-                    break
-                time.sleep(.01)
-            else:
-                raise AssertionError('socket did not appear')
+            wait_for_socket(proc, root / 'control.sock')
             received = bytearray()
             status = struct.pack('<IBIfffffB', 1, 0, 0, 12., 1., 0., 0., 0., 0)
             assert len(status) == 30

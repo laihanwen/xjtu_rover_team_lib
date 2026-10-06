@@ -1,0 +1,21 @@
+{
+  "guid": "030007aa09120000544f000000000000",
+  "motion_axes": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "motion_signs": [
+    1,
+    1,
+    -1,
+    -1
+  ],
+  "speed_axis": 6,
+  "servo_select_axis": 5,
+  "yaw_button": 1,
+  "depth_button": 0,
+  "dial_axis": null,
+  "notes": "2026-10-06 labelled PC capture. Motion axis identity verified; direction signs retain candidates pending endpoint/direction check. Dial unverified: byte5=127. SE skipped: byte10=0. SD capture also changed axis5; switch functions may be coupled by EdgeTX model. Preview first. User correction 2026-10-06: left shoulder axis5, right shoulder axis6; joystick detection confirmed."
+}

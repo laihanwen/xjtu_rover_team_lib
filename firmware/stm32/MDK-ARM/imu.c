@@ -1,6 +1,8 @@
 #include "main.h"
 #include "imu.h"
 #include "usart.h"
+#include "AuvAngles.h"
+#include "AuvH30Frame.h"
 #include <string.h>
 
 //主要负责读取和解析陀螺仪
@@ -28,20 +30,12 @@ volatile uint32_t imu_sample_sequence = 0U;
 FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // 存储第一次有效数据的偏移量
 uint8_t imu_offset_calibrated = 0;  // 标志位：是否已经校准偏移量
 
-// 修改缓冲区大小为最大帧长度+安全余量
-#define H30_MAX_FRAME_LEN 270  // 262 + 8字节余量
-
-// H30接收状态机
-static enum {
-    H30_STATE_IDLE,
-    H30_STATE_HEADER1,
-    H30_STATE_HEADER2,
-    H30_STATE_RECEIVING
-} h30_state = H30_STATE_IDLE;
-
-static uint8_t h30_rx_buffer[H30_MAX_FRAME_LEN];
-static uint16_t h30_rx_index = 0;
-static uint16_t h30_expected_len = 0;
+static AuvH30Frame h30_frame;
+volatile uint32_t imu_last_sample_ms;
+volatile uint32_t imu_uart_errors;
+volatile uint32_t imu_rx_restart_failures;
+volatile uint32_t imu_checksum_errors;
+volatile uint32_t imu_frame_timeouts;
 
 // 根据协议文档2.1.3节的校验和计算方法
 typedef struct {
@@ -101,11 +95,11 @@ void h30_configure(void)
 // 字节转浮点数（小端序）
 float h30_bytes_to_float(uint8_t *bytes)
 {
-    int32_t temp = ((int32_t)bytes[3] << 24) | 
+    int32_t temp = ((uint32_t)bytes[3] << 24) | 
                    ((int32_t)bytes[2] << 16) | 
                    ((int32_t)bytes[1] << 8) | 
                    bytes[0];
-    return *(float*)&temp * 0.000001f;  // 微度转度
+    return (float)temp * 0.000001f;  // 微度转度
 }
 
 // 修改解析函数，添加校验验证
@@ -150,11 +144,11 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
         if (data_id == 0x40 && data_len >= 12) {
             // 欧拉角数据包
             // 每个角度4字节，小端模式，有符号int32
-            int32_t pitch_raw = (int32_t)((packet_data[3] << 24) | (packet_data[2] << 16) | 
+            int32_t pitch_raw = (int32_t)(((uint32_t)packet_data[3] << 24) | (packet_data[2] << 16) | 
                                           (packet_data[1] << 8) | packet_data[0]);
-            int32_t roll_raw = (int32_t)((packet_data[7] << 24) | (packet_data[6] << 16) | 
+            int32_t roll_raw = (int32_t)(((uint32_t)packet_data[7] << 24) | (packet_data[6] << 16) | 
                                          (packet_data[5] << 8) | packet_data[4]);
-            int32_t yaw_raw = (int32_t)((packet_data[11] << 24) | (packet_data[10] << 16) | 
+            int32_t yaw_raw = (int32_t)(((uint32_t)packet_data[11] << 24) | (packet_data[10] << 16) | 
                                         (packet_data[9] << 8) | packet_data[8]);
             preangle.pit = Angle_Measure.pit;
 					  preangle.yaw = Angle_Measure.yaw;
@@ -187,9 +181,10 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
             Angle_Measure.yaw = yaw_raw_deg - imu_offset.yaw;
 			Angle_Measure.rol = roll_raw_deg - imu_offset.rol;
 			
-			if(Angle_Measure.rol>=180&&Angle_Measure.rol<=360)Angle_Measure.rol-=360.0f;
+			Angle_Measure.rol = AuvAngles_Wrap180(Angle_Measure.rol);
             
             imu_data_ready = 1;
+            imu_last_sample_ms = HAL_GetTick();
             imu_sample_sequence++;
             break;
         }
@@ -198,66 +193,23 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
     }
 }
 
-// 修改状态机，重置逻辑更清晰
-uint8_t h30_data_callback(uint8_t byte) {
-    switch (h30_state) {
-        case H30_STATE_IDLE:
-            if (byte == 0x59) {
-                h30_state = H30_STATE_HEADER1;
-                h30_rx_index = 0;
-                h30_rx_buffer[h30_rx_index++] = byte;
-            }
-            break;
-            
-        case H30_STATE_HEADER1:
-            if (byte == 0x53) {
-                h30_state = H30_STATE_HEADER2;
-                h30_rx_buffer[h30_rx_index++] = byte;
-            } else {
-                h30_state = H30_STATE_IDLE;
-            }
-            break;
-            
-        case H30_STATE_HEADER2:
-            h30_rx_buffer[h30_rx_index++] = byte;
-            
-            if (h30_rx_index == 5) {
-                h30_header_t *header = (h30_header_t*)h30_rx_buffer;
-                uint8_t data_len = header->len;
-                
-                // 验证数据长度有效
-                if (data_len <= 255) {
-                    h30_expected_len = data_len + 7;
-                    h30_state = H30_STATE_RECEIVING;
-                } else {
-                    // 长度无效，重置状态机
-                    h30_state = H30_STATE_IDLE;
-                }
-            }
-            break;
-            
-        case H30_STATE_RECEIVING:
-            h30_rx_buffer[h30_rx_index++] = byte;
-            
-            // 检查是否接收完整帧
-            if (h30_rx_index >= h30_expected_len) {
-                // 解析完整帧
-                h30_parse_data(h30_rx_buffer, h30_rx_index);
-                
-                // 重置状态机
-                h30_state = H30_STATE_IDLE;
-                h30_rx_index = 0;
-                h30_expected_len = 0;
-            } else if (h30_rx_index >= H30_MAX_FRAME_LEN) {
-                // 缓冲区溢出，重置
-                h30_state = H30_STATE_IDLE;
-                h30_rx_index = 0;
-                h30_expected_len = 0;
-            }
-            break;
+uint8_t h30_data_callback(uint8_t byte)
+{
+    uint32_t previous_sequence = imu_sample_sequence;
+    if (AuvH30Frame_Push(&h30_frame, byte, HAL_GetTick())) {
+        uint16_t length = (uint16_t)(h30_frame.bytes[4] + 7U);
+        h30_parse_data(h30_frame.bytes, length);
+        h30_frame.count = (uint16_t)(h30_frame.count - length);
+        memmove(h30_frame.bytes, h30_frame.bytes + length, h30_frame.count);
     }
-    
-    return imu_data_ready;
+    imu_checksum_errors = h30_frame.checksum_errors;
+    imu_frame_timeouts = h30_frame.timeouts;
+    return (uint8_t)(imu_sample_sequence != previous_sequence);
+}
+
+void h30_reset_rx(void)
+{
+    h30_frame.count = 0U;
 }
 
 // 重置偏移量校准（可选功能，用于重新校准）
