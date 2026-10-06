@@ -94,3 +94,18 @@ def decode_status(payload):
             'depth_m': number(13), 'roll_deg': number(17, True),
             'pitch_deg': number(21, True), 'yaw_deg': number(25, True),
             'outputs': [x/1000 for x in struct.unpack_from('<8h', payload, 30)]}
+
+
+def decode_pid(payload):
+    if len(payload) != 49:
+        raise ValueError('bad PID diagnostic')
+    names = ('roll_deg','pitch_deg','yaw_deg','roll_error_deg','pitch_error_deg',
+             'yaw_error_deg','roll_correction','pitch_correction','yaw_correction',
+             'pitch_rate_dps','yaw_rate_dps')
+    result = {name: value if math.isfinite(value) else None for name,value in
+              zip(names,struct.unpack_from('<11f',payload,5))}
+    result.update(tick_ms=struct.unpack_from('<I',payload)[0],
+                  **{name:bool(payload[4] & bit) for name,bit in
+                     (('armed',1),('imu_fresh',2),('roll_active',4),
+                      ('pitch_active',8),('heading_hold_active',16))})
+    return result

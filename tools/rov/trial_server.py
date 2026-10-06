@@ -4,7 +4,7 @@ import json
 import socket
 import struct
 import time
-from trial_protocol import Parser, LeaseGate, encode, manual_frame, centered, decode_status
+from trial_protocol import Parser, LeaseGate, encode, manual_frame, centered, decode_status, decode_pid
 
 
 class LevelCheck:
@@ -39,6 +39,8 @@ def run(uart, server):
     sequence = int(time.monotonic()*1000) & 0xffffffff
     telemetry = {}
     telemetry_ms = 0.0
+    pid = {}
+    pid_ms = 0.0
     def write(kind, payload):
         packet = encode(kind, payload)
         if uart.write(packet) != len(packet):
@@ -82,6 +84,9 @@ def run(uart, server):
                                 except ValueError as e:
                                     level_check = None
                                     detail = str(e)
+                        elif kind == 0x84:
+                            pid = decode_pid(payload)
+                            pid_ms = now
                         elif kind == 0x7f and len(payload) == 6 and payload[0] == 8:
                             if level_ack and struct.unpack_from('<I',payload,2)[0] == level_ack[0]:
                                 detail = '岸上水平校准完成；本次开机有效' if payload[1] == 0 else 'STM32拒绝校准'
@@ -181,6 +186,7 @@ def run(uart, server):
                         last_status = now
                         reply = {'lease': gate.issue(now), 'telemetry': telemetry,
                                  'telemetry_age': now-telemetry_ms, 'detail': detail,
+                                 'pid': pid, 'pid_age': now-pid_ms if pid else None,
                                  'level_pending': bool(level_check or level_ack),
                                  'uart_crc_errors': protocol.errors, 'pwm_limit': 100,
                                  'servos_enabled': False, 'attitude_hold': True, 'heading_hold_enabled': True, 'pitch_pd': [7.5, 1.5], 'calibration_mode': False, 'start_offset_us': 48,

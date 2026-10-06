@@ -56,6 +56,14 @@ static volatile float last_thruster_outputs[VECTOR_THRUSTER_COUNT];
 static uint8_t roll_correction_active, pitch_correction_active;
 static AuvWaterRate pitch_rate, yaw_rate;
 static uint8_t heading_locked, heading_hold_active;
+static MatePidSnapshot pid_snapshot;
+void Mate_GetPidSnapshot(MatePidSnapshot *snapshot)
+{
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    *snapshot = pid_snapshot;
+    __set_PRIMASK(mask);
+}
 
 // 外部引用
 extern PID_TYPE PID_pit, PID_yaw, PID_rol;
@@ -442,6 +450,27 @@ void Mate_Task(void)
 #endif
 
     /* 统一应用极性，再转为 PWM。 */
+    /* Publish actual gated control terms, before allocation/ESC compensation. */
+    {
+        uint32_t mask = __get_PRIMASK();
+        __disable_irq();
+        pid_snapshot.tick_ms = HAL_GetTick();
+        pid_snapshot.flags = (AuvSafety_IsArmed() ? 1U : 0U) |
+            (imu_fresh ? 2U : 0U) | (roll_correction_active ? 4U : 0U) |
+            (pitch_correction_active ? 8U : 0U) | (heading_hold_active ? 16U : 0U);
+        pid_snapshot.values[0]=control_angle.rol;
+        pid_snapshot.values[1]=control_angle.pit;
+        pid_snapshot.values[2]=control_angle.yaw;
+        pid_snapshot.values[3]=-control_angle.rol;
+        pid_snapshot.values[4]=-control_angle.pit;
+        pid_snapshot.values[5]=Yaw_Wrap180(yaw_target-control_angle.yaw);
+        pid_snapshot.values[6]=AuvSafety_IsArmed() ? dynamics_wrench.Mx : 0;
+        pid_snapshot.values[7]=AuvSafety_IsArmed() ? dynamics_wrench.My : 0;
+        pid_snapshot.values[8]=(AuvSafety_IsArmed() && heading_hold_active) ? dynamics_wrench.Mz : 0;
+        pid_snapshot.values[9]=pitch_rate.rate;
+        pid_snapshot.values[10]=yaw_rate.rate;
+        __set_PRIMASK(mask);
+    }
     float motor_pwm[VECTOR_THRUSTER_COUNT];
     for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; i++) {
 #if AUV_ROV_THRUSTER_CALIBRATION
