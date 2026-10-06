@@ -52,7 +52,7 @@ int AuvM10_Push(AuvM10Parser *parser, uint8_t byte, float *depth)
     cursor = parser->line + 6;
     if (!ParseDecimal(cursor, &end, &value)) return -1;
     if (*end != 'm' || !isfinite(value) ||
-        value < 0.0f || value > AUV_DEPTH_MAX_METERS) return -1;
+        value < -AUV_DEPTH_MAX_METERS || value > AUV_DEPTH_MAX_METERS) return -1;
     cursor = end + 1;
     while (*cursor == ' ') ++cursor;
     if (strncmp(cursor, "Temp:", 5U) != 0 &&
@@ -79,8 +79,12 @@ float AuvRovDepth_Step(AuvRovDepthControl *control, const AuvDepthSample *sample
     float dt;
     float proposed;
     float output;
+    float kp = lock_current ? AUV_ROV_DEPTH_KP : AUV_DEPTH_KP;
+    float ki = lock_current ? 0.0f : AUV_DEPTH_KI;
+    float limit = lock_current ? AUV_ROV_DEPTH_OUTPUT_LIMIT : AUV_DEPTH_OUTPUT_LIMIT;
     if (!enabled || !sample->valid || !isfinite(sample->depth_m) ||
-        sample->depth_m < 0.0f || sample->depth_m > AUV_DEPTH_MAX_METERS ||
+        sample->depth_m < (lock_current ? -AUV_DEPTH_MAX_METERS : 0.0f) ||
+        sample->depth_m > AUV_DEPTH_MAX_METERS ||
         (!lock_current && (!isfinite(target) || target < 0.0f ||
                            target > AUV_DEPTH_MAX_METERS))) {
         AuvRovDepth_Reset(control);
@@ -99,13 +103,13 @@ float AuvRovDepth_Step(AuvRovDepthControl *control, const AuvDepthSample *sample
     if (dt > (float)AUV_DEPTH_TIMEOUT_MS * 0.001f) dt = 0.0f;
     error = control->target - sample->depth_m;
     proposed = control->integral + error * dt;
-    output = AUV_DEPTH_KP * error + AUV_DEPTH_KI * proposed;
+    output = kp * error + ki * proposed;
     /* Conditional integration prevents windup into output saturation. */
-    if (fabsf(output) <= AUV_DEPTH_OUTPUT_LIMIT || output * error < 0.0f)
+    if (ki != 0.0f && (fabsf(output) <= limit || output * error < 0.0f))
         control->integral = proposed;
-    output = AUV_DEPTH_KP * error + AUV_DEPTH_KI * control->integral;
-    if (output > AUV_DEPTH_OUTPUT_LIMIT) output = AUV_DEPTH_OUTPUT_LIMIT;
-    if (output < -AUV_DEPTH_OUTPUT_LIMIT) output = -AUV_DEPTH_OUTPUT_LIMIT;
+    output = kp * error + ki * control->integral;
+    if (output > limit) output = limit;
+    if (output < -limit) output = -limit;
     control->output = AUV_DEPTH_FZ_SIGN * output;
     control->sequence = sample->sample_sequence;
     control->sample_ms = sample->last_update_ms;

@@ -164,6 +164,8 @@ ctest --test-dir /tmp/auv-firmware-test --output-on-failure
 
 ### 岸上手动水平校准与帧率优化（2026-10-06）
 
+SA/SD切换闭环与偏航方向候选修正见 [HOLD_MODES.md](HOLD_MODES.md)，定深仍需有效传感器数据与标定。
+
 每5秒的IMU与实际PID诊断日志见 [LOGGING.md](LOGGING.md)。
 
 重复编译、烧录、部署和基础检查已整理为 `Maintain-Rov.ps1`，运行说明见 [MAINTENANCE.md](MAINTENANCE.md)。

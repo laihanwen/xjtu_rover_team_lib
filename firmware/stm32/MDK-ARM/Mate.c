@@ -28,8 +28,8 @@
 
 /* 现场可调系数：保留原有数值和外部可见性。 */
 float yaw_xishu  = 0.00f;
-float pit_xishu  = 2.00f;
-float roll_xishu = 1.00f;
+float pit_xishu  = -2.00f;
+float roll_xishu = -1.00f;
 float rc_xishu   = 1.00f;
 
 /* 用户于 2026-10-06 确认八路实测中位为 1492 us；试用限幅由配置决定。 */
@@ -46,7 +46,7 @@ static const float RADIANS_TO_DEGREES = 57.29577951308232f;
 static AuvRovDepthControl depth_control;
 
 /* 逻辑电机指令限值；极性在合成后统一应用。 */
-static const float MOTOR_COMMAND_LIMIT = AUV_ROV_MANUAL_TRIAL ? AUV_ROV_TRIAL_PWM_LIMIT : 450.0f;
+static float MOTOR_COMMAND_LIMIT = AUV_ROV_MANUAL_TRIAL ? AUV_ROV_TRIAL_PWM_LIMIT : 450.0f;
 
 static const int8_t motor_polarity[VECTOR_THRUSTER_COUNT] = {
     Motor_1Polarity, Motor_2Polarity, Motor_3Polarity, Motor_4Polarity,
@@ -310,6 +310,11 @@ void Mate_Task(void)
         for (uint32_t i = 1U; i < MyRcLength; ++i) MyRCKey[i] = 0U;
     }
 
+    /* Only explicit high-speed RC selection raises the manual ceiling. */
+#if AUV_ROV_MANUAL_TRIAL
+    MOTOR_COMMAND_LIMIT = (rc_fresh && rc_frame[6] == 2U)
+        ? AUV_ROV_HIGH_PWM_LIMIT : AUV_ROV_TRIAL_PWM_LIMIT;
+#endif
     // ===== 1. 遥控器先形成六维动力层指令，不在此处进行电机分配 =====
     VectorWrenchCommand rc_wrench;
     if (pi_fresh != 0U) {
@@ -330,7 +335,7 @@ void Mate_Task(void)
     // ===== 2. RcData[8]控制YAW PID，上升沿锁定当前航向 =====
 #if AUV_ROV_MANUAL_TRIAL
     heading_hold_active=AuvWater_Heading(control_angle.yaw,
-        (uint8_t)(AuvSafety_IsArmed() && imu_fresh && rc_fresh),
+        (uint8_t)(AUV_ROV_AUTO_HOLD_ENABLED && AuvSafety_IsArmed() && imu_fresh && rc_fresh),
         (uint8_t)(MyRCKey[1] || MyRCKey[2]),&heading_locked,&yaw_target);
     if(!AuvSafety_IsArmed() || !imu_fresh) {
         pitch_rate.ready=yaw_rate.ready=0;
@@ -364,9 +369,14 @@ void Mate_Task(void)
     }
 #endif
 
+    /* Manual vertical input suspends depth hold; recenter locks the new depth. */
+    if (depth_control.active && !depth_fresh)
+        (void)AuvSafety_RequestArm(0U, HAL_GetTick());
     depth_output = AuvRovDepth_Step(&depth_control, &depth_sample,
-        (AUV_DEPTH_CONTROL_CALIBRATED && depth_fresh && AuvSafety_IsArmed() &&
-         (pi_fresh || (rc_fresh && MyRCKey[DEPTH_HOLD_SWITCH]))) ? 1U : 0U,
+        (depth_fresh && AuvSafety_IsArmed() &&
+         ((AUV_DEPTH_CONTROL_CALIBRATED && pi_fresh) ||
+          (AUV_ROV_AUTO_HOLD_ENABLED && AUV_ROV_RELATIVE_DEPTH_ENABLED && rc_fresh &&
+                      !MyRCKey[5] && !MyRCKey[6]))) ? 1U : 0U,
         pi_fresh ? 0U : 1U, pi_fresh ? pi_target.depth : 0.0f);
 
     // ===== 3. PID 计算 =====
@@ -399,7 +409,7 @@ void Mate_Task(void)
      */
     dynamics_wrench.Fx = rc_xishu * rc_wrench.Fx;
     dynamics_wrench.Fy = rc_xishu * rc_wrench.Fy;
-    dynamics_wrench.Fz = (pi_fresh || (rc_fresh && MyRCKey[DEPTH_HOLD_SWITCH]))
+    dynamics_wrench.Fz = depth_control.active
         ? depth_output : rc_xishu * rc_wrench.Fz;
     dynamics_wrench.Mx = roll_xishu * PID_rol.OutPut;
     dynamics_wrench.My = pit_xishu * PID_pit.OutPut;
@@ -424,7 +434,7 @@ void Mate_Task(void)
         ? yaw_xishu * PID_yaw.OutPut
         : rc_xishu * rc_wrench.Mz;
 #if AUV_ROV_MANUAL_TRIAL
-    dynamics_wrench.Mz=heading_hold_active ? PID_yaw.OutPut : rc_xishu*rc_wrench.Mz;
+    dynamics_wrench.Mz=heading_hold_active ? AUV_ROV_YAW_FEEDBACK_SIGN*PID_yaw.OutPut : rc_xishu*rc_wrench.Mz;
     if(heading_hold_active && fabsf(Yaw_Wrap180(yaw_target-control_angle.yaw))<0.5f &&
        fabsf(yaw_rate.rate)<1.0f)dynamics_wrench.Mz=0;
 #endif
@@ -438,6 +448,9 @@ void Mate_Task(void)
         motion.Mx=motion.My=0;
         attitude.Mx=dynamics_wrench.Mx;
         attitude.My=dynamics_wrench.My;
+        /* Depth correction shares attitude priority, rather than being
+         * scaled away by simultaneous surge/sway commands. */
+        if(depth_control.active) {attitude.Fz=dynamics_wrench.Fz;motion.Fz=0;}
         if(heading_hold_active) {attitude.Mz=dynamics_wrench.Mz;motion.Mz=0;}
         VectorAllocate_Wrench(&motion,motion_dev);
         VectorAllocate_Wrench(&attitude,attitude_dev);
@@ -457,7 +470,10 @@ void Mate_Task(void)
         pid_snapshot.tick_ms = HAL_GetTick();
         pid_snapshot.flags = (AuvSafety_IsArmed() ? 1U : 0U) |
             (imu_fresh ? 2U : 0U) | (roll_correction_active ? 4U : 0U) |
-            (pitch_correction_active ? 8U : 0U) | (heading_hold_active ? 16U : 0U);
+            (pitch_correction_active ? 8U : 0U) | (heading_hold_active ? 16U : 0U) |
+            (depth_control.active ? 32U : 0U) |
+            ((AUV_ROV_AUTO_HOLD_ENABLED && rc_fresh) ? 64U : 0U) |
+            ((AUV_ROV_AUTO_HOLD_ENABLED && AUV_ROV_RELATIVE_DEPTH_ENABLED && rc_fresh) ? 128U : 0U);
         pid_snapshot.values[0]=control_angle.rol;
         pid_snapshot.values[1]=control_angle.pit;
         pid_snapshot.values[2]=control_angle.yaw;
@@ -469,6 +485,9 @@ void Mate_Task(void)
         pid_snapshot.values[8]=(AuvSafety_IsArmed() && heading_hold_active) ? dynamics_wrench.Mz : 0;
         pid_snapshot.values[9]=pitch_rate.rate;
         pid_snapshot.values[10]=yaw_rate.rate;
+        pid_snapshot.values[11]=depth_fresh ? depth_sample.depth_m : NAN;
+        pid_snapshot.values[12]=depth_control.active ? depth_control.target : NAN;
+        pid_snapshot.values[13]=depth_output;
         __set_PRIMASK(mask);
     }
     float motor_pwm[VECTOR_THRUSTER_COUNT];

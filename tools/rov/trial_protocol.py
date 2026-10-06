@@ -49,8 +49,8 @@ def manual_frame(frame):
     if len(frame) != 11 or frame[0] != 0xa5:
         raise ValueError('invalid RC frame')
     frame = bytearray(frame)
-    frame[5], frame[6], frame[7] = 127, 0, 2
-    frame[8:11] = b'\0\0\0'
+    frame[5], frame[6], frame[7] = 127, (2 if frame[6]==2 else 0), 2
+    frame[8], frame[9], frame[10] = int(bool(frame[8])), int(bool(frame[9])), 0
     return bytes(frame)
 
 
@@ -97,7 +97,7 @@ def decode_status(payload):
 
 
 def decode_pid(payload):
-    if len(payload) != 49:
+    if len(payload) not in (49,61):
         raise ValueError('bad PID diagnostic')
     names = ('roll_deg','pitch_deg','yaw_deg','roll_error_deg','pitch_error_deg',
              'yaw_error_deg','roll_correction','pitch_correction','yaw_correction',
@@ -108,4 +108,12 @@ def decode_pid(payload):
                   **{name:bool(payload[4] & bit) for name,bit in
                      (('armed',1),('imu_fresh',2),('roll_active',4),
                       ('pitch_active',8),('heading_hold_active',16))})
+    result['yaw_target_deg'] = ((result['yaw_deg']+result['yaw_error_deg']+180)%360-180
+        if result['heading_hold_active'] and result['yaw_deg'] is not None and
+        result['yaw_error_deg'] is not None else None)
+    if len(payload)==61:
+        result.update(**{name:value if math.isfinite(value) else None for name,value in
+            zip(('depth_m','depth_target_m','depth_correction'),struct.unpack_from('<3f',payload,49))})
+        result.update(depth_hold_active=bool(payload[4]&32),
+                      heading_requested=bool(payload[4]&64),depth_requested=bool(payload[4]&128))
     return result

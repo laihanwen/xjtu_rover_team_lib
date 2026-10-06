@@ -26,7 +26,7 @@ void Mate_Task(void);
 void Mate_Init(void);
 void Mate_GetThrusterOutputs(float output[VECTOR_THRUSTER_COUNT]);
 /* Last completed control iteration: angles, errors, gated PID moments, rates. */
-typedef struct { uint32_t tick_ms; uint8_t flags; float values[11]; } MatePidSnapshot;
+typedef struct { uint32_t tick_ms; uint8_t flags; float values[14]; } MatePidSnapshot;
 void Mate_GetPidSnapshot(MatePidSnapshot *snapshot);
 /* 保留的 PWM 限幅接口，范围由 Mate.c 中的原有参数确定。 */
 float constrain(float a);

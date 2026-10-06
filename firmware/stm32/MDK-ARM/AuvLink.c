@@ -296,12 +296,12 @@ static void SendStatus(uint32_t now_ms)
 
 static void SendPidDiagnostic(void)
 {
-    uint8_t payload[49];
+    uint8_t payload[61];
     MatePidSnapshot snapshot;
     Mate_GetPidSnapshot(&snapshot);
     AuvProtocol_WriteU32Le(payload, snapshot.tick_ms);
     payload[4] = snapshot.flags;
-    for (uint32_t i=0; i<11; ++i)
+    for (uint32_t i=0; i<14; ++i)
         AuvProtocol_WriteF32Le(&payload[5+4*i], snapshot.values[i]);
     SendFrame(AUV_MSG_PID_DIAGNOSTIC, payload, sizeof(payload));
 }
@@ -495,7 +495,11 @@ void AuvLink_SetSafetyInputs(uint8_t kill_active,
 
 uint8_t AuvLink_UpdateDepth(float depth_m)
 {
+#if AUV_ROV_MANUAL_TRIAL
+    return AuvDepth_UpdateGauge(depth_m, HAL_GetTick());
+#else
     return AuvDepth_Update(depth_m, HAL_GetTick());
+#endif
 }
 
 void AuvLink_InvalidateDepth(void)

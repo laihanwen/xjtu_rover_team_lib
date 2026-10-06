@@ -39,6 +39,7 @@ class TelemetryLog:
                 'pid_valid':pid_fresh,'pid_age_s':pid_age,
                 'pid':state.get('pid') if pid_fresh else None,
                 'operator':{k:state.get(k) for k in ('axes','deadman','centered','device')},
+                'pwm_limit_us':state.get('pwm_limit'),'selected_speed':state.get('selected_speed'),
                 'uart_crc_errors':state.get('uart_crc_errors'),'detail':state.get('detail'),
                 'error':state.get('error')}
 
