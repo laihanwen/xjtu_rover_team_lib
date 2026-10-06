@@ -26,6 +26,13 @@ uint8_t AuvDepth_Update(float depth_m, uint32_t now_ms)
 {
     if (depth_m != depth_m || depth_m < 0.0f || depth_m > AUV_DEPTH_MAX_METERS)
         return 0U;
+    return AuvDepth_UpdateGauge(depth_m, now_ms);
+}
+
+uint8_t AuvDepth_UpdateGauge(float depth_m, uint32_t now_ms)
+{
+    if (depth_m != depth_m || depth_m < -AUV_DEPTH_MAX_METERS ||
+        depth_m > AUV_DEPTH_MAX_METERS) return 0U;
     generation++;
     active_depth_m = depth_m;
     active_update_ms = now_ms;

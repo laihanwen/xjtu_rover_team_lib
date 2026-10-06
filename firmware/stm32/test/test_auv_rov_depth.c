@@ -31,6 +31,8 @@ int main(void)
     for (i = 0; i < 120; ++i) (void)AuvM10_Push(&parser, 'x', &depth);
     assert(AuvM10_Push(&parser, '\n', &depth) == -1);
     assert(line(&parser, "Depth:2m Temp=20C\n", &depth) == 1);
+    assert(line(&parser, "Depth:-0.22m Temp:22.71C\n", &depth) == 1);
+    assert(fabsf(depth+0.22f)<0.001f);
     AuvRovDepth_Reset(&control);
     assert(AuvRovDepth_Step(&control, &sample, 1, 1, 0) == 0);
     sample.depth_m = 1.2f;
@@ -42,6 +44,20 @@ int main(void)
         assert(AuvRovDepth_Step(&control, &sample, 1, 1, 0) == output);
     assert(AuvRovDepth_Step(&control, &sample, 0, 1, 0) == 0);
     assert(control.active == 0 && control.integral == 0);
+    sample.depth_m=-0.22f;
+    assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
+    sample.depth_m=-0.12f;sample.sample_sequence++;sample.last_update_ms+=2000;
+    assert(fabsf(AuvRovDepth_Step(&control,&sample,1,1,0)-4.0f)<0.001f);
+    assert(control.integral==0);
+    assert(AuvRovDepth_Step(&control,&sample,0,1,0)==0);
+    /* Manual heave releases the old target; recenter captures the new one. */
+    sample.depth_m=0.8f;sample.sample_sequence++;sample.last_update_ms+=2000;
+    assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
+    assert(fabsf(control.target-0.8f)<0.001f);
+    sample.depth_m=0.7f;sample.sample_sequence++;sample.last_update_ms+=2000;
+    assert(AuvRovDepth_Step(&control,&sample,1,1,0)<0);
+    assert(AuvRovDepth_Step(&control,&sample,0,1,0)==0);
+    sample.depth_m=1.2f;
     assert(AuvRovDepth_Step(&control, &sample, 1, 0, NAN) == 0);
     assert(AuvRovDepth_Step(&control, &sample, 1, 0, 20) == -400);
     sample.valid = 0;

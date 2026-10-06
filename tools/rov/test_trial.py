@@ -88,10 +88,10 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(parser.push(broken+packet), [(5,packet[5:-2])])
         self.assertEqual(parser.errors, 1)
 
-    def test_manual_excludes_actuators_and_holds(self):
+    def test_manual_excludes_actuators_preserves_hold_switches(self):
         frame = manual_frame(bytes([0xa5,0,255,127,130,255,2,1,1,1,1]))
         self.assertEqual(frame[1:5], bytes([0,255,127,130]))
-        self.assertEqual(frame[5:], bytes([127,0,2,0,0,0]))
+        self.assertEqual(frame[5:], bytes([127,2,2,1,1,0]))
         self.assertFalse(centered(frame))
 
     def test_network_lease_rejects_stale_replay(self):

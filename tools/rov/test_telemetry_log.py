@@ -30,6 +30,14 @@ class LogTests(unittest.TestCase):
         state['telemetry_age']=1
         self.assertFalse(TelemetryLog.record(state,14)['imu_valid'])
 
+    def test_hold_diagnostic_extension(self):
+        payload=struct.pack('<IB14f',1234,255,*([0]*11+[1.2,1.1,30]))
+        decoded=decode_pid(payload)
+        self.assertTrue(decoded['heading_requested'])
+        self.assertTrue(decoded['depth_requested'])
+        self.assertTrue(decoded['depth_hold_active'])
+        self.assertAlmostEqual(decoded['depth_target_m'],1.1,places=5)
+
     def test_periodic_flush_rotation_no_source_mutation(self):
         source={'connected':False,'axes':[0,0,0,0]}
         with tempfile.TemporaryDirectory() as directory:
