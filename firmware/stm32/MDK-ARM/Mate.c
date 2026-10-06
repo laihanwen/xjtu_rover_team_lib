@@ -15,6 +15,12 @@
 #include "tim.h"
 #include "iwdg.h"
 #include "AuvSafety.h"
+#include "AuvRovConfig.h"
+#include "AuvLink.h"
+#include "AuvThrusterDeadband.h"
+#include "AuvPriorityMixer.h"
+#include "AuvWaterPd.h"
+#include "AuvRovDepth.h"
 #include "AuvRcInput.h"
 #include "AuvMotionTarget.h"
 #include "AuvControlSource.h"
@@ -26,34 +32,30 @@ float pit_xishu  = 2.00f;
 float roll_xishu = 1.00f;
 float rc_xishu   = 1.00f;
 
-/* 可逆推进器中位；实际输出范围保持 1488 +/- 450。 */
-float midvalue = 1488;
+/* 用户于 2026-10-06 确认八路实测中位为 1492 us；试用限幅由配置决定。 */
+float midvalue = 1492;
 
 // YAW PID 相关
 float yaw_target = 0;
 float yaw_micro_rate_dps = 8.0f;          // YAW微操满杆速度，单位：度/秒
+#if !AUV_ROV_MANUAL_TRIAL
 static uint8_t last_yaw_pid_state = 0;   // 上一帧YAW PID开关状态
-static uint8_t last_pitch_hold_state = 0; // 上一帧SD/PITCH开关状态
-/* SD=1 时的俯仰目标角。 */
-static const float PIT_HOLD_DEG = 25.0f;
-
-/* 俯仰目标斜率和主任务周期。 */
-static const float PIT_SLEW_DPS = 45.0f;
 static const float TASK_DT_S = 0.01f;
 static const float RADIANS_TO_DEGREES = 57.29577951308232f;
-
-// PITCH 平滑目标
-static float pit_target = 0.0f;
-static float pit_target_cmd = 0.0f;
+#endif
+static AuvRovDepthControl depth_control;
 
 /* 逻辑电机指令限值；极性在合成后统一应用。 */
-static const float MOTOR_COMMAND_LIMIT = 450.0f;
+static const float MOTOR_COMMAND_LIMIT = AUV_ROV_MANUAL_TRIAL ? AUV_ROV_TRIAL_PWM_LIMIT : 450.0f;
 
 static const int8_t motor_polarity[VECTOR_THRUSTER_COUNT] = {
     Motor_1Polarity, Motor_2Polarity, Motor_3Polarity, Motor_4Polarity,
     Motor_5Polarity, Motor_6Polarity, Motor_7Polarity, Motor_8Polarity
 };
 static volatile float last_thruster_outputs[VECTOR_THRUSTER_COUNT];
+static uint8_t roll_correction_active, pitch_correction_active;
+static AuvWaterRate pitch_rate, yaw_rate;
+static uint8_t heading_locked, heading_hold_active;
 
 // 外部引用
 extern PID_TYPE PID_pit, PID_yaw, PID_rol;
@@ -68,12 +70,31 @@ static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
     const float *safe_pwm = pwm;
     float neutral_pwm[VECTOR_THRUSTER_COUNT];
     uint32_t i;
+    static float applied_offset[VECTOR_THRUSTER_COUNT];
+    static uint32_t previous_ms;
+    uint32_t now_ms = HAL_GetTick();
+    uint32_t elapsed_ms = (uint32_t)(now_ms-previous_ms);
+    previous_ms = now_ms;
+    if (elapsed_ms > 20U) elapsed_ms = 20U;
 
     if (AuvSafety_IsArmed() == 0U) {
         for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
+        {
             neutral_pwm[i] = midvalue;
+            applied_offset[i] = 0;
+        }
         safe_pwm = neutral_pwm;
     }
+#if AUV_ROV_MANUAL_TRIAL && !AUV_ROV_THRUSTER_CALIBRATION
+    else {
+        for (i = 0; i < VECTOR_THRUSTER_COUNT; ++i) {
+            applied_offset[i] = AuvThruster_Slew(applied_offset[i], pwm[i]-midvalue,
+                                               0.2f*(float)elapsed_ms);
+            neutral_pwm[i] = midvalue+applied_offset[i];
+        }
+        safe_pwm = neutral_pwm;
+    }
+#endif
     for (i = 0U; i < VECTOR_THRUSTER_COUNT; ++i)
         last_thruster_outputs[i] =
             (safe_pwm[i] - midvalue) / MOTOR_COMMAND_LIMIT;
@@ -153,12 +174,34 @@ void Mate_Init(void)
     AuvControlSource_Init();
     AuvCameraServo_Init(&camera_servo_config);
     PID_Init(&PID_yaw, 3.0f, 0.0f, 0.02f, -100, 100);
+#if AUV_ROV_MANUAL_TRIAL
+    /* Initial water commissioning: proportional only, bounded corrections. */
+    PID_Init(&PID_pit, 0.75f, 0.0f, 0.0f, -20, 20);
+    PID_Init(&PID_rol, 0.75f, 0.0f, 0.0f, -20, 20);
+#else
     PID_Init(&PID_pit, 5.5f, 0.0f, 0.01f, -400, 400);
     PID_Init(&PID_rol, 5.0f, 0.0f, 0.0f,  -200, 200);
+#endif
+    AuvRovDepth_Reset(&depth_control);
+#if AUV_H30_CONFIGURE_ON_BOOT
     h30_configure();
+#endif
 
     MX_IWDG_Init();
 
+    /* 八推上电时统一保持中位。 */
+    {
+        float neutral_pwm[VECTOR_THRUSTER_COUNT];
+        for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; i++)
+            neutral_pwm[i] = midvalue;
+        VectorThrusterPwm_Write(neutral_pwm);
+    }
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, midvalue);
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, midvalue);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
+#if AUV_CAMERA_SERVO_CALIBRATED
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, AuvCameraServo_GetCcr());
+#endif
     /* 启动八推 PWM；注释与运行时 T1..T8 映射一致。 */
     HAL_TIM_PWM_Start(&htim3,  TIM_CHANNEL_1);  /* T1 */
     HAL_TIM_PWM_Start(&htim3,  TIM_CHANNEL_4);  /* T2 */
@@ -173,20 +216,13 @@ void Mate_Init(void)
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
     /* T35-L gripper signal: PA8/TIM1_CH1, 0.5 us per timer count. */
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    if (AuvGripper_PwmEnabled()) HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 #if AUV_CAMERA_SERVO_CALIBRATED
     /* Camera tilt servo: PC7/TIM8_CH2. Build-time calibration gate is enabled. */
     HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
 #endif
 
-    /* 八推上电时统一保持中位。 */
-    {
-        float neutral_pwm[VECTOR_THRUSTER_COUNT];
-        for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; i++)
-            neutral_pwm[i] = midvalue;
-        VectorThrusterPwm_Write(neutral_pwm);
-    }
-    /* Uncalibrated builds hold 1500 us; calibrated builds ramp closed. */
+    /* Uncalibrated PWM is disabled; calibrated boot movement is explicit. */
     __HAL_TIM_SET_COMPARE(
         &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
 #if AUV_CAMERA_SERVO_CALIBRATED
@@ -208,13 +244,24 @@ void Mate_Task(void)
     uint8_t pi_fresh;
     AuvMotionTarget pi_target;
     AuvControlSourceDecision source;
+    AuvDepthSample depth_sample;
+    uint8_t depth_fresh;
+    float depth_output;
+    FLOAT_Angle control_angle;
+    uint32_t control_imu_ms, control_imu_sequence;
+    uint8_t imu_fresh;
 
     HAL_IWDG_Refresh(&hiwdg);
 
     if (imu_data_ready) imu_data_ready = 0;
     HAL_Delay(10);
 
+    if (AuvSafety_IsArmed() || AuvSafety_GetContext()->kill_active ||
+        AuvSafety_GetContext()->leak_detected)
+        AuvGripper_CancelBootTest();
+    AuvGripper_BootTestTick(HAL_GetTick());
     AuvGripper_Tick();
+    if (!AuvGripper_PwmEnabled()) HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
     __HAL_TIM_SET_COMPARE(
         &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
     AuvCameraServo_Tick(AuvSafety_IsArmed());
@@ -226,6 +273,12 @@ void Mate_Task(void)
     __disable_irq();
     rc_fresh = AuvRcInput_CopyFreshFrame(HAL_GetTick(), rc_frame);
     pi_fresh = AuvMotionTarget_CopyFresh(HAL_GetTick(), &pi_target);
+    depth_fresh = AuvDepth_CopyFresh(HAL_GetTick(), &depth_sample);
+    control_angle = Angle_Measure;
+    control_imu_ms=imu_last_sample_ms;
+    control_imu_sequence=imu_sample_sequence;
+    imu_fresh = (imu_sample_sequence != 0U &&
+        (uint32_t)(HAL_GetTick() - imu_last_sample_ms) <= 250U) ? 1U : 0U;
     __enable_irq();
 
     /*
@@ -253,7 +306,7 @@ void Mate_Task(void)
     if (pi_fresh != 0U) {
         rc_wrench.Fx = pi_target.vx * AUV_SURGE_PWM_PER_MPS;
         rc_wrench.Fy = pi_target.vy * AUV_SWAY_PWM_PER_MPS;
-        /* Depth output stays zero until a validated depth driver is integrated. */
+        /* Depth control is applied after source arbitration below. */
         rc_wrench.Fz = 0.0f;
         rc_wrench.Mx = 0.0f;
         rc_wrench.My = 0.0f;
@@ -265,14 +318,25 @@ void Mate_Task(void)
         (AuvSafety_IsArmed() != 0U))
         RCServo_Calc(MyRCKey);
 
-    // ===== 2. RcData[9]独立控制YAW PID，上升沿锁定当前航向 =====
+    // ===== 2. RcData[8]控制YAW PID，上升沿锁定当前航向 =====
+#if AUV_ROV_MANUAL_TRIAL
+    heading_hold_active=AuvWater_Heading(control_angle.yaw,
+        (uint8_t)(AuvSafety_IsArmed() && imu_fresh && rc_fresh),
+        (uint8_t)(MyRCKey[1] || MyRCKey[2]),&heading_locked,&yaw_target);
+    if(!AuvSafety_IsArmed() || !imu_fresh) {
+        pitch_rate.ready=yaw_rate.ready=0;
+    } else {
+        AuvWater_Rate(&pitch_rate,control_angle.pit,control_imu_ms,control_imu_sequence);
+        AuvWater_Rate(&yaw_rate,control_angle.yaw,control_imu_ms,control_imu_sequence);
+    }
+#else
     if (pi_fresh != 0U) {
         yaw_target = pi_target.yaw * RADIANS_TO_DEGREES;
         yaw_xishu = 1.0f;
         last_yaw_pid_state = 0U;
     } else if (MyRCKey[YAW_PID_SWITCH] == 1U && last_yaw_pid_state == 0U)
     {
-        yaw_target = Yaw_Wrap180(Angle_Measure.yaw);
+        yaw_target = Yaw_Wrap180(control_angle.yaw);
         PID_yaw.PreError = 0.0f;
         PID_yaw.Integral = 0.0f;
     }
@@ -281,7 +345,7 @@ void Mate_Task(void)
     if ((pi_fresh == 0U) && (MyRCKey[YAW_PID_SWITCH] == 1U))
     {
         // 符号方向与PID关闭时的直接自旋方向保持一致
-        float yaw_stick = ((float)MyRCKey[2] - (float)MyRCKey[1]) / 255.0f;
+        float yaw_stick = ((float)MyRCKey[1] - (float)MyRCKey[2]) / 255.0f;
         yaw_target += yaw_stick * yaw_micro_rate_dps * TASK_DT_S;
         yaw_target = Yaw_Wrap180(yaw_target);
     }
@@ -289,36 +353,31 @@ void Mate_Task(void)
         yaw_xishu = (MyRCKey[YAW_PID_SWITCH] == 1U) ? 1.00f : 0.00f;
         last_yaw_pid_state = MyRCKey[YAW_PID_SWITCH];
     }
+#endif
 
-    // ===== 2.1 SD仍然独立控制PITCH 25度姿态 =====
-    if ((pi_fresh == 0U) && (MyRCKey[SD] == 1U) &&
-        (last_pitch_hold_state == 0U))
-    {
-        pit_target = Angle_Measure.pit;
-    }
-    last_pitch_hold_state = (pi_fresh != 0U) ? 0U : MyRCKey[SD];
-    pit_target_cmd = ((pi_fresh == 0U) && (MyRCKey[SD] == 1U))
-        ? PIT_HOLD_DEG : 0.0f;
-
-    // ===== 2.2 让 PITCH 目标平滑变化，避免突变 =====
-    {
-        float max_step = PIT_SLEW_DPS * TASK_DT_S;
-        float err = pit_target_cmd - pit_target;
-
-        if (err > max_step)
-            pit_target += max_step;
-        else if (err < -max_step)
-            pit_target -= max_step;
-        else
-            pit_target = pit_target_cmd;
-    }
+    depth_output = AuvRovDepth_Step(&depth_control, &depth_sample,
+        (AUV_DEPTH_CONTROL_CALIBRATED && depth_fresh && AuvSafety_IsArmed() &&
+         (pi_fresh || (rc_fresh && MyRCKey[DEPTH_HOLD_SWITCH]))) ? 1U : 0U,
+        pi_fresh ? 0U : 1U, pi_fresh ? pi_target.depth : 0.0f);
 
     // ===== 3. PID 计算 =====
+    if (imu_fresh == 0U) {
+        (void)AuvSafety_RequestArm(0U, HAL_GetTick());
+        PID_yaw.Integral = PID_yaw.PreError = PID_yaw.OutPut = 0.0f;
+        PID_rol.Integral = PID_rol.PreError = PID_rol.OutPut = 0.0f;
+        PID_pit.Integral = PID_pit.PreError = PID_pit.OutPut = 0.0f;
+    } else {
     // YAW使用最短角度误差，避免跨越+/-180度时产生大幅突变
-    float yaw_error = Yaw_Wrap180(yaw_target - Angle_Measure.yaw);
+    float yaw_error = Yaw_Wrap180(yaw_target - control_angle.yaw);
     PID_Postion_Cal(&PID_yaw, yaw_error, 0.0f);
-    PID_Postion_Cal(&PID_rol, 0,          Angle_Measure.rol);
-    PID_Postion_Cal(&PID_pit, pit_target, Angle_Measure.pit);
+    PID_Postion_Cal(&PID_rol, 0,          control_angle.rol);
+    PID_Postion_Cal(&PID_pit, 0.0f, control_angle.pit);
+#if AUV_ROV_MANUAL_TRIAL
+    PID_pit.OutPut=AuvWater_Pd(-control_angle.pit,pitch_rate.rate,0.75f,0.15f,20.0f);
+    PID_yaw.OutPut=AuvWater_Pd(yaw_error,yaw_rate.rate,1.0f,0.10f,20.0f);
+#endif
+
+    }
 
     // ===== 4. 构造唯一六维动力输入 u_dyn，再执行一次推力分配 =====
     VectorWrenchCommand dynamics_wrench;
@@ -331,25 +390,69 @@ void Mate_Task(void)
      */
     dynamics_wrench.Fx = rc_xishu * rc_wrench.Fx;
     dynamics_wrench.Fy = rc_xishu * rc_wrench.Fy;
-    dynamics_wrench.Fz = rc_xishu * rc_wrench.Fz;
+    dynamics_wrench.Fz = (pi_fresh || (rc_fresh && MyRCKey[DEPTH_HOLD_SWITCH]))
+        ? depth_output : rc_xishu * rc_wrench.Fz;
     dynamics_wrench.Mx = roll_xishu * PID_rol.OutPut;
     dynamics_wrench.My = pit_xishu * PID_pit.OutPut;
+#if AUV_ROV_MANUAL_TRIAL && AUV_ROV_TRIAL_ATTITUDE_ENABLED
+    if (!AuvSafety_IsArmed() || !imu_fresh) {
+        roll_correction_active = pitch_correction_active = 0;
+    } else {
+        roll_correction_active = AuvAttitude_Active(control_angle.rol, roll_correction_active);
+        pitch_correction_active = AuvAttitude_Active(control_angle.pit, pitch_correction_active);
+        if(fabsf(pitch_rate.rate)>3.0f)pitch_correction_active=1;
+    }
+    if (!roll_correction_active) dynamics_wrench.Mx = 0;
+    if (!pitch_correction_active) dynamics_wrench.My = 0;
+#endif
+#if AUV_ROV_MANUAL_TRIAL && !AUV_ROV_TRIAL_ATTITUDE_ENABLED
+    /* Optional manual-only commissioning mode. */
+    dynamics_wrench.Mx = 0.0f;
+    dynamics_wrench.My = 0.0f;
+#endif
     dynamics_wrench.Mz = ((pi_fresh != 0U) ||
                           (MyRCKey[YAW_PID_SWITCH] == 1U))
         ? yaw_xishu * PID_yaw.OutPut
         : rc_xishu * rc_wrench.Mz;
+#if AUV_ROV_MANUAL_TRIAL
+    dynamics_wrench.Mz=heading_hold_active ? PID_yaw.OutPut : rc_xishu*rc_wrench.Mz;
+    if(heading_hold_active && fabsf(Yaw_Wrap180(yaw_target-control_angle.yaw))<0.5f &&
+       fabsf(yaw_rate.rate)<1.0f)dynamics_wrench.Mz=0;
+#endif
 
     /* 与论文 u_dyn -> u_thruster 顺序一致：完整六维指令只分配一次。 */
+#if AUV_ROV_MANUAL_TRIAL
+    {
+        VectorWrenchCommand motion=dynamics_wrench;
+        VectorWrenchCommand attitude={0};
+        float motion_dev[VECTOR_THRUSTER_COUNT], attitude_dev[VECTOR_THRUSTER_COUNT];
+        motion.Mx=motion.My=0;
+        attitude.Mx=dynamics_wrench.Mx;
+        attitude.My=dynamics_wrench.My;
+        if(heading_hold_active) {attitude.Mz=dynamics_wrench.Mz;motion.Mz=0;}
+        VectorAllocate_Wrench(&motion,motion_dev);
+        VectorAllocate_Wrench(&attitude,attitude_dev);
+        MotorVector_ScaleToLimit(motion_dev,MOTOR_COMMAND_LIMIT);
+        (void)AuvPriority_Combine(motion_dev,attitude_dev,MOTOR_COMMAND_LIMIT,motor_dev);
+    }
+#else
     VectorAllocate_Wrench(&dynamics_wrench, motor_dev);
-
-    /* 单一公共比例动态缩放，保持合成六维指令的相对关系。 */
     MotorVector_ScaleToLimit(motor_dev, MOTOR_COMMAND_LIMIT);
+#endif
 
     /* 统一应用极性，再转为 PWM。 */
     float motor_pwm[VECTOR_THRUSTER_COUNT];
     for (uint32_t i = 0U; i < VECTOR_THRUSTER_COUNT; i++) {
+#if AUV_ROV_THRUSTER_CALIBRATION
+        /* Physical PWM offset, independent of mixer polarity; all others neutral. */
+        motor_pwm[i] = midvalue + AuvLink_CalibrationOffset((uint8_t)i, HAL_GetTick());
+#else
+#if AUV_ROV_MANUAL_TRIAL
+        motor_dev[i] = AuvThruster_Compensate(motor_dev[i], MOTOR_COMMAND_LIMIT, AUV_ROV_START_OFFSET_US);
+#endif
         motor_pwm[i] = constrain(
             midvalue + (float)motor_polarity[i] * motor_dev[i]);
+#endif
     }
 
     // ===== 5. PWM 输出到 TIM =====

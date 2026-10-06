@@ -1,0 +1,19 @@
+{
+  "read_only_application": true,
+  "connect_mode": "attach",
+  "reset_requested": false,
+  "halt_requested": false,
+  "state": "State.RUNNING",
+  "idcode": "0x101f6413",
+  "flash_kib": 1024,
+  "vectors": [
+    536874248,
+    134218309,
+    134234841,
+    134231871,
+    134234677,
+    134223897,
+    134238465,
+    0
+  ]
+}

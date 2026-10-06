@@ -80,7 +80,7 @@ uint8_t AuvMotionTarget_CopyFresh(uint32_t now_ms, AuvMotionTarget *target) {
 
   if (target == NULL)
     return 0U;
-  do {
+  for (;;) {
     before = publish_generation;
     after = before;
     if ((before & 1U) != 0U)
@@ -89,7 +89,8 @@ uint8_t AuvMotionTarget_CopyFresh(uint32_t now_ms, AuvMotionTarget *target) {
     timestamp = last_target_ms;
     *target = published;
     after = publish_generation;
-  } while ((before != after) || ((after & 1U) != 0U));
+    if (before == after && (after & 1U) == 0U) break;
+  }
   return ((seen != 0U) &&
           ((uint32_t)(now_ms - timestamp) <= AUV_MOTION_TARGET_TIMEOUT_MS))
              ? 1U

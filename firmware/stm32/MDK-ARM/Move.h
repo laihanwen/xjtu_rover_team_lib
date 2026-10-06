@@ -12,20 +12,15 @@
 
 #define VECTOR_THRUSTER_COUNT 8U
 
-/*
- * Motor polarity only compensates wiring/ESC direction. The vectors documented
- * in Move.c are BODY-FORCE directions; the visible jet directions are their
- * negatives. Change a polarity only when a low-power direction test proves the
- * measured body force is opposite to the documented positive direction.
- */
-#define Motor_1Polarity   1
-#define Motor_2Polarity  -1
-#define Motor_3Polarity  -1
-#define Motor_4Polarity   1
-#define Motor_5Polarity   1
-#define Motor_6Polarity  -1
-#define Motor_7Polarity  -1
-#define Motor_8Polarity  -1
+/* Allocation uses actual positive PWM directions measured on all channels. */
+#define Motor_1Polarity 1
+#define Motor_2Polarity 1
+#define Motor_3Polarity 1
+#define Motor_4Polarity 1
+#define Motor_5Polarity 1
+#define Motor_6Polarity -1
+#define Motor_7Polarity -1
+#define Motor_8Polarity -1
 
 /* Paper-style unified dynamics input u_dyn=[Fx,Fy,Fz,Mx,My,Mz]. */
 typedef struct {

@@ -1,0 +1,16 @@
+{
+  "safety": 3,
+  "m10_parser": {
+    "last_line": "Depth:-0.22m Temp:22.71C\r",
+    "length": 0,
+    "overflow": 0
+  },
+  "imu_sample_sequence": 9371,
+  "imu_uart_errors": 0,
+  "imu_rx_restart_failures": 0,
+  "TIM1_CCER": 0,
+  "TIM8_CCER": 0,
+  "USART3_SR": 208,
+  "USART3_CR1": 8236,
+  "state": "State.RUNNING"
+}

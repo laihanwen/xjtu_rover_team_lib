@@ -7,6 +7,12 @@ camera:
   pixel_format: MJPG
   camera_matrix: []
   distortion_coefficients: []
+camera_front:
+  enabled: false
+  source: csi:0
+  width: 320
+  height: 240
+  fps: 15
 serial:
   device: ""
   baud: 115200

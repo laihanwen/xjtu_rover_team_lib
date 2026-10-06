@@ -24,6 +24,7 @@ set(ROV_CONTROL_SOURCES
     MDK-ARM/AuvControlSource.c
     MDK-ARM/AuvGripper.c
     MDK-ARM/AuvCameraServo.c
+    MDK-ARM/AuvRovDepth.c
     MDK-ARM/AuvDepth.c
 )
 

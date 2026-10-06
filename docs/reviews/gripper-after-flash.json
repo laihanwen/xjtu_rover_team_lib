@@ -1,0 +1,394 @@
+{
+  "arm_sent": false,
+  "self_test_enabled": false,
+  "samples": [
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3609,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 36413,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3678,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 37106,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3747,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 37802,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3815,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 38495,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3884,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 39190,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 3953,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 39884,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4022,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 40583,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4091,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 41278,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4160,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 41976,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4230,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 42681,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4299,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 43377,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4368,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 44072,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4437,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 44766,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4506,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 45463,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4576,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 46160,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4645,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 46858,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4715,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 47567,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4785,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 48277,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4856,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 48988,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    },
+    {
+      "safety": 3,
+      "imu_sample_sequence": 4942,
+      "imu_uart_errors": 0,
+      "imu_rx_restart_failures": 0,
+      "uwTick": 49880,
+      "TIM1_CCER": 0,
+      "TIM1_CCR1": 3000,
+      "thrusters": [
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488,
+        1488
+      ]
+    }
+  ],
+  "state_after": "State.RUNNING",
+  "summary": {
+    "gripper_pwm_disabled": true,
+    "thrusters_neutral": true,
+    "imu_sequence_first": 3609,
+    "imu_sequence_last": 4942,
+    "state_after": "State.RUNNING"
+  }
+}
