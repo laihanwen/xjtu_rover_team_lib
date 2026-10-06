@@ -27,7 +27,7 @@ using auv_mission::MissionPhase;
 
 void provide_safe_status(MissionFsm & fsm, double now)
 {
-  fsm.update_status(true, false, false, 0U, now);
+  fsm.update_status(true, false, 0U, now);
 }
 
 TEST(MissionFsm, RunsConeMissionToCompletion)
@@ -77,47 +77,47 @@ TEST(MissionFsm, RunsFullCompetitionMissionToCompletion)
   ASSERT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
 
   fsm.update_map(true, true, 0.5);
-  fsm.update_status(true, true, false, 0U, 0.5);
+  fsm.update_status(true, true, 0U, 0.5);
   fsm.tick(0.5);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSearchCucumber);
   fsm.update_cucumber(true, false, 0.6);
-  fsm.update_status(true, true, false, 0U, 0.6);
+  fsm.update_status(true, true, 0U, 0.6);
   fsm.tick(0.6);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kAlignCucumber);
   fsm.update_cucumber(true, true, 0.7);
-  fsm.update_status(true, true, false, 0U, 0.7);
+  fsm.update_status(true, true, 0U, 0.7);
   fsm.tick(0.7);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kGrab);
   fsm.update_gripper(true, false, 0.8);
-  fsm.update_status(true, true, false, 0U, 0.8);
+  fsm.update_status(true, true, 0U, 0.8);
   fsm.tick(0.8);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kTransport);
   fsm.update_transport(true, 0.9);
-  fsm.update_status(true, true, false, 0U, 0.9);
+  fsm.update_status(true, true, 0U, 0.9);
   fsm.tick(0.9);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kRelease);
   fsm.update_gripper(false, true, 1.0);
-  fsm.update_status(true, true, false, 0U, 1.0);
+  fsm.update_status(true, true, 0U, 1.0);
   fsm.tick(1.0);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSearchValve);
   fsm.update_valve(true, false, false, 1.1);
-  fsm.update_status(true, true, false, 0U, 1.1);
+  fsm.update_status(true, true, 0U, 1.1);
   fsm.tick(1.1);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kAlignValve);
   fsm.update_valve(true, true, false, 1.2);
-  fsm.update_status(true, true, false, 0U, 1.2);
+  fsm.update_status(true, true, 0U, 1.2);
   fsm.tick(1.2);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kRotateValve);
   fsm.update_valve(true, true, true, 1.3);
-  fsm.update_status(true, true, false, 0U, 1.3);
+  fsm.update_status(true, true, 0U, 1.3);
   fsm.tick(1.3);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kReturnHome);
   fsm.update_home(true, 1.4);
-  fsm.update_status(true, true, false, 0U, 1.4);
+  fsm.update_status(true, true, 0U, 1.4);
   fsm.tick(1.4);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kSurface);
   fsm.update_surface(true, 1.5);
-  fsm.update_status(true, true, false, 0U, 1.5);
+  fsm.update_status(true, true, 0U, 1.5);
   fsm.tick(1.5);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kComplete);
   EXPECT_FALSE(fsm.snapshot().faulted);
@@ -159,7 +159,7 @@ TEST(MissionFsm, AllowsArmedVehicleOnlyDuringVisitWhenConfigured)
   provide_safe_status(fsm, 0.4);
   fsm.tick(0.4);
   ASSERT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
-  fsm.update_status(true, true, false, 0U, 0.5);
+  fsm.update_status(true, true, 0U, 0.5);
   fsm.tick(0.5);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kVisitCones);
 }
@@ -185,31 +185,25 @@ TEST(MissionFsm, PauseAllowsBriefDisarmThenFaultsIfStillArmed)
   MissionFsm fsm;
   ASSERT_TRUE(fsm.command(MissionCommand::kStart, 0.0).accepted);
   ASSERT_TRUE(fsm.command(MissionCommand::kPause, 0.1).accepted);
-  fsm.update_status(true, true, false, 0U, 0.2);
+  fsm.update_status(true, true, 0U, 0.2);
   fsm.tick(0.2);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kPaused);
-  fsm.update_status(true, true, false, 0U, 0.7);
+  fsm.update_status(true, true, 0U, 0.7);
   fsm.tick(0.7);
   EXPECT_EQ(fsm.snapshot().phase, MissionPhase::kFault);
 }
 
-TEST(MissionFsm, FaultsOnLeakArmErrorsDisconnectAndStatusTimeout)
+TEST(MissionFsm, FaultsOnArmErrorsDisconnectAndStatusTimeout)
 {
-  MissionFsm leak_fsm;
-  ASSERT_TRUE(leak_fsm.command(MissionCommand::kStart, 0.0).accepted);
-  leak_fsm.update_status(true, false, true, 0U, 0.1);
-  leak_fsm.tick(0.1);
-  EXPECT_EQ(leak_fsm.snapshot().phase, MissionPhase::kFault);
-
   MissionFsm armed_fsm;
   ASSERT_TRUE(armed_fsm.command(MissionCommand::kStart, 0.0).accepted);
-  armed_fsm.update_status(true, true, false, 0U, 0.1);
+  armed_fsm.update_status(true, true, 0U, 0.1);
   armed_fsm.tick(0.1);
   EXPECT_EQ(armed_fsm.snapshot().phase, MissionPhase::kFault);
 
   MissionFsm error_fsm;
   ASSERT_TRUE(error_fsm.command(MissionCommand::kStart, 0.0).accepted);
-  error_fsm.update_status(true, false, false, 4U, 0.1);
+  error_fsm.update_status(true, false, 4U, 0.1);
   error_fsm.tick(0.1);
   EXPECT_EQ(error_fsm.snapshot().phase, MissionPhase::kFault);
 

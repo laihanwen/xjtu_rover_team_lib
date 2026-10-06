@@ -1,18 +1,18 @@
+camera_front:
+  enabled: true
+  source: /dev/v4l/by-id/usb-HD_Camera_Manufacturer_USB_2.0_Camera-video-index0
+  width: 320
+  height: 240
+  fps: 30
 camera:
-  # Down camera is CSI; calibrate intrinsics for this camera.
+  # Replace with the real, calibrated down-camera symlink.
   source: csi:0
-  width: 640
-  height: 480
+  width: 320
+  height: 240
   fps: 30
   pixel_format: MJPG
   camera_matrix: []
   distortion_coefficients: []
-camera_front:
-  enabled: false
-  source: /dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA
-  width: 320
-  height: 240
-  fps: 30
 serial:
   device: ""
   baud: 115200
@@ -76,16 +76,17 @@ logging:
   debug_dir: /var/log/auv-runtime/debug
   max_event_bytes: 10485760
 video:
-  enabled: true
+  # MJPEG live preview and recording do not require the HLS encoder.
+  enabled: false
   directory: /run/auv-runtime/hls
-  encoder: h264_v4l2m2m
+  encoder: libx264
   software_fallback_enabled: false
   width: 640
-  height: 480
+  height: 240
   fps: 30
   bitrate_kbps: 2000
   segment_time_sec: 0.5
 web:
-  bind: 192.168.137.201
+  bind: 192.168.137.150
   port: 8080
   assets: /usr/local/share/auv-runtime/web

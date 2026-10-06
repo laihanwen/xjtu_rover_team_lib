@@ -87,7 +87,9 @@ def decode_status(payload):
     def number(offset, degrees=False):
         value = struct.unpack_from('<f', payload, offset)[0]
         return value * (180/math.pi if degrees else 1) if math.isfinite(value) else None
-    return {'armed': bool(payload[4] & 1), 'failsafe': bool(payload[4] & 4),
+    return {'sequence': struct.unpack_from('<I',payload)[0],
+            'level_calibrated': bool(payload[4] & 8),
+            'armed': bool(payload[4] & 1), 'failsafe': bool(payload[4] & 4),
             'error_flags': struct.unpack_from('<I', payload, 5)[0],
             'depth_m': number(13), 'roll_deg': number(17, True),
             'pitch_deg': number(21, True), 'yaw_deg': number(25, True),

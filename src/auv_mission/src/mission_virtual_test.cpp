@@ -100,7 +100,6 @@ int main(int argc, char * argv[])
     auv_interfaces::msg::Stm32Status status;
     status.connected = true;
     status.armed = false;
-    status.leak_detected = false;
     status.error_flags = 0U;
     status_publisher->publish(status);
 

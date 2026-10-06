@@ -27,8 +27,10 @@ uint8_t imu_data_ready = 0;
 volatile uint32_t imu_sample_sequence = 0U;
 
 // 陀螺仪漂移补偿相关
-FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // 存储第一次有效数据的偏移量
+FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // Manual pitch/roll reference; first-frame yaw origin
 uint8_t imu_offset_calibrated = 0;  // 标志位：是否已经校准偏移量
+volatile uint8_t imu_level_calibrated = 0U;
+static FLOAT_Angle raw_angle;
 
 static AuvH30Frame h30_frame;
 volatile uint32_t imu_last_sample_ms;
@@ -168,15 +170,16 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
 //						roll_raw_deg-=5;
 //						pitch_raw_deg+=1.5;
             
-            // 如果是第一次有效数据，记录为偏移量（在应用所有硬编码偏移量之后）
+            // First sample establishes only a relative yaw origin.
             if (!imu_offset_calibrated) {
-                imu_offset.pit = pitch_raw_deg;
-                imu_offset.rol = roll_raw_deg;
                 imu_offset.yaw = yaw_raw_deg;
                 imu_offset_calibrated = 1;  // 标记已校准
             }
             
-            // 减去偏移量，得到校正后的角度
+            raw_angle.pit = pitch_raw_deg;
+            raw_angle.rol = roll_raw_deg;
+            raw_angle.yaw = yaw_raw_deg;
+            // Pitch/roll remain raw until an explicit shore calibration.
             Angle_Measure.pit = pitch_raw_deg - imu_offset.pit;
             Angle_Measure.yaw = yaw_raw_deg - imu_offset.yaw;
 			Angle_Measure.rol = roll_raw_deg - imu_offset.rol;
@@ -214,8 +217,45 @@ void h30_reset_rx(void)
 
 // 重置偏移量校准（可选功能，用于重新校准）
 void imu_reset_offset(void) {
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    imu_level_calibrated = 0U;
     imu_offset_calibrated = 0;
     imu_offset.pit = 0.0f;
     imu_offset.rol = 0.0f;
     imu_offset.yaw = 0.0f;
+    __set_PRIMASK(mask);
+}
+
+uint8_t imu_copy_fresh(FLOAT_Angle *angle, uint32_t *sequence, uint32_t *stamp)
+{
+    uint32_t mask = __get_PRIMASK();
+    uint32_t now;
+    uint8_t fresh;
+    __disable_irq();
+    *angle = Angle_Measure;
+    *sequence = imu_sample_sequence;
+    *stamp = imu_last_sample_ms;
+    now = HAL_GetTick(); /* Read time after the sample, in the same critical section. */
+    fresh = (*sequence != 0U && (uint32_t)(now - *stamp) <= 250U);
+    __set_PRIMASK(mask);
+    return fresh;
+}
+
+uint8_t imu_calibrate_level(void)
+{
+    uint32_t mask = __get_PRIMASK();
+    uint8_t ok;
+    __disable_irq();
+    ok = (imu_sample_sequence != 0U &&
+          (uint32_t)(HAL_GetTick() - imu_last_sample_ms) <= 250U);
+    if (ok) {
+        imu_offset.pit = raw_angle.pit;
+        imu_offset.rol = raw_angle.rol;
+        Angle_Measure.pit = 0.0f;
+        Angle_Measure.rol = 0.0f;
+        imu_level_calibrated = 1U;
+    }
+    __set_PRIMASK(mask);
+    return ok;
 }

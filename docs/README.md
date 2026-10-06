@@ -1,35 +1,73 @@
 # AUV 文档中心
 
-根 `README.md` 负责快速进入项目；本目录保存设计依据、接口协议、操作手册、测试门槛和
-审查结论。硬件参数未知时，以 `AGENTS.md` 的安全约束为准，不从示例值推断真实接线。
+根目录 [README.md](../README.md) 负责项目入口；本目录负责整理设计依据、接口协议、部署手册、验收门槛和评审结论。硬件参数未知时，以 [AGENTS.md](../AGENTS.md) 的安全约束为准，不从示例值推断真实接线。
 
-## 项目状态
+## 文档结构总览
 
-- [压缩状态：当前阶段、安全门与下一步](project-status.md)
-- [P14 视觉基础代码审查](reviews/p14-foundation-code-review.md)
+```text
+docs/
+├── README.md                                # 文档入口，说明文档分层
+├── project-status.md                        # 当前阶段、安全门和后续计划
+├── newcomer-ai-development-guide.md         # 新成员和 AI 协作说明
+├── p12-annotation-guide.md                 # P12 数据标注说明
+├── wired-network.md                         # PC / Pi 联调网络说明
+├── architecture/
+│   ├── README.md                           # 架构导航入口
+│   └── repository-layout.md                # 仓库布局与模块边界
+├── deployment/
+│   ├── README.md                           # 现场部署说明入口
+│   └── pi-20261006/
+│       ├── README.md                       # Raspberry Pi 现场部署与运行记录
+│       └── *.json                          # 摄像头/启动/预检配置
+├── protocol/
+│   ├── README.md                           # 协议导航入口
+│   └── serial-protocol.md                  # Pi ↔ STM32 串口协议 v1
+├── reviews/
+│   ├── README.md                           # 审查导航入口
+│   └── p14-foundation-code-review.md      # P14 视觉基础审查
+├── testing/
+│   ├── README.md                           # 测试导航入口
+│   ├── strategy.md                         # 总体测试策略
+│   ├── p4-safety.md                        # heartbeat / failsafe 验收
+│   ├── task1-apriltag-cones.md            # 任务一 AprilTag / 交通锥验收
+│   ├── p13-gripper.md                      # P13 夹爪验收
+│   └── p14-valve-foundation.md             # P14 转盘视觉基础验收
+├── ...
+└── ...
+```
 
-## 架构与接口
+## 快速入口
 
-- [仓库布局与模块边界](architecture/repository-layout.md)
-- [Pi ↔ STM32 串口协议 v1](protocol/serial-protocol.md)
+### 项目状态与路线
+
+- [项目状态：当前阶段、安全门与下一步](./project-status.md)
+- [P14 视觉基础代码审查](./reviews/p14-foundation-code-review.md)
+
+### 架构与接口
+
+- [架构导航](./architecture/README.md)
+- [仓库布局与模块边界](./architecture/repository-layout.md)
+- [Pi ↔ STM32 串口协议 v1](./protocol/serial-protocol.md)
 - [STM32 固件说明](../firmware/stm32/README.md)
 - [ROS 运行时 package 导航](../src/README.md)
 
-## 运行指南
+### 运行与部署
 
-- [PC 与树莓派有线联调](wired-network.md)
-- [P12 水下目标打标教程](p12-annotation-guide.md)
-- [新人 AI 辅助开发教程](newcomer-ai-development-guide.md)
+- [部署导航](./deployment/README.md)
+- [PC 与树莓派有线联调](./wired-network.md)
+- [P12 水下目标打标教程](./p12-annotation-guide.md)
+- [开发环境和协作说明](./newcomer-ai-development-guide.md)
 
-## 测试与实机门槛
+### 测试与验收
 
-- [总体测试策略](testing/strategy.md)
-- [P4 heartbeat/failsafe 验收](testing/p4-safety.md)
-- [任务一 AprilTag 与交通锥遍历验收](testing/task1-apriltag-cones.md)
-- [P13 T35-L 单舵机夹爪验收](testing/p13-gripper.md)
-- [P14 转盘视觉基础验收](testing/p14-valve-foundation.md)
+- [测试导航](./testing/README.md)
+- [总体测试策略](./testing/strategy.md)
+- [P4 heartbeat/failsafe 验收](./testing/p4-safety.md)
+- [任务一 AprilTag 与交通锥遍历验收](./testing/task1-apriltag-cones.md)
+- [P13 T35-L 单舵机夹爪验收](./testing/p13-gripper.md)
+- [P14 转盘视觉基础验收](./testing/p14-valve-foundation.md)
 
-## 模块文档
+### 模块文档
 
 | 模块 | 文档 |
 |---|---|
@@ -43,3 +81,12 @@
 | 数据集约定 | [`datasets`](../datasets/README.md) |
 | 模型注册 | [`models`](../models/README.md) |
 | 硬件资料 | [`hardware`](../hardware/README.md) |
+
+## 阅读顺序建议
+
+1. 先用 [项目状态](./project-status.md) 确定当前阶段与安全门；
+2. 再查看 [架构导航](./architecture/README.md) 和 [协议导航](./protocol/README.md)；
+3. 需要现场部署时，阅读 [部署导航](./deployment/README.md)；
+4. 进行任务验证时，按 [测试导航](./testing/README.md) 依次执行。
+
+该结构在保持现有文件布局兼容的同时，提供更清晰的导航入口，方便团队沿同一文档目录顺序阅读和维护。

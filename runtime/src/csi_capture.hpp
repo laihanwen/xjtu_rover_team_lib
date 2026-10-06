@@ -74,7 +74,7 @@ class CsiCapture {
     parser_=MjpegFrames{};
   }
   bool is_open() const { return fd_>=0; }
-  bool read(cv::Mat& image) {
+  bool read(cv::Mat& image, std::vector<std::uint8_t>* compressed=nullptr) {
     pollfd p{fd_,POLLIN,0};
     const int ready=::poll(&p,1,100);
     if (ready<0 && errno!=EINTR) throw std::runtime_error("CSI poll failed");
@@ -92,6 +92,7 @@ class CsiCapture {
     auto jpeg=parser_.take();
     if (jpeg.empty()) return false;
     image=cv::imdecode(jpeg,cv::IMREAD_COLOR);
+    if (!image.empty() && compressed) *compressed=std::move(jpeg);
     return !image.empty();
   }
   void close() {

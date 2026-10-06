@@ -29,17 +29,17 @@ ctest --test-dir build-lightweight --output-on-failure
 
 ## 双摄像头
 
-参考补充代码 `two_camera.py` / `two_camera_fast.py` 的独立采集、最新帧覆盖和 CSI MJPEG 管道方式，运行时可同时采集 USB 与 CSI。USB 保留为任务一视觉输入；CSI 作为前视采集与预览，尚未接入海参或转盘识别。这里是逻辑命名，实际安装朝向需现场核对。
+参考补充代码 `two_camera.py` / `two_camera_fast.py` 的独立采集、最新帧覆盖和 CSI MJPEG 管道方式，运行时可同时采集 USB 与 CSI。操作者确认CSI为下视、USB为前视。CSI下视帧输入AprilTag、九宫格及交通锥视觉；USB前视独立采集与预览，尚未接入海参或转盘识别。
 
-在配置中启用 `camera_front.enabled: true`，使用 `source: csi:0`（或 `csi:1`），并配置宽、高和帧率；树莓派部署使用 320×240、15 fps。CSI 需要系统提供 `rpicam-vid`。默认配置关闭第二相机，兼容单相机与离线测试。
+下视使用 `camera.source: csi:0`（或 `csi:1`）；启用 `camera_front.enabled: true`，前视使用实际USB `/dev/v4l/by-id/...`设备，并配置宽、高和帧率；本地待部署Pi模板目标 320×240、30 fps。CSI 需要系统提供 `rpicam-vid`。默认配置关闭第二相机，兼容单相机与离线测试。
 
-两路独立采集，只保留最新帧；CSI 使用有界 MJPEG 缓冲、超时读取、进程重启和退出清理，避免 CSI 堵塞拖住 USB 视觉或控制。USB 使用 V4L2 单帧缓冲。显示固定节奏取最新帧，两路共用一个 H.264 编码器；部署输出 640×240，左侧 USB、右侧 CSI。超过帧时限的画面置黑。
+两路独立采集，只保留最新帧；CSI 使用有界 MJPEG 缓冲、超时读取、进程重启和退出清理，避免CSI堵塞拖住USB前视或控制；下视过期仍触发原有任务视觉保护。USB 使用 V4L2 单帧缓冲。默认网页双路MJPEG独立预览；HLS兼容预览固定节奏直接取采集最新帧，两路共用一个 H.264 编码器，输出 640×240，左侧CSI下视、右侧USB前视。超过帧时限的画面置黑。
 
 CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相机进程。服务等待 `network-online.target` 后启动，避免开机静态 IP 尚未就绪导致网页绑定失败。实际 Pi 的硬件编码存在后续 HLS 分段缺少 SPS/PPS 的问题，当前部署显式选择 `libx264`、`ultrafast`、单线程、15 fps；硬件编码 HLS 尚未验收，不能只凭 HTTP 200 判定视频可播放。软件编码添加关键帧参数头，机制参考 [FFmpeg bitstream filter 文档](https://ffmpeg.org/ffmpeg-bitstream-filters.html#dump_005fextra)，实机需通过后续分段独立解码检查。
 
 只读接口 `/api/camera/down.jpg` 和 `/api/camera/front.jpg` 返回各自最新 JPEG；过期时返回 HTTP 503。`/api/status` 增加 `down_capture_frames`、`front_frames`、`front_hz`、`front_camera_age_sec`、`front_degraded` 和 `front_detail`。采集帧率、视觉处理帧率与视频输出帧率分别统计，不能相互代替。
 
-`ctest --test-dir build-lightweight --output-on-failure` 包含 MJPEG 分包/缓冲上限测试，以及双相机模拟、CSI 卡住后的 USB/控制持续运行、子进程退出清理测试；这些测试不访问真实硬件或串口。
+`ctest --test-dir build-lightweight --output-on-failure` 包含 MJPEG 分包/缓冲上限测试，以及双相机模拟、CSI分别作为下视/前视时卡住后的另一相机及控制持续运行、子进程退出清理测试；这些测试不访问真实硬件或串口。
 
 ## 自主模式
 
@@ -64,3 +64,19 @@ STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超�
 请参考 [deploy/TESTING.md](deploy/TESTING.md) 中分阶段、只读的 Pi 检查流程。`run_bench.sh preflight` 会验证部署安全性，并将缺失的硬件标记为 pending；`camera`、`serial`、`fault-watch`、`endurance` 和 `collect` 提供聚焦检查和保存的 JSON 报告。耐久测试脚本会调用 `acceptance.py`，测量视觉/控制/心跳速率、滚动帧延迟、进程树 CPU 和 RSS、温度及节流状态，并要求具备有效的相机和 STM32 状态。缺失节流数据不计入通过。
 
 在校准相机、行/列到机体坐标系的符号方向、速度限制和串口设备之前，不要设置 `motion_commands_enabled: true`。首次运动测试必须断开推进器电源，移除螺旋桨，或确保推进器牢固固定。2026-10-04 日，Debian 13 原生构建和两次 Pi CTest 已通过。30 分钟热性能运行、真实相机/HLS 测试、真实 STM32 试验台运行，以及无螺旋桨闭环验收仍待硬件完成。
+
+当前硬件无漏水检测；固件和任务判断已移除此分支。状态协议中的旧漏水状态位保留且不使用，ROS Stm32Status不再含该字段，需要重新编译相关ROS包。急停、传感器有效性和通信超时保护保留。新版页面为只读任务中心，控制仍使用auvctl。
+
+
+## 回传与训练录像帧率
+
+`/api/camera/down.mjpeg`、`/api/camera/front.mjpeg`提供multipart长连接；每帧包含Content-Length、X-Frame-Time-Monotonic、X-Camera-Source。CSI直接复用rpicam MJPEG字节；USB采集后只编码一次。JPEG快照接口同样复用缓存。图像和时间标记在同一把锁中发布，时间是Pi收到/解码该帧时的单调时钟，不是相机硬件曝光时间，不代表硬件同步双摄。
+
+`/api/status`新增down_hz、video_enabled；down_hz/front_hz为采集间隔估计，vision_hz仅为识别处理速度。PC录制显示received_fps，且按来源时间戳去重，不把重复帧计作新采集帧。目标30fps和实际稳定帧率应分别核对。原有HLS历史实测配置仍为15fps软件编码，本次模板调整尚未部署；不能把本地模板或模拟测试结果当作实机测量。
+
+长连接实现使用cpp-httplib的[chunked content provider](https://github.com/yhirose/cpp-httplib#chunked-transfer-encoding)，整帧一次写入并启用TCP_NODELAY。最多4条流、8个HTTP工作线程，慢客户端只读取最新缓存，写入超时2秒；不占用控制循环或视觉处理线程。无新帧2秒关闭流，网页下一秒尝试重连；录制读取失败重连并保留已有视频，持续失败停止并收尾。树莓派资源紧张而不需要HLS时可将video.enabled设为false，MJPEG与录像仍可用；保持web.enabled为true。
+
+固件改为岸上手动水平基准，STM32重启后需要通过ROV驾驶台显式完成校准再请求ARM。未完成校准的自动任务ARM也会被底层安全门拒绝。此版本不要在水下姿态不明确时校零。
+
+
+Pi相机专用配置现保存在`runtime/config/pi-rov.yaml`，并随安装复制到配置目录；默认两摄320×240、30fps，MJPEG开启，HLS编码关闭以减轻CPU负担。此文件不会自动覆盖既有运行配置。部署后应先只读测速和检查录制片段，再启用运动。

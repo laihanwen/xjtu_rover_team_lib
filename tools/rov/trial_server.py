@@ -7,6 +7,33 @@ import time
 from trial_protocol import Parser, LeaseGate, encode, manual_frame, centered, decode_status
 
 
+class LevelCheck:
+    """Require two seconds of fresh, stable DISARM telemetry before zeroing."""
+    def __init__(self, now):
+        self.started = now
+        self.samples = []
+        self.sequence = None
+
+    def add(self, telemetry, now):
+        if telemetry.get('armed'):
+            raise ValueError('水平校准只允许未ARM')
+        angles = (telemetry.get('pitch_deg'), telemetry.get('roll_deg'))
+        if any(x is None for x in angles):
+            raise ValueError('校准IMU无效')
+        if telemetry.get('sequence') != self.sequence:
+            self.sequence = telemetry.get('sequence')
+            if self.samples:
+                angles = tuple(a + (x-a+180)%360-180 for a,x in zip(self.samples[0],angles))
+            self.samples.append(angles)
+        if now-self.started > 4:
+            raise ValueError('校准采样超时')
+        if now-self.started < 2 or len(self.samples) < 18:
+            return False
+        if any(max(s[i] for s in self.samples)-min(s[i] for s in self.samples) > .5 for i in (0,1)):
+            raise ValueError('姿态不稳定，请在岸上放平后重新校准')
+        return True
+
+
 def run(uart, server):
     protocol = Parser()
     sequence = int(time.monotonic()*1000) & 0xffffffff
@@ -29,6 +56,8 @@ def run(uart, server):
         last_input = 0.0
         last_send = last_status = 0.0
         arm_pending = None
+        level_check = None
+        level_ack = None
         buffer = bytearray()
         detail = '等待手柄；未ARM'
         with conn:
@@ -42,8 +71,24 @@ def run(uart, server):
                         if kind == 0x80:
                             telemetry = decode_status(payload)
                             telemetry_ms = now
+                            if level_check:
+                                try:
+                                    if level_check.add(telemetry,now):
+                                        sequence = (sequence+1) & 0xffffffff
+                                        write(8,struct.pack('<IB',sequence,1))
+                                        level_ack = (sequence,now)
+                                        level_check = None
+                                        detail = '水平稳定，等待STM32校准响应'
+                                except ValueError as e:
+                                    level_check = None
+                                    detail = str(e)
+                        elif kind == 0x7f and len(payload) == 6 and payload[0] == 8:
+                            if level_ack and struct.unpack_from('<I',payload,2)[0] == level_ack[0]:
+                                detail = '岸上水平校准完成；本次开机有效' if payload[1] == 0 else 'STM32拒绝校准'
+                                level_ack = None
                         elif kind == 0x7f and len(payload) == 6 and payload[0] == 2:
-                            detail = 'ARM/DISARM响应码 '+str(payload[1])
+                            if payload[1] != 0:
+                                detail = 'ARM/DISARM拒绝码 '+str(payload[1])
                     try:
                         data = conn.recv(4096)
                     except socket.timeout:
@@ -73,11 +118,25 @@ def run(uart, server):
                             deadman = message['deadman']
                             last_input = now
                             action = message.get('action')
-                            if action == 'stop' or not deadman:
+                            if (level_check or level_ack) and not centered(frame):
+                                level_check = level_ack = None
+                                detail = '校准取消：摇杆未回中'
+                            if action == 'level':
+                                stop(); arm_pending = None; deadman = False
+                                if (message.get('shore_confirmed') is not True or
+                                    not centered(frame) or now-telemetry_ms > .3 or telemetry.get('armed')):
+                                    detail = '请确认岸上放平、未ARM、摇杆回中及新鲜遥测'
+                                elif level_check is None and level_ack is None:
+                                    level_check = LevelCheck(now)
+                                    detail = '岸上水平采样中，请保持静止2秒'
+                            elif action == 'stop' or not deadman:
                                 stop(); arm_pending = None
-                                detail = '停止；需重新点击ARM'
+                                if action == 'stop':
+                                    level_check = level_ack = None
+                                if not level_check and not level_ack and action is not None:
+                                    detail = '停止；需重新点击ARM'
                             elif action == 'arm':
-                                if not centered(frame) or now-telemetry_ms > .3 or telemetry.get('roll_deg') is None:
+                                if level_check or level_ack or not telemetry.get('level_calibrated') or not centered(frame) or now-telemetry_ms > .3 or telemetry.get('roll_deg') is None:
                                     detail = '拒绝ARM：摇杆未回中或遥测/IMU无效'
                                 elif not telemetry.get('armed'):
                                     arm_pending = now
@@ -95,6 +154,14 @@ def run(uart, server):
                     if now-last_input > .2 or now-telemetry_ms > .5:
                         if deadman or arm_pending is not None:
                             stop()
+                        deadman = False; arm_pending = None
+                        if level_check or level_ack:
+                            level_check = level_ack = None
+                            detail = '校准取消：输入或遥测失联'
+                    if level_ack and now-level_ack[1] > 1:
+                        level_ack = None
+                        detail = '校准响应超时，请确认新固件已烧录'
+                    if level_check or level_ack:
                         deadman = False; arm_pending = None
                     if now-last_send >= .05 and now-last_input <= .2:
                         last_send = now
@@ -114,9 +181,10 @@ def run(uart, server):
                         last_status = now
                         reply = {'lease': gate.issue(now), 'telemetry': telemetry,
                                  'telemetry_age': now-telemetry_ms, 'detail': detail,
+                                 'level_pending': bool(level_check or level_ack),
                                  'uart_crc_errors': protocol.errors, 'pwm_limit': 100,
-                                 'servos_enabled': False, 'attitude_hold': True, 'heading_hold_enabled': True, 'pitch_pd': [0.75, 0.15], 'calibration_mode': False, 'start_offset_us': 48,
-                                 'depth_hold': False, 'leak_sensor_present': False}
+                                 'servos_enabled': False, 'attitude_hold': True, 'heading_hold_enabled': True, 'pitch_pd': [7.5, 1.5], 'calibration_mode': False, 'start_offset_us': 48,
+                                 'depth_hold': False}
                         conn.sendall((json.dumps(reply, allow_nan=False)+'\n').encode())
             except (OSError, ValueError, KeyError, TypeError) as error:
                 print('Client stopped:', error, flush=True)

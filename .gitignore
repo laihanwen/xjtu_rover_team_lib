@@ -84,3 +84,6 @@ compile_commands.json
 # Local fallback Git metadata (used only when the managed environment mounts
 # an unusable read-only .git placeholder).
 /.git-data/
+
+# Locally recorded training videos and frame timestamps
+/data/rov-recordings/

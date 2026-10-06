@@ -13,7 +13,7 @@ from offline_replay import make_video, request
 from startup import wait_for_socket
 
 
-def main(binary):
+def main(binary, csi_down=False):
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         make_video(root / 'down.avi')
@@ -35,7 +35,7 @@ else:
         fake.chmod(0o755)
         config = pathlib.Path('runtime/config/runtime.yaml').read_text()
         replacements = {
-            '/dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA': f'file:{root / "down.avi"}',
+            'csi:0': f'file:{root / "down.avi"}',
             'enabled: true': 'enabled: false',
             '/run/auv-runtime/control.sock': str(root / 'control.sock'),
             '/run/auv-runtime/hls': str(root / 'hls'),
@@ -44,7 +44,10 @@ else:
         }
         for old, new in replacements.items():
             config = config.replace(old, new)
+        config = config.replace('/dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA', 'csi:1')
         config = config.replace('camera_front:\n  enabled: false', 'camera_front:\n  enabled: true')
+        if csi_down:
+            config=config.replace(f'file:{root / "down.avi"}', 'csi:0').replace('source: csi:1', f'source: file:{root / "down.avi"}')
         (root / 'runtime.yaml').write_text(config)
         environment = dict(os.environ, PATH=str(root) + ':' + os.environ['PATH'])
         with (root / 'stderr.log').open('w') as errors:
@@ -66,9 +69,15 @@ else:
                 os.kill(int((root / 'child.pid').read_text()), signal.SIGTERM)
                 time.sleep(1.5)
                 stalled = json.loads(request(str(root / 'control.sock'), 'status'))
-                assert stalled['front_degraded'] and stalled['front_camera_age_sec'] > .5
+                if csi_down:
+                    assert stalled['camera_age_sec'] > .5
+                    assert stalled['front_frames'] > state['front_frames']
+                    assert not stalled['front_degraded']
+                else:
+                    assert stalled['front_degraded'] and stalled['front_camera_age_sec'] > .5
                 assert stalled['control_ticks'] > state['control_ticks']
-                assert stalled['vision_frames'] > state['vision_frames']
+                if not csi_down:
+                    assert stalled['vision_frames'] > state['vision_frames']
                 assert not stalled['armed'] and not stalled['motion_enabled']
                 child = int((root / 'child.pid').read_text())
                 deadline = time.monotonic() + 12
@@ -84,7 +93,8 @@ else:
                 deadline = time.monotonic() + 5
                 while time.monotonic() < deadline:
                     recovered = json.loads(request(str(root / 'control.sock'), 'status'))
-                    if not recovered['front_degraded'] and recovered['front_frames'] > stalled['front_frames']:
+                    ready=(recovered['camera_age_sec'] < .5 and recovered['down_capture_frames'] > stalled['down_capture_frames']) if csi_down else (not recovered['front_degraded'] and recovered['front_frames'] > stalled['front_frames'])
+                    if ready:
                         break
                     time.sleep(.1)
                 else:
@@ -99,3 +109,4 @@ else:
 
 if __name__ == '__main__':
     main(sys.argv[1])
+    main(sys.argv[1], csi_down=True)

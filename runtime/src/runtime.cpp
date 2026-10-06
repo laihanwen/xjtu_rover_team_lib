@@ -75,8 +75,8 @@ static bool propulsion_phase(auv_mission::MissionPhase phase) {
 struct Config {
   std::string camera, serial, socket, log, debug_dir;
   bool front_enabled{};
-  std::string front_source{"csi:0"};
-  int front_width{320},front_height{240},front_fps{15};
+  std::string front_source{"/dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA"};
+  int front_width{320},front_height{240},front_fps{30};
   std::string operation_mode{"debug"};
   bool auto_start{}, auto_arm{};
   double startup_delay{5.0}, startup_timeout{30.0}, startup_stable{1.0};
@@ -111,10 +111,10 @@ static Config load_config(const std::string& path) {
   c.camera_pixel_format = y["camera"]["pixel_format"].as<std::string>();
   if (const auto front=y["camera_front"]) {
     c.front_enabled=front["enabled"].as<bool>(false);
-    c.front_source=front["source"].as<std::string>("csi:0");
+    c.front_source=front["source"].as<std::string>("/dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA");
     c.front_width=front["width"].as<int>(320);
     c.front_height=front["height"].as<int>(240);
-    c.front_fps=front["fps"].as<int>(15);
+    c.front_fps=front["fps"].as<int>(30);
   }
   if (c.front_enabled && (c.front_width<16 || c.front_width>1920 ||
       c.front_height<16 || c.front_height>1080 || c.front_fps<1 || c.front_fps>60 ||
@@ -191,8 +191,9 @@ static Config load_config(const std::string& path) {
   c.max_event_bytes = y["logging"]["max_event_bytes"].as<std::uint64_t>();
   if (y["camera"]["camera_matrix"]) c.camera_matrix = y["camera"]["camera_matrix"].as<std::vector<double>>();
   if (y["camera"]["distortion_coefficients"]) c.distortion = y["camera"]["distortion_coefficients"].as<std::vector<double>>();
-  if (c.camera.rfind("/dev/v4l/by-id/", 0) != 0 && c.camera.rfind("file:", 0) != 0)
-    throw std::runtime_error("camera source must be /dev/v4l/by-id/... or file:...");
+  if (c.camera != "csi:0" && c.camera != "csi:1" &&
+      c.camera.rfind("/dev/v4l/by-id/", 0) != 0 && c.camera.rfind("file:", 0) != 0)
+    throw std::runtime_error("camera source must be csi:0/1, /dev/v4l/by-id/... or file:...");
   if (c.camera_width <= 0 || c.camera_width > 1920 || c.camera_height <= 0 ||
       c.camera_height > 1080 || c.camera_fps <= 0 || c.camera_fps > 120 ||
       c.camera_pixel_format.size() != 4 || c.grid.stable_frames <= 0 ||
@@ -354,7 +355,7 @@ class Runtime {
   }
   bool status_fresh(double now) const { return status_time_ > 0 && now - status_time_ <= cfg_.status_timeout; }
   bool safe_status(double now) const {
-    return serial_connected_ && status_fresh(now) && !status_.leak_detected &&
+    return serial_connected_ && status_fresh(now) &&
       status_.error_flags == 0 && status_.telemetry_valid;
   }
   bool gripper_status_fresh(double now) const {
@@ -389,22 +390,46 @@ class Runtime {
     return false;
   }
   void capture_loop() {
-    auto source_name = cfg_.camera.rfind("file:", 0) == 0 ? cfg_.camera.substr(5) : cfg_.camera;
+    const bool csi=cfg_.camera.rfind("csi:",0)==0;
+    auto source_name = cfg_.camera.rfind("file:",0)==0 ? cfg_.camera.substr(5) : cfg_.camera;
+    CsiCapture capture;
     auv_vision::CameraSource camera({source_name,cfg_.camera_width,cfg_.camera_height,
-      cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0) == 0});
+      cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0)==0});
+    double last_ready=seconds();
+    bool received=false;
     while (running) {
       try {
-      if (!camera.is_open() && !camera.open()) { std::this_thread::sleep_for(std::chrono::seconds(1)); continue; }
-      cv::Mat image;
-      if (!camera.read(image)) { camera.close(); std::this_thread::sleep_for(std::chrono::milliseconds(200)); continue; }
-      std::lock_guard<std::mutex> lock(frame_mutex_);
-      frame_ = image;
-    frame_time_ = seconds();
-      ++frame_sequence_;
-      ++down_capture_frames_;
-      } catch (const std::exception& e) {
-        camera.close(); fault(std::string("camera: ")+e.what());
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if(csi && !capture.is_open()) {
+          capture.open(cfg_.camera.back()-'0',cfg_.camera_width,cfg_.camera_height,
+                       static_cast<int>(cfg_.camera_fps));
+          last_ready=seconds(); received=false;
+        }
+        if(!csi && !camera.is_open() && !camera.open()) {
+          std::this_thread::sleep_for(std::chrono::seconds(1)); continue;
+        }
+        cv::Mat image;
+        std::vector<std::uint8_t> jpeg;
+        const bool ready=csi ? capture.read(image,&jpeg) : camera.read(image);
+        if(!ready) {
+          if(csi && seconds()-last_ready>(received ? 2.0 : 8.0))
+            throw std::runtime_error("down CSI frame timeout");
+          if(!csi)camera.close();
+          std::this_thread::sleep_for(std::chrono::milliseconds(csi ? 10 : 200));
+          continue;
+        }
+        last_ready=seconds(); received=true;
+        const double previous=frame_time_.load();
+        if (previous>0 && last_ready>previous)
+          down_hz_=down_hz_<=0 ? 1.0/(last_ready-previous) : .9*down_hz_.load()+.1/(last_ready-previous);
+        if (!csi && !cv::imencode(".jpg",image,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+          throw std::runtime_error("down JPEG encode failed");
+        { std::lock_guard<std::mutex> lock(frame_mutex_);
+          down_jpeg_=std::move(jpeg);
+          frame_=image; frame_time_=last_ready; ++frame_sequence_; ++down_capture_frames_;
+        }
+      } catch(const std::exception& e) {
+        capture.close(); camera.close(); fault(std::string("down camera: ")+e.what());
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
       }
     }
   }
@@ -427,7 +452,8 @@ class Runtime {
         }
         if (!csi && !camera.is_open() && !camera.open()) throw std::runtime_error("front camera unavailable");
         cv::Mat image;
-        const bool ready=csi ? capture.read(image) : camera.read(image);
+        std::vector<std::uint8_t> jpeg;
+        const bool ready=csi ? capture.read(image,&jpeg) : camera.read(image);
         if (!ready) {
           if (csi && seconds()-last_ready>(received ? 2.0 : 8.0)) throw std::runtime_error("CSI frame timeout");
           std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue;
@@ -435,14 +461,18 @@ class Runtime {
         const double stamp=seconds(), previous=front_time_.load();
         last_ready=stamp;
         received=true;
-        { std::lock_guard<std::mutex> lock(front_mutex_); front_frame_=image; }
-        front_time_=stamp;
+        if (!csi && !cv::imencode(".jpg",image,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+          throw std::runtime_error("front JPEG encode failed");
+        { std::lock_guard<std::mutex> lock(front_mutex_);
+          front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; }
         { std::lock_guard<std::mutex> lock(state_mutex_);
           ++front_frames_; front_detail_.clear();
           if (previous>0 && stamp>previous) front_hz_=front_hz_<=0 ? 1.0/(stamp-previous) :
             0.9*front_hz_+0.1/(stamp-previous);
         }
-        if (!csi) std::this_thread::sleep_for(std::chrono::milliseconds(1000/cfg_.front_fps));
+        /* Live V4L2 read already waits for the next frame. Only pace file replay. */
+        if (!csi && !camera.is_live())
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000/cfg_.front_fps));
       } catch (const std::exception& e) {
         capture.close(); camera.close();
         { std::lock_guard<std::mutex> lock(state_mutex_); front_detail_=e.what(); }
@@ -707,7 +737,7 @@ class Runtime {
             set_fault_locked("grid pose timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
         }
-        if (status_fresh(now)) mission_.update_status(serial_connected_,status_.armed,status_.leak_detected,status_.error_flags,now);
+        if (status_fresh(now)) mission_.update_status(serial_connected_,status_.armed,status_.error_flags,now);
         mission_.update_apriltag(tag_found_,now);
         mission_.update_map(map_.complete, all_visited_,now);
         if (phase == auv_mission::MissionPhase::kPlanCones && !route_ready_ && map_.complete &&
@@ -827,11 +857,14 @@ class Runtime {
         << ",\"serial\":" << (serial_connected_ ? "true":"false")
         << ",\"armed\":" << (status_.armed ? "true":"false")
         << ",\"motion_enabled\":" << (cfg_.motion_enabled ? "true":"false")
-        << ",\"leak\":" << (status_.leak_detected ? "true":"false")
         << ",\"telemetry_valid\":" << (status_.telemetry_valid ? "true":"false")
         << ",\"voltage_valid\":" << (status_.voltage_valid ? "true":"false")
         << ",\"camera_age_sec\":" << (frame_time_ ? now-frame_time_ : -1)
+        << ",\"down_source\":\"" << json_escape(cfg_.camera) << "\""
+        << ",\"front_source\":\"" << json_escape(cfg_.front_source) << "\""
         << ",\"down_capture_frames\":" << down_capture_frames_.load()
+        << ",\"down_hz\":" << down_hz_.load()
+        << ",\"video_enabled\":" << (cfg_.video_enabled ? "true":"false")
         << ",\"front_enabled\":" << (cfg_.front_enabled ? "true":"false")
         << ",\"front_camera_age_sec\":" << (front_time_ ? now-front_time_ : -1)
         << ",\"front_frames\":" << front_frames_
@@ -964,8 +997,9 @@ class Runtime {
         break;
       }
       cv::Mat image;
-      { std::lock_guard<std::mutex> lock(video_mutex_);
-        if (cfg_.front_enabled || seen != video_sequence_) { seen=video_sequence_; image=video_frame_; } }
+      /* Preview consumes capture directly; perception rate must not cap video FPS. */
+      { std::lock_guard<std::mutex> lock(frame_mutex_);
+        if (cfg_.front_enabled || seen != frame_sequence_) { seen=frame_sequence_; image=frame_; } }
       if (cfg_.front_enabled) {
         cv::Mat front;
         { std::lock_guard<std::mutex> lock(front_mutex_); front=front_frame_; }
@@ -976,8 +1010,8 @@ class Runtime {
         if (!front.empty() && front_time_>0 && seconds()-front_time_<=cfg_.frame_timeout)
           cv::resize(front,composite(cv::Rect(half,0,cfg_.video_width-half,cfg_.video_height)),
             {cfg_.video_width-half,cfg_.video_height});
-        cv::putText(composite,"DOWN / USB",{8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
-        cv::putText(composite,"FRONT / CSI",{half+8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
+        cv::putText(composite,"DOWN / CSI",{8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
+        cv::putText(composite,"FRONT / USB",{half+8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
         image=std::move(composite);
       }
       if (image.empty() && (frame_time_ <= 0 || seconds()-frame_time_ > cfg_.frame_timeout)) {
@@ -1001,6 +1035,7 @@ class Runtime {
         { std::lock_guard<std::mutex> lock(state_mutex_);
           if (video_detail_ == "waiting for down camera frames") video_detail_.clear(); }
       }
+      if (next < Clock::now()) next=Clock::now(); /* No catch-up frame bursts. */
       std::this_thread::sleep_until(next);
     }
     ::close(pipefd[1]);
@@ -1023,19 +1058,56 @@ class Runtime {
       res.set_content(command("status"),"application/json");
       res.set_header("Cache-Control","no-store");
     });
-    auto snapshot=[this](bool front,httplib::Response& res) {
-      cv::Mat image;
-      const double stamp=front ? front_time_.load() : frame_time_.load();
-      if (stamp<=0 || seconds()-stamp>cfg_.frame_timeout) { res.status=503; return; }
-      if (front) { std::lock_guard<std::mutex> lock(front_mutex_); image=front_frame_; }
-      else { std::lock_guard<std::mutex> lock(frame_mutex_); image=frame_; }
-      std::vector<uchar> jpeg;
-      if (image.empty() || !cv::imencode(".jpg",image,jpeg)) { res.status=503; return; }
+    auto cached=[this](bool front,std::vector<std::uint8_t>& jpeg,double& stamp) {
+      if(front) { std::lock_guard<std::mutex> lock(front_mutex_); jpeg=front_jpeg_; stamp=front_time_.load(); }
+      else { std::lock_guard<std::mutex> lock(frame_mutex_); jpeg=down_jpeg_; stamp=frame_time_.load(); }
+      return !jpeg.empty() && stamp>0 && seconds()-stamp<=cfg_.frame_timeout;
+    };
+    auto snapshot=[this,cached](bool front,httplib::Response& res) {
+      std::vector<std::uint8_t> jpeg;
+      double stamp;
+      if(!cached(front,jpeg,stamp)) { res.status=503; return; }
       res.set_content(reinterpret_cast<const char*>(jpeg.data()),jpeg.size(),"image/jpeg");
       res.set_header("Cache-Control","no-store");
+      res.set_header("X-Frame-Time-Monotonic",std::to_string(stamp));
+      res.set_header("X-Camera-Source",front ? cfg_.front_source : cfg_.camera);
     };
     server.Get("/api/camera/down.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(false,res);});
     server.Get("/api/camera/front.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(true,res);});
+    server.new_task_queue=[] { return new httplib::ThreadPool(8); };
+    server.set_write_timeout(2,0);
+    server.set_tcp_nodelay(true);
+    auto stream=[this,cached](bool front,httplib::Response& res) {
+      /* Reserve worker capacity for status and control requests. */
+      if (mjpeg_clients_.fetch_add(1)>=4) {
+        --mjpeg_clients_; res.status=429; return;
+      }
+      res.set_header("Cache-Control","no-store");
+      res.set_chunked_content_provider("multipart/x-mixed-replace; boundary=auvframe",
+        [this,cached,front,last=-1.0,delivered=seconds()](size_t,httplib::DataSink& sink) mutable {
+          while (running && sink.is_writable()) {
+            std::vector<std::uint8_t> jpeg;
+            double stamp;
+            if (cached(front,jpeg,stamp) && stamp!=last) {
+              last=stamp; delivered=seconds();
+              const auto header=std::string("--auvframe\r\nContent-Type: image/jpeg\r\nContent-Length: ")+
+                std::to_string(jpeg.size())+"\r\nX-Frame-Time-Monotonic: "+std::to_string(stamp)+
+                "\r\nX-Camera-Source: "+(front ? cfg_.front_source : cfg_.camera)+"\r\n\r\n";
+              std::string part;
+              part.reserve(header.size()+jpeg.size()+2);
+              part.append(header);
+              part.append(reinterpret_cast<const char*>(jpeg.data()),jpeg.size());
+              part.append("\r\n");
+              return sink.write(part.data(),part.size());
+            }
+            if (seconds()-delivered>2.0) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+          }
+          return false;
+        },[this](bool) { --mjpeg_clients_; });
+    };
+    server.Get("/api/camera/down.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(false,res);});
+    server.Get("/api/camera/front.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(true,res);});
     server.Get("/",[this](const httplib::Request&,httplib::Response& res){
       std::ifstream in(cfg_.web_assets+"/index.html");
       if (!in) { res.status=503; return; }
@@ -1083,6 +1155,9 @@ class Runtime {
     ::close(fd); ::unlink(cfg_.socket.c_str());
   }
   Config cfg_;
+  std::atomic<double> down_hz_{0};
+  std::atomic<int> mjpeg_clients_{0};
+  std::vector<std::uint8_t> down_jpeg_,front_jpeg_;
   std::mutex front_mutex_;
   cv::Mat front_frame_;
   std::atomic<double> front_time_{0};
