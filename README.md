@@ -25,7 +25,7 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 | 你要做什么 | 入口 |
 |---|---|
 | 了解当前完成度、硬件门槛和下一步 | [项目压缩状态](docs/project-status.md) |
-| 2026105 ROV 合并、遥控映射、M10 与接线 | [ROV 合并版 README](tools/rov/README.md) |
+| 20261006 ROV 合并、遥控映射、M10 与接线 | [ROV 合并版 README](tools/rov/README.md) |
 | 第一次构建和启动 | [快速开始](#快速开始) |
 | 运行相机、建图、规划和任务节点 | [运行与验收](#运行与验收) |
 | 验收任务一闭环 | [AprilTag 与交通锥遍历](docs/testing/task1-apriltag-cones.md) |
@@ -39,27 +39,43 @@ ROS 推理节点已经建立，当前进入真实水下数据采集与标注阶�
 ## 系统架构
 
 ```text
-┌──────────────────── PC ────────────────────┐
-│ rqt / RViz · 视频监看 · 运动目标 · 调试   │
-└───────────────────┬────────────────────────┘
-                    │ Gigabit Ethernet / ROS 2 DDS
-┌───────────────────▼────────────────────────┐
-│ Raspberry Pi                              │
-│ Camera · AprilTag · Mapping · Planning    │
-│ Mission FSM · Logging · STM32 Bridge      │
-└───────────────────┬────────────────────────┘
-                    │ UART / CRC16 / heartbeat
-┌───────────────────▼────────────────────────┐
-│ STM32F405                                 │
-│ IMU · Depth · PID · Thruster Mixer · PWM  │
-│ ARM/DISARM · timeout · leak/kill failsafe │
-└────────────────────────────────────────────┘
+                         ┌──────────────────────────────┐
+                         │ PC 开发/操作端                │
+                         │ ROS 2 · RViz/rqt · 记录/回放   │
+                         └───────────────┬──────────────┘
+                                         │ 千兆以太网 / ROS 2 DDS
+┌────────────────────────────────────────▼────────────────────────────────────┐
+│ Raspberry Pi / ROS 2 部署端                                                   │
+│ auv_bringup → vision → mapping → planning → mission → control                 │
+│                              │                                               │
+│                              └──────── auv_stm32_bridge ───────┐             │
+│                                                                  │ UART        │
+│ Raspberry Pi / 轻量部署端                                        │ CRC16       │
+│ auv_runtime + auv_core · 双摄像头 · Web 状态/视频 · 日志          │ heartbeat   │
+└──────────────────────────────────────────────────────────────────▼───────────┘
+                                                   ┌────────────────────────────┐
+                                                   │ STM32F405 实时控制层        │
+                                                   │ IMU/深度 · PID · Mixer/PWM  │
+                                                   │ 推进器 · 夹爪 · ARM/DISARM   │
+                                                   │ heartbeat · timeout · failsafe│
+                                                   └────────────────────────────┘
 ```
 
-Linux 端只发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标。高速姿态控制、
-推力分配和最终 PWM 必须留在 STM32，不由 ROS 2 调度承担。
-树莓派轻量模式以 `auv_runtime` 运行任务一；PC 仍使用 ROS 2 Lyrical 做开发、可视化与调试。
-轻量模式现支持同时采集 USB 与 CSI，参考 `two_camera` 的独立采集与最新帧覆盖方式；网页左右显示双路画面，共用一个 H.264 编码器。配置与接口见 [轻量运行时说明](runtime/README.md)，实机结果见 [树莓派部署记录](docs/deployment/pi-20261006/README.md)。
+系统有两种上层运行形态，共用协议、任务核心和安全边界：
+
+| 运行形态 | 入口 | 适用场景 |
+|---|---|---|
+| ROS 2 模式 | `src/auv_*`、`colcon`、`ros2 launch auv_bringup system.launch.py` | PC 开发、RViz/rqt、模块化调试和完整 ROS topic |
+| 轻量 Pi 模式 | `runtime/auv_runtime`、`runtime/config/runtime.yaml` | 树莓派现场部署、双摄像头采集、Web 监看和任务一闭环 |
+
+两种模式共享 `src/auv_core` 中的任务一算法核心；ROS 2 模式通过 package 暴露标准
+topic/service，轻量模式直接链接核心库并负责进程、串口、日志和 HTTP 运行时。两种模式
+都只向 STM32 发送 `vx`、`vy`、`depth_target`、`yaw_target` 等目标，不能把高速姿态
+控制、推力分配或最终 PWM 放回 Linux/ROS 2 调度层。
+
+轻量模式支持 USB 下视相机与 CSI 前视相机同时采集，使用有界缓冲和最新帧覆盖避免
+视频阻塞控制链路；网页提供只读状态和视频接口。配置、服务和实际部署结果见
+[轻量运行时说明](runtime/README.md) 与 [树莓派部署记录](docs/deployment/pi-20261006/README.md)。
 
 ### 关键数据流
 
@@ -86,6 +102,27 @@ T35-L 单舵机的接线、端点标定和分阶段上电验收见
 [P13 夹爪标定与验收](docs/testing/p13-gripper.md)。
 转盘视觉基础的运行边界、摄像头验收和后续闭环门槛见
 [P14 转盘视觉基础环境验收](docs/testing/p14-valve-foundation.md)。
+
+### 软件模块边界
+
+```text
+auv_interfaces       公共 ROS msg/srv，定义跨节点接口
+auv_stm32_bridge     UART、协议编解码、heartbeat、遥测与 ARM 服务
+auv_vision           双摄像头、AprilTag、交通锥、海参、转盘视觉
+auv_mapping          透视矫正、3×3 网格分割、语义地图
+auv_planning         四邻域 A*、目标排列、确定性路线
+auv_mission          任务 FSM、阶段超时、暂停/恢复/终止
+auv_control          路线执行、运动目标门控，默认 dry-run
+auv_bringup          launch 文件和跨 package 参数
+auv_core             ROS 2 与轻量模式共享的任务一核心
+runtime/             轻量进程、相机采集、Web、日志和部署服务
+firmware/stm32/      实时控制、执行器、安全状态机和硬件工程
+tools/rov/            ROV 遥控映射、试验控制、检查和部署辅助工具
+```
+
+依赖方向保持单向：视觉、建图和规划产生观测/路线，Mission 编排任务阶段，
+Control 只产生受安全门控的运动目标，Bridge 负责跨进程传输，STM32 才执行闭环
+控制和输出。算法模块不得直接访问 UART、GPIO、PWM 或执行器。
 
 ## 当前进度
 
@@ -367,8 +404,12 @@ xjtu_rover_team_lib/
 │   ├── auv_mapping/          # 九宫格检测、Homography 与语义地图
 │   ├── auv_planning/         # A*、目标排序与格子路线
 │   ├── auv_mission/          # 安全任务状态机与阶段超时
+│   ├── auv_control/          # 路线执行和运动目标安全门控
+│   ├── auv_core/             # ROS 2 / 轻量模式共享任务核心
 │   └── auv_bringup/          # launch 与共享参数
-├── firmware/stm32/           # STM32F405 CubeMX / Keil 工程与测试
+├── runtime/                  # 树莓派轻量 C++ 运行时、Web 和部署服务
+├── firmware/stm32/           # STM32F405 CubeMX / Keil 工程与主机测试
+├── tools/rov/                # ROV 试验、遥控器映射和现场检查工具
 ├── annotation/               # Label Studio 独立打标环境与类别配置
 ├── vision/                   # 数据处理、训练、评估和导出
 ├── models/                   # 模型 manifest 与部署元数据
@@ -379,7 +420,7 @@ xjtu_rover_team_lib/
 │   ├── protocol/             # Pi ↔ STM32 协议
 │   ├── reviews/              # 代码审查与可行性边界
 │   └── testing/              # 分阶段验收手册
-├── tools/                    # 开发、构建和部署辅助脚本
+├── tools/                    # 通用开发、构建和部署辅助脚本
 └── logs|videos|maps|events/  # 被 Git 忽略的运行产物目录
 ```
 
