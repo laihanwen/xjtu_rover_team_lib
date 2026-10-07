@@ -1,0 +1,173 @@
+{
+  "timestamp_utc": "2026-10-06T06:26:50.468873+00:00",
+  "stage": "preflight",
+  "checks": [
+    {
+      "name": "pi_power",
+      "result": "FAIL",
+      "detail": "throttled=0x50005"
+    },
+    {
+      "name": "service",
+      "result": "PASS",
+      "detail": "active"
+    },
+    {
+      "name": "control_socket",
+      "result": "PASS",
+      "detail": "/run/auv-runtime/control.sock"
+    },
+    {
+      "name": "socket_mode",
+      "result": "PASS",
+      "detail": "0o660"
+    },
+    {
+      "name": "motion_disabled",
+      "result": "PASS",
+      "detail": "motion_commands_enabled=false"
+    },
+    {
+      "name": "wired_web_bind",
+      "result": "PASS",
+      "detail": "192.168.137.150"
+    },
+    {
+      "name": "disarmed",
+      "result": "PASS",
+      "detail": "armed=False"
+    },
+    {
+      "name": "runtime_motion_disabled",
+      "result": "PASS",
+      "detail": "motion_enabled=False"
+    },
+    {
+      "name": "mission_idle",
+      "result": "PASS",
+      "detail": "INIT"
+    },
+    {
+      "name": "no_fault",
+      "result": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "web_status",
+      "result": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "camera_device",
+      "result": "PASS",
+      "detail": "/dev/v4l/by-id/usb-HD_Camera_Manufacturer_USB_2.0_Camera-video-index0"
+    },
+    {
+      "name": "serial_device",
+      "result": "PENDING",
+      "detail": "not configured"
+    }
+  ],
+  "details": {
+    "status": {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0172514,
+      "vision_frames": 335,
+      "vision_hz": 11.2993,
+      "vision_latency_p99_ms": 110.331,
+      "control_ticks": 605,
+      "control_age_sec": 0.0416236,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0764569,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    "camera_device": "/dev/v4l/by-id/usb-HD_Camera_Manufacturer_USB_2.0_Camera-video-index0",
+    "serial_device": ""
+  },
+  "passed": false
+}

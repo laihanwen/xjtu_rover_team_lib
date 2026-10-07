@@ -1,0 +1,23 @@
+[Unit]
+Description=ROV TCP frame preview (no UART output, no ARM)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=auv
+Group=auv
+Environment=ROV_BIND=127.0.0.1
+Environment=ROV_PORT=8888
+EnvironmentFile=-/etc/auv-rov/rov.env
+ExecStart=/usr/bin/python3 -u /usr/local/lib/auv-rov/socket_server_new.py --bind ${ROV_BIND} --port ${ROV_PORT}
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

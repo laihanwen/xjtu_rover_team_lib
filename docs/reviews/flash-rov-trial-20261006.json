@@ -1,0 +1,12 @@
+{
+  "firmware": "firmware\\stm32\\MDK-ARM\\Copy_cup\\Copy_cup.hex",
+  "hex_sha256": "e1460a587f26456265f6301c8a254611d859f2c6e039ee774a5c6c16630f3de7",
+  "target": "stm32f405rg",
+  "arm_sent": false,
+  "verified": true,
+  "algorithm_ram": "SRAM 0x20000000..0x2001ffff",
+  "state_after_reset": "State.RUNNING",
+  "thrusters_secured_confirmed": true,
+  "short_dry_run_permitted_by_user": true,
+  "hardware_emergency_stop_confirmed": true
+}

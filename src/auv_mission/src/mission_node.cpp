@@ -73,7 +73,7 @@ public:
       status_topic, rclcpp::SensorDataQoS(),
       [this](auv_interfaces::msg::Stm32Status::ConstSharedPtr message) {
         fsm_->update_status(
-          message->connected, message->armed, message->leak_detected,
+          message->connected, message->armed,
           message->error_flags, seconds_now());
       });
     apriltag_subscription_ =

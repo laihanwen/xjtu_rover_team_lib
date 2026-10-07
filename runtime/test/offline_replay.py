@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+from startup import wait_for_socket
 
 import cv2
 import numpy as np
@@ -70,7 +71,7 @@ def main(binary):
         video = root / 'scene.avi'
         make_video(video)
         config = pathlib.Path('runtime/config/runtime.yaml').read_text()
-        config = config.replace('/dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA', f'file:{video}')
+        config = config.replace('csi:0', f'file:{video}')
         config = config.replace('device: ""', f'device: "{os.ttyname(slave)}"')
         config = config.replace('/run/auv-runtime/control.sock', str(root / 'control.sock'))
         config = config.replace('/run/auv-runtime/hls', str(root / 'hls'))
@@ -78,6 +79,8 @@ def main(binary):
         config = config.replace('/var/log/auv-runtime/debug', str(root / 'debug'))
         config = config.replace('/usr/local/share/auv-runtime/web', str(pathlib.Path('runtime/web').resolve()))
         config = config.replace('enabled: true', 'enabled: false')
+        # Safety regression only; real Pi throughput is checked separately.
+        config = config.replace('pose_timeout_sec: 0.5', 'pose_timeout_sec: 2.0')
         path = root / 'runtime.yaml'
         path.write_text(config)
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -96,10 +99,7 @@ def main(binary):
         worker = threading.Thread(target=stm32, daemon=True)
         worker.start()
         try:
-            for _ in range(100):
-                if (root / 'control.sock').exists():
-                    break
-                time.sleep(.01)
+            wait_for_socket(proc, root / 'control.sock')
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 ready = json.loads(request(str(root / 'control.sock'), 'status'))

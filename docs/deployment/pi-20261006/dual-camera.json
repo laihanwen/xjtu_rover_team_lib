@@ -1,0 +1,3249 @@
+{
+  "duration_sec": 30.125093012999997,
+  "samples": [
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00922048,
+      "down_capture_frames": 63,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0226299,
+      "front_frames": 2,
+      "front_hz": 15.8745,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 6,
+      "vision_hz": 11.514,
+      "vision_latency_p99_ms": 104.796,
+      "control_ticks": 65,
+      "control_age_sec": 0.0296715,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0551539,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00258408,
+      "down_capture_frames": 113,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.037098,
+      "front_frames": 17,
+      "front_hz": 15.45,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 20,
+      "vision_hz": 16.2382,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 85,
+      "control_age_sec": 0.032706,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0439323,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0137226,
+      "down_capture_frames": 162,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0415019,
+      "front_frames": 32,
+      "front_hz": 15.1481,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 32,
+      "vision_hz": 12.9862,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 105,
+      "control_age_sec": 0.0359623,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0237306,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0086126,
+      "down_capture_frames": 212,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0447802,
+      "front_frames": 47,
+      "front_hz": 15.0392,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 46,
+      "vision_hz": 15.2194,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 125,
+      "control_age_sec": 0.0391953,
+      "heartbeats": 0,
+      "vision_age_sec": 0.00608966,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00368061,
+      "down_capture_frames": 262,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0484518,
+      "front_frames": 62,
+      "front_hz": 15.0326,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 57,
+      "vision_hz": 12.7966,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 145,
+      "control_age_sec": 0.0422936,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0693191,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0188994,
+      "down_capture_frames": 311,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0515677,
+      "front_frames": 77,
+      "front_hz": 15.031,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 69,
+      "vision_hz": 12.1579,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 165,
+      "control_age_sec": 0.0455624,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0655544,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0142053,
+      "down_capture_frames": 360,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0534244,
+      "front_frames": 92,
+      "front_hz": 15.0694,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 81,
+      "vision_hz": 11.7935,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 185,
+      "control_age_sec": 0.0491614,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0384722,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00612772,
+      "down_capture_frames": 410,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.059825,
+      "front_frames": 107,
+      "front_hz": 15.0733,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 93,
+      "vision_hz": 12.0549,
+      "vision_latency_p99_ms": 110.118,
+      "control_ticks": 206,
+      "control_age_sec": 0.00341098,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0483669,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00245977,
+      "down_capture_frames": 460,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0651943,
+      "front_frames": 122,
+      "front_hz": 15.0599,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 105,
+      "vision_hz": 11.8064,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 226,
+      "control_age_sec": 0.00798371,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0276488,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0174363,
+      "down_capture_frames": 509,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00220744,
+      "front_frames": 138,
+      "front_hz": 15.0363,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 118,
+      "vision_hz": 13.4282,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 246,
+      "control_age_sec": 0.0112449,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0538965,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0125174,
+      "down_capture_frames": 559,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00585805,
+      "front_frames": 153,
+      "front_hz": 15.0415,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 130,
+      "vision_hz": 12.1041,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 266,
+      "control_age_sec": 0.0144841,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0210478,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00358288,
+      "down_capture_frames": 609,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00909457,
+      "front_frames": 168,
+      "front_hz": 15.0181,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 142,
+      "vision_hz": 12.0236,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 286,
+      "control_age_sec": 0.0178723,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0313857,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0193972,
+      "down_capture_frames": 658,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0129081,
+      "front_frames": 183,
+      "front_hz": 15.0461,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 154,
+      "vision_hz": 11.8032,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 306,
+      "control_age_sec": 0.0218293,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0099599,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0128357,
+      "down_capture_frames": 708,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0129417,
+      "front_frames": 198,
+      "front_hz": 14.999,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 165,
+      "vision_hz": 11.7909,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 326,
+      "control_age_sec": 0.0254729,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0770244,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0100299,
+      "down_capture_frames": 758,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0196233,
+      "front_frames": 213,
+      "front_hz": 15.0827,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 177,
+      "vision_hz": 11.7649,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 346,
+      "control_age_sec": 0.0287016,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0581688,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.000880087,
+      "down_capture_frames": 808,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0244168,
+      "front_frames": 228,
+      "front_hz": 15.066,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 189,
+      "vision_hz": 11.8525,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 366,
+      "control_age_sec": 0.0318076,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0507628,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0181561,
+      "down_capture_frames": 856,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0303545,
+      "front_frames": 243,
+      "front_hz": 15.1413,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 201,
+      "vision_hz": 11.5204,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 386,
+      "control_age_sec": 0.0377772,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0066001,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.000240383,
+      "down_capture_frames": 907,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0409402,
+      "front_frames": 258,
+      "front_hz": 15.0899,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 214,
+      "vision_hz": 13.3205,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 406,
+      "control_age_sec": 0.0476485,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0657938,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0153174,
+      "down_capture_frames": 956,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0448657,
+      "front_frames": 273,
+      "front_hz": 15.1904,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 228,
+      "vision_hz": 15.9775,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 427,
+      "control_age_sec": 0.000915178,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0202406,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00646193,
+      "down_capture_frames": 1005,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0469521,
+      "front_frames": 288,
+      "front_hz": 15.1485,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 239,
+      "vision_hz": 12.9988,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 447,
+      "control_age_sec": 0.00423352,
+      "heartbeats": 0,
+      "vision_age_sec": 0.076446,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00173292,
+      "down_capture_frames": 1055,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0516837,
+      "front_frames": 303,
+      "front_hz": 15.1392,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 253,
+      "vision_hz": 15.1327,
+      "vision_latency_p99_ms": 108.034,
+      "control_ticks": 467,
+      "control_age_sec": 0.00785957,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0457409,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0227915,
+      "down_capture_frames": 1104,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0610516,
+      "front_frames": 318,
+      "front_hz": 15.1402,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 265,
+      "vision_hz": 12.6265,
+      "vision_latency_p99_ms": 107.913,
+      "control_ticks": 487,
+      "control_age_sec": 0.0174225,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0208551,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0187894,
+      "down_capture_frames": 1153,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.066078,
+      "front_frames": 333,
+      "front_hz": 15.0848,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 278,
+      "vision_hz": 14.6721,
+      "vision_latency_p99_ms": 107.913,
+      "control_ticks": 507,
+      "control_age_sec": 0.0191282,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0862645,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0102089,
+      "down_capture_frames": 1203,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00362399,
+      "front_frames": 349,
+      "front_hz": 15.0593,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 290,
+      "vision_hz": 12.475,
+      "vision_latency_p99_ms": 107.913,
+      "control_ticks": 527,
+      "control_age_sec": 0.0247045,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0579502,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00303085,
+      "down_capture_frames": 1253,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00400151,
+      "front_frames": 364,
+      "front_hz": 14.9958,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 302,
+      "vision_hz": 12.1753,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 547,
+      "control_age_sec": 0.0278135,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0716265,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.000429742,
+      "down_capture_frames": 1303,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.00961154,
+      "front_frames": 379,
+      "front_hz": 15.0305,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 314,
+      "vision_hz": 11.7779,
+      "vision_latency_p99_ms": 108.007,
+      "control_ticks": 567,
+      "control_age_sec": 0.0315833,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0398122,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0160559,
+      "down_capture_frames": 1352,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0171449,
+      "front_frames": 394,
+      "front_hz": 15.1042,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 326,
+      "vision_hz": 11.8182,
+      "vision_latency_p99_ms": 107.913,
+      "control_ticks": 587,
+      "control_age_sec": 0.0376388,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0317378,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0103407,
+      "down_capture_frames": 1402,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.01888,
+      "front_frames": 409,
+      "front_hz": 15.0369,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 338,
+      "vision_hz": 11.6757,
+      "vision_latency_p99_ms": 107.913,
+      "control_ticks": 607,
+      "control_age_sec": 0.0417141,
+      "heartbeats": 0,
+      "vision_age_sec": 0.000687346,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.00562181,
+      "down_capture_frames": 1452,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0247583,
+      "front_frames": 424,
+      "front_hz": 15.078,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 349,
+      "vision_hz": 11.6137,
+      "vision_latency_p99_ms": 108.034,
+      "control_ticks": 627,
+      "control_age_sec": 0.0451302,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0563178,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.000567692,
+      "down_capture_frames": 1502,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0297118,
+      "front_frames": 439,
+      "front_hz": 15.0782,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 361,
+      "vision_hz": 11.7553,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 647,
+      "control_age_sec": 0.0484459,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0401039,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    },
+    {
+      "phase": "INIT",
+      "operation_mode": "debug",
+      "mission_profile": "task_one",
+      "auto_start": false,
+      "auto_arm": false,
+      "serial": false,
+      "armed": false,
+      "motion_enabled": false,
+      "leak": false,
+      "telemetry_valid": false,
+      "voltage_valid": false,
+      "camera_age_sec": 0.0180727,
+      "down_capture_frames": 1551,
+      "front_enabled": true,
+      "front_camera_age_sec": 0.0346964,
+      "front_frames": 454,
+      "front_hz": 15.0532,
+      "front_degraded": false,
+      "front_detail": "",
+      "vision_frames": 373,
+      "vision_hz": 11.8389,
+      "vision_latency_p99_ms": 108.187,
+      "control_ticks": 668,
+      "control_age_sec": 0.00427143,
+      "heartbeats": 0,
+      "vision_age_sec": 0.0399015,
+      "grid_complete": false,
+      "apriltag_found": false,
+      "cone_count": 0,
+      "route_waypoints": 0,
+      "pose_valid": false,
+      "row": 0,
+      "col": 0,
+      "next_waypoint_index": 0,
+      "next_row": -1,
+      "next_col": -1,
+      "error_flags": 0,
+      "gripper_fresh": false,
+      "gripper_calibrated": false,
+      "gripper_state": 0,
+      "gripper_error_flags": 0,
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "object": "unknown",
+          "visited": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "object": "unknown",
+          "visited": false
+        }
+      ],
+      "video_degraded": false,
+      "log_degraded": false,
+      "video_detail": "",
+      "web_detail": "",
+      "fault": ""
+    }
+  ],
+  "rates_hz": {
+    "down_capture_frames": 49.394038363894104,
+    "front_frames": 15.004103051397939,
+    "vision_frames": 12.182534999697,
+    "control_ticks": 20.01653570794902
+  },
+  "snapshots": {
+    "down": {
+      "width": 320,
+      "height": 240,
+      "bytes": 26765
+    },
+    "front": {
+      "width": 320,
+      "height": 240,
+      "bytes": 7458
+    }
+  },
+  "throttled": "throttled=0x50005",
+  "passed": true
+}

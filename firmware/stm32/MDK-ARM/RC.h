@@ -12,10 +12,11 @@
 #define SA  9   // 拨盘开关（对应RcData[5]，控制舵机目标角度值）
 #define SB  11  // 舵机通道选择（对应RcData[7]，选择TIM通道输出舵机PWM）
 #define SC  10  // 速度档位选择（对应RcData[6]，0=慢, 1=中, 2=快）
-#define SD  12  // SD开关（对应RcData[8]，控制PITCH 25度姿态）
-#define YAW_PID_SWITCH 13  // YAW角PID独立开关（对应RcData[9]，0=关闭，1=开启）
-#define SE  YAW_PID_SWITCH // 保留旧名称兼容已有边沿检测函数
-#define SI  14  // SI开关（备用）
+#define SD 12 // RcData[8]/btn0: yaw hold
+#define YAW_PID_SWITCH SD
+#define SE YAW_PID_SWITCH
+#define SI 14
+#define DEPTH_HOLD_SWITCH SI // RcData[9]/btn1: depth hold
 
 // 帧头（0xA5用于串口帧同步）
 #define RcKey  0xA5

@@ -1,0 +1,29 @@
+{
+  "probe": {
+    "programs": [
+      {
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 640,
+            "height": 240,
+            "r_frame_rate": "15/1"
+          }
+        ]
+      }
+    ],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 640,
+        "height": 240,
+        "r_frame_rate": "15/1"
+      }
+    ]
+  },
+  "probe_stderr": "",
+  "decode_exit": 0,
+  "decode_stderr": "",
+  "passed": true
+}
