@@ -30,14 +30,17 @@
 #define AUV_DEPTH_CONTROL_CALIBRATED 0
 #endif
 #define AUV_DEPTH_KP 300.0f
-/* Relative M10 hold candidates, deliberately no integral/derivative on
- * 0.5..1 Hz data. These gains are not tank-calibrated thrust measurements. */
+/* Relative M10 PI hold. Integrate only fresh samples; no derivative on
+ * 0.5..1 Hz data. These gains still require water commissioning. */
 #define AUV_ROV_RELATIVE_DEPTH_ENABLED 1
 /* 0 restores manual translation + proven roll/pitch leveling only.
  * 1 replaces SA/SD gating with recentered-axis automatic hold. */
 #define AUV_ROV_AUTO_HOLD_ENABLED 1
-#define AUV_ROV_DEPTH_KP 40.0f
-#define AUV_ROV_DEPTH_OUTPUT_LIMIT 30.0f
+#define AUV_ROV_DEPTH_KP 80.0f
+#define AUV_ROV_DEPTH_KI 8.0f
+#define AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT 30.0f
+#define AUV_ROV_DEPTH_INTEGRAL_ERROR_BAND 0.015f
+#define AUV_ROV_DEPTH_OUTPUT_LIMIT 60.0f
 #define AUV_DEPTH_KI 1.0f /* output / (metre * second), NOT legacy per-tick KI */
 #define AUV_DEPTH_OUTPUT_LIMIT 400.0f
 #define AUV_DEPTH_FZ_SIGN (-1.0f) /* depth positive down, body Z positive up */

@@ -80,7 +80,7 @@ float AuvRovDepth_Step(AuvRovDepthControl *control, const AuvDepthSample *sample
     float proposed;
     float output;
     float kp = lock_current ? AUV_ROV_DEPTH_KP : AUV_DEPTH_KP;
-    float ki = lock_current ? 0.0f : AUV_DEPTH_KI;
+    float ki = lock_current ? AUV_ROV_DEPTH_KI : AUV_DEPTH_KI;
     float limit = lock_current ? AUV_ROV_DEPTH_OUTPUT_LIMIT : AUV_DEPTH_OUTPUT_LIMIT;
     if (!enabled || !sample->valid || !isfinite(sample->depth_m) ||
         sample->depth_m < (lock_current ? -AUV_DEPTH_MAX_METERS : 0.0f) ||
@@ -102,7 +102,16 @@ float AuvRovDepth_Step(AuvRovDepthControl *control, const AuvDepthSample *sample
     dt = (float)(uint32_t)(sample->last_update_ms - control->sample_ms) * 0.001f;
     if (dt > (float)AUV_DEPTH_TIMEOUT_MS * 0.001f) dt = 0.0f;
     error = control->target - sample->depth_m;
-    proposed = control->integral + error * dt;
+    /* Retain learned buoyancy compensation near target, without integrating
+     * centimetre-scale sensor noise. Never integrate duplicate samples. */
+    proposed = control->integral;
+    if (!lock_current || fabsf(error) > AUV_ROV_DEPTH_INTEGRAL_ERROR_BAND)
+        proposed += error * dt;
+    if (lock_current && ki > 0.0f) {
+        float integral_limit = AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT / ki;
+        if (proposed > integral_limit) proposed = integral_limit;
+        if (proposed < -integral_limit) proposed = -integral_limit;
+    }
     output = kp * error + ki * proposed;
     /* Conditional integration prevents windup into output saturation. */
     if (ki != 0.0f && (fabsf(output) <= limit || output * error < 0.0f))
