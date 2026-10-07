@@ -133,6 +133,7 @@ def pi(args, output, deploy=False):
                 paths += [f'src/{name}/{part}' for name in
                           ('auv_vision','auv_mapping','auv_planning','auv_mission','auv_control','auv_stm32_bridge')
                           for part in ('include','src')]
+                paths += ['src/auv_mapping/test']
                 def exclude(info):
                     return None if '__pycache__' in Path(info.name).parts or info.name.endswith('.pyc') else info
                 for path in paths:

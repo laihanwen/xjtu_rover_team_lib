@@ -1,4 +1,5 @@
 #include "AuvRovDepth.h"
+#include "AuvRovConfig.h"
 #include <assert.h>
 #include <math.h>
 #include <string.h>
@@ -47,8 +48,33 @@ int main(void)
     sample.depth_m=-0.22f;
     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
     sample.depth_m=-0.12f;sample.sample_sequence++;sample.last_update_ms+=2000;
-    assert(fabsf(AuvRovDepth_Step(&control,&sample,1,1,0)-4.0f)<0.001f);
-    assert(control.integral==0);
+    assert(fabsf(AuvRovDepth_Step(&control,&sample,1,1,0)-9.6f)<0.001f);
+    assert(fabsf(control.integral+0.2f)<0.001f);
+    /* Persistent sinking learns upward buoyancy compensation, bounded. */
+    for(i=0;i<100;i++) {
+        sample.sample_sequence++; sample.last_update_ms+=1000;
+        output=AuvRovDepth_Step(&control,&sample,1,1,0);
+        assert(output>0 && output<=AUV_ROV_DEPTH_OUTPUT_LIMIT);
+        assert(fabsf(control.integral*AUV_ROV_DEPTH_KI)<=AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT+0.001f);
+    }
+    sample.depth_m=control.target; sample.sample_sequence++; sample.last_update_ms+=1000;
+    output=AuvRovDepth_Step(&control,&sample,1,1,0);
+    assert(fabsf(output-AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT)<0.001f);
+    /* Long sensor gaps do not accrue integral; saturation does not wind up. */
+    sample.depth_m=control.target+2; sample.sample_sequence++; sample.last_update_ms+=5000;
+    {float integral=control.integral;
+     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==AUV_ROV_DEPTH_OUTPUT_LIMIT);
+     assert(control.integral==integral);
+     sample.sample_sequence++; sample.last_update_ms+=1000;
+     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==AUV_ROV_DEPTH_OUTPUT_LIMIT);
+     assert(control.integral==integral);}
+    sample.depth_m=control.target-0.2f; sample.sample_sequence++; sample.last_update_ms+=1000;
+    AuvRovDepth_Step(&control,&sample,1,1,0);
+    assert(fabsf(control.integral*AUV_ROV_DEPTH_KI)<AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT);
+    sample.valid=0;
+    assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
+    assert(!control.active && control.integral==0);
+    sample.valid=1;
     assert(AuvRovDepth_Step(&control,&sample,0,1,0)==0);
     /* Manual heave releases the old target; recenter captures the new one. */
     sample.depth_m=0.8f;sample.sample_sequence++;sample.last_update_ms+=2000;
@@ -62,5 +88,6 @@ int main(void)
     assert(AuvRovDepth_Step(&control, &sample, 1, 0, 20) == -400);
     sample.valid = 0;
     assert(AuvRovDepth_Step(&control, &sample, 1, 0, 2) == 0);
+    assert(!control.active && control.integral==0);
     return 0;
 }
