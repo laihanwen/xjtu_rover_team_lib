@@ -214,6 +214,8 @@ ConeDetectorResult ConeDetector::process(const cv::Mat & rectified_bgr) const
         best.area = static_cast<float>(area);
         best.circularity = static_cast<float>(circularity);
         best.confidence = static_cast<float>(confidence);
+        best.contour.clear();
+        for (const auto& point : local_contour) best.contour.push_back(point + roi.tl());
       }
 
       if (best.shape != ConeShape::kUnknown) {

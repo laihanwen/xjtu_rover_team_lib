@@ -38,7 +38,7 @@ float midvalue = 1492;
 // YAW PID 相关
 float yaw_target = 0;
 float yaw_micro_rate_dps = 8.0f;          // YAW微操满杆速度，单位：度/秒
-#if !AUV_ROV_MANUAL_TRIAL
+#if !AUV_PROVEN_ATTITUDE_CONTROL
 static uint8_t last_yaw_pid_state = 0;   // 上一帧YAW PID开关状态
 static const float TASK_DT_S = 0.01f;
 static const float RADIANS_TO_DEGREES = 57.29577951308232f;
@@ -46,7 +46,7 @@ static const float RADIANS_TO_DEGREES = 57.29577951308232f;
 static AuvRovDepthControl depth_control;
 
 /* 逻辑电机指令限值；极性在合成后统一应用。 */
-static float MOTOR_COMMAND_LIMIT = AUV_ROV_MANUAL_TRIAL ? AUV_ROV_TRIAL_PWM_LIMIT : 450.0f;
+static float MOTOR_COMMAND_LIMIT = AUV_AUTONOMOUS_PROFILE ? AUV_AUTONOMY_PWM_LIMIT : (AUV_ROV_MANUAL_TRIAL ? AUV_ROV_TRIAL_PWM_LIMIT : 450.0f);
 
 static const int8_t motor_polarity[VECTOR_THRUSTER_COUNT] = {
     Motor_1Polarity, Motor_2Polarity, Motor_3Polarity, Motor_4Polarity,
@@ -55,7 +55,10 @@ static const int8_t motor_polarity[VECTOR_THRUSTER_COUNT] = {
 static volatile float last_thruster_outputs[VECTOR_THRUSTER_COUNT];
 static uint8_t roll_correction_active, pitch_correction_active;
 static AuvWaterRate pitch_rate, yaw_rate;
-static uint8_t heading_locked, heading_hold_active;
+static uint8_t heading_hold_active;
+#if AUV_ROV_MANUAL_TRIAL
+static uint8_t heading_locked;
+#endif
 static MatePidSnapshot pid_snapshot;
 void Mate_GetPidSnapshot(MatePidSnapshot *snapshot)
 {
@@ -93,7 +96,7 @@ static void VectorThrusterPwm_Write(const float pwm[VECTOR_THRUSTER_COUNT])
         }
         safe_pwm = neutral_pwm;
     }
-#if AUV_ROV_MANUAL_TRIAL && !AUV_ROV_THRUSTER_CALIBRATION
+#if AUV_PROVEN_ATTITUDE_CONTROL && !AUV_ROV_THRUSTER_CALIBRATION
     else {
         for (i = 0; i < VECTOR_THRUSTER_COUNT; ++i) {
             applied_offset[i] = AuvThruster_Slew(applied_offset[i], pwm[i]-midvalue,
@@ -183,7 +186,7 @@ void Mate_Init(void)
     AuvControlSource_Init();
     AuvCameraServo_Init(&camera_servo_config);
     PID_Init(&PID_yaw, 3.0f, 0.0f, 0.02f, -100, 100);
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_PROVEN_ATTITUDE_CONTROL
     /* Operator-requested 10x gains; correction limits remain unchanged. */
     PID_Init(&PID_pit, 7.5f, 0.0f, 0.0f, -20, 20);
     PID_Init(&PID_rol, 7.5f, 0.0f, 0.0f, -20, 20);
@@ -289,6 +292,9 @@ void Mate_Task(void)
     imu_fresh = (imu_sample_sequence != 0U &&
         (uint32_t)(HAL_GetTick() - imu_last_sample_ms) <= 250U) ? 1U : 0U;
     __set_PRIMASK(control_mask);
+#if AUV_AUTONOMOUS_PROFILE
+    rc_fresh = 0U; /* Autonomous intervals never select an RC source. */
+#endif
 
     /*
      * Lock one command source for the complete armed interval.  A missing
@@ -333,7 +339,16 @@ void Mate_Task(void)
         RCServo_Calc(MyRCKey);
 
     // ===== 2. RcData[8]控制YAW PID，上升沿锁定当前航向 =====
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_AUTONOMOUS_PROFILE
+    heading_hold_active = (uint8_t)(pi_fresh && imu_fresh && AuvSafety_IsArmed());
+    yaw_target = pi_fresh ? pi_target.yaw * 57.29577951308232f : control_angle.yaw;
+    if (!AuvSafety_IsArmed() || !imu_fresh) {
+        pitch_rate.ready=yaw_rate.ready=0;
+    } else {
+        AuvWater_Rate(&pitch_rate,control_angle.pit,control_imu_ms,control_imu_sequence);
+        AuvWater_Rate(&yaw_rate,control_angle.yaw,control_imu_ms,control_imu_sequence);
+    }
+#elif AUV_ROV_MANUAL_TRIAL
     heading_hold_active=AuvWater_Heading(control_angle.yaw,
         (uint8_t)(AUV_ROV_AUTO_HOLD_ENABLED && AuvSafety_IsArmed() && imu_fresh && rc_fresh),
         (uint8_t)(MyRCKey[1] || MyRCKey[2]),&heading_locked,&yaw_target);
@@ -391,7 +406,7 @@ void Mate_Task(void)
     PID_Postion_Cal(&PID_yaw, yaw_error, 0.0f);
     PID_Postion_Cal(&PID_rol, 0,          control_angle.rol);
     PID_Postion_Cal(&PID_pit, 0.0f, control_angle.pit);
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_PROVEN_ATTITUDE_CONTROL
     PID_pit.OutPut=AuvWater_Pd(-control_angle.pit,pitch_rate.rate,7.5f,1.5f,20.0f);
     PID_yaw.OutPut=AuvWater_Pd(yaw_error,yaw_rate.rate,10.0f,1.0f,20.0f);
 #endif
@@ -414,7 +429,7 @@ void Mate_Task(void)
         ? depth_output : rc_xishu * rc_wrench.Fz;
     dynamics_wrench.Mx = roll_xishu * PID_rol.OutPut;
     dynamics_wrench.My = pit_xishu * PID_pit.OutPut;
-#if AUV_ROV_MANUAL_TRIAL && AUV_ROV_TRIAL_ATTITUDE_ENABLED
+#if AUV_PROVEN_ATTITUDE_CONTROL && AUV_ROV_TRIAL_ATTITUDE_ENABLED
     if (!AuvSafety_IsArmed() || !imu_fresh) {
         roll_correction_active = pitch_correction_active = 0;
     } else {
@@ -425,7 +440,7 @@ void Mate_Task(void)
     if (!roll_correction_active) dynamics_wrench.Mx = 0;
     if (!pitch_correction_active) dynamics_wrench.My = 0;
 #endif
-#if AUV_ROV_MANUAL_TRIAL && !AUV_ROV_TRIAL_ATTITUDE_ENABLED
+#if AUV_PROVEN_ATTITUDE_CONTROL && !AUV_ROV_TRIAL_ATTITUDE_ENABLED
     /* Optional manual-only commissioning mode. */
     dynamics_wrench.Mx = 0.0f;
     dynamics_wrench.My = 0.0f;
@@ -434,14 +449,14 @@ void Mate_Task(void)
                           (MyRCKey[YAW_PID_SWITCH] == 1U))
         ? yaw_xishu * PID_yaw.OutPut
         : rc_xishu * rc_wrench.Mz;
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_PROVEN_ATTITUDE_CONTROL
     dynamics_wrench.Mz=heading_hold_active ? AUV_ROV_YAW_FEEDBACK_SIGN*PID_yaw.OutPut : rc_xishu*rc_wrench.Mz;
     if(heading_hold_active && fabsf(Yaw_Wrap180(yaw_target-control_angle.yaw))<0.5f &&
        fabsf(yaw_rate.rate)<1.0f)dynamics_wrench.Mz=0;
 #endif
 
     /* 与论文 u_dyn -> u_thruster 顺序一致：完整六维指令只分配一次。 */
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_PROVEN_ATTITUDE_CONTROL
     {
         VectorWrenchCommand motion=dynamics_wrench;
         VectorWrenchCommand attitude={0};
@@ -504,7 +519,7 @@ void Mate_Task(void)
         /* Physical PWM offset, independent of mixer polarity; all others neutral. */
         motor_pwm[i] = midvalue + AuvLink_CalibrationOffset((uint8_t)i, HAL_GetTick());
 #else
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_PROVEN_ATTITUDE_CONTROL
         motor_dev[i] = AuvThruster_Compensate(motor_dev[i], MOTOR_COMMAND_LIMIT, AUV_ROV_START_OFFSET_US);
 #endif
         motor_pwm[i] = constrain(

@@ -301,9 +301,11 @@ void MissionFsm::tick(double now_sec)
     const bool after_route = snapshot_.phase >= MissionPhase::kVisitCones &&
       snapshot_.phase <= MissionPhase::kSurface;
     const bool allowed_visit_arm = config_.allow_armed_during_visit && after_route;
+    const bool allowed_observation_arm = config_.allow_armed_during_observation &&
+      (snapshot_.phase == MissionPhase::kSearchAprilTag || snapshot_.phase == MissionPhase::kBuildMap);
     const bool pause_disarm_grace = snapshot_.phase == MissionPhase::kPaused &&
       now_sec - phase_entered_sec_ <= 0.5;
-    if (armed_ && !allowed_visit_arm && !pause_disarm_grace) {
+    if (armed_ && !allowed_visit_arm && !allowed_observation_arm && !pause_disarm_grace) {
       fault("propulsion armed outside the permitted visit phase", now_sec);
       return;
     }
@@ -341,7 +343,8 @@ void MissionFsm::tick(double now_sec)
       break;
     case MissionPhase::kBuildMap:
       if (map_received_sec_ >= 0.0 && map_complete_) {
-        transition(MissionPhase::kPlanCones, "semantic map complete", now_sec);
+        transition(config_.stop_after_map ? MissionPhase::kComplete : MissionPhase::kPlanCones,
+          config_.stop_after_map ? "A1 observation complete; propulsion stop" : "semantic map complete", now_sec);
       }
       break;
     case MissionPhase::kPlanCones:

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(auv_core VERSION 0.1.0 LANGUAGES C CXX)
 
-find_package(OpenCV REQUIRED COMPONENTS aruco calib3d core imgcodecs imgproc video videoio)
+find_package(OpenCV 4.7 REQUIRED COMPONENTS objdetect calib3d core imgcodecs imgproc video videoio)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
@@ -15,12 +15,14 @@ add_library(auv_core
   ../auv_control/src/route_executor.cpp
   ../auv_stm32_bridge/src/protocol.c
   ../auv_stm32_bridge/src/stream_parser.cpp
-  ../auv_stm32_bridge/src/serial_port.cpp
   ../auv_stm32_bridge/src/motion_target.cpp
   ../auv_stm32_bridge/src/telemetry_decoder.cpp
   ../auv_stm32_bridge/src/gripper_protocol.cpp
   src/status_decoder.cpp
   src/semantic_map.cpp)
+if(NOT AUV_PERCEPTION_ONLY)
+  target_sources(auv_core PRIVATE ../auv_stm32_bridge/src/serial_port.cpp)
+endif()
 add_library(auv_core::auv_core ALIAS auv_core)
 target_compile_features(auv_core PUBLIC cxx_std_17)
 target_include_directories(auv_core PUBLIC
@@ -62,6 +64,10 @@ if(BUILD_TESTING)
   add_executable(test_core test/test_core.cpp)
   target_link_libraries(test_core PRIVATE auv_core)
   add_test(NAME test_core COMMAND test_core)
+  add_executable(test_a0_a1 ../auv_control/test/test_observation_search.cpp
+    ../auv_mapping/test/test_single_edge_grid.cpp)
+  target_link_libraries(test_a0_a1 PRIVATE auv_core)
+  add_test(NAME a0_a1_core COMMAND test_a0_a1)
 endif()
 
 if(NOT AUV_NATIVE_BUILD)

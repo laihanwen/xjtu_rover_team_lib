@@ -43,6 +43,7 @@ struct ConeObservation
   float area{0.0F};
   float circularity{0.0F};
   float confidence{0.0F};
+  std::vector<cv::Point> contour;  // Observed silhouette in rectified map pixels.
 };
 
 struct ConeDetectorConfig

@@ -7,6 +7,8 @@
 根README提供项目导航；模块README说明当前操作；project-status区分源码/部署/实机验证；reviews和deployment保存历史证据。历史文件中的参数不得覆盖当前配置。
 
 - [系统架构与资源所有权](architecture/system.md)
+- [轻量 AUV 开发边界与阶段验收](auv-development-boundary.md)
+- [A0/A1实现、标定与验收](auv-a0-a1-implementation.md)
 - [轻量定位首版](localization.md)
 - [ROV当前操作](../tools/rov/README.md)
 - [维护与部署](../tools/rov/MAINTENANCE.md)
