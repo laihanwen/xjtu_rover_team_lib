@@ -199,7 +199,6 @@ CommandResult MissionFsm::command(MissionCommand command_value, double now_sec)
       }
       connected_ = false;
       armed_ = false;
-      leak_detected_ = false;
       error_flags_ = 0U;
       apriltag_found_ = false;
       map_complete_ = false;
@@ -222,12 +221,11 @@ CommandResult MissionFsm::command(MissionCommand command_value, double now_sec)
 }
 
 void MissionFsm::update_status(
-  bool connected, bool armed, bool leak_detected, std::uint32_t error_flags,
+  bool connected, bool armed, std::uint32_t error_flags,
   double now_sec)
 {
   connected_ = connected;
   armed_ = armed;
-  leak_detected_ = leak_detected;
   error_flags_ = error_flags;
   status_received_sec_ = now_sec;
 }
@@ -296,10 +294,6 @@ void MissionFsm::tick(double now_sec)
 {
   const bool running_or_paused = is_active() || snapshot_.phase == MissionPhase::kPaused;
   if (running_or_paused && status_received_sec_ >= 0.0) {
-    if (leak_detected_) {
-      fault("leak detected", now_sec);
-      return;
-    }
     if (error_flags_ != 0U) {
       fault("STM32 error flags are nonzero", now_sec);
       return;
@@ -334,7 +328,7 @@ void MissionFsm::tick(double now_sec)
 
   switch (snapshot_.phase) {
     case MissionPhase::kSelfCheck:
-      if (status_received_sec_ >= 0.0 && connected_ && !armed_ && !leak_detected_ &&
+      if (status_received_sec_ >= 0.0 && connected_ && !armed_ &&
         error_flags_ == 0U)
       {
         transition(MissionPhase::kSearchAprilTag, "self-check passed", now_sec);

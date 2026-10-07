@@ -1,5 +1,7 @@
 # Raspberry Pi ↔ STM32 串口协议 v1
 
+2026-10-06 新增 `0x84 PID_DIAGNOSTIC`（初版49字节，定航向/定深候选版61字节，随STATUS以10Hz回传），用于PC每5秒日志。包含MCU控制周期时间、ARM/IMU/闭环标志、三轴角度/误差/混控前纠正量及俯仰/偏航角速度。完整定义见 [ROV日志说明](../../tools/rov/LOGGING.md) 与 [闭环扩展](../../tools/rov/HOLD_MODES.md)。原STATUS布局不变，旧端可忽略新诊断帧。
+
 状态：v1 已冻结，heartbeat、ARM、MOTION_TARGET 和状态遥测均已接入。
 MCU 为 STM32F405RGT6；实机接线和台架安全测试仍需人工确认。
 
@@ -35,6 +37,10 @@ CRC 使用 **CRC-16/CCITT-FALSE**：poly `0x1021`、init `0xFFFF`、refin/refout
 | `0x02` | SET_ARMED | Pi → STM32 | 5 |
 | `0x03` | MOTION_TARGET | Pi → STM32 | 20 |
 | `0x04` | ACTUATOR_COMMAND | Pi → STM32 | 9 |
+| `0x05` | RC_TARGET | Pi → STM32 | 16 |
+| `0x06` | REMOTE_KILL | Pi → STM32 | 1 |
+| `0x07` | Commissioning pulse（默认禁用） | Pi → STM32 | 7 |
+| `0x08` | CALIBRATE_LEVEL | Pi → STM32 | 5 |
 | `0x7F` | ACK | STM32 → Pi | 6 |
 | `0x80` | STATUS | STM32 → Pi | 30 + 2N |
 | `0x81` | IMU | STM32 → Pi | 40 |
@@ -105,7 +111,7 @@ sequence。业务层不得使用中间浮点值直接控制 PWM。
 | Offset | 类型 | 单位 | 字段 |
 |---:|---|---|---|
 | 0 | `uint32` | — | sequence |
-| 4 | `uint8` | bitset | bit0 armed，bit1 leak，bit2 failsafe |
+| 4 | `uint8` | bitset | bit0 armed，bit1保留未使用，bit2 failsafe，bit3岸上水平已校准 |
 | 5 | `uint32` | bitset | firmware error flags，见下表 |
 | 9 | `float32` | V | battery voltage |
 | 13 | `float32` | m | depth |
@@ -121,7 +127,7 @@ Firmware error flags：
 |---:|---|
 | 0 | heartbeat timeout |
 | 1 | required sensor invalid |
-| 2 | leak detected |
+| 2 | 保留未使用（当前无漏水传感器） |
 | 3 | hardware kill active |
 
 ### IMU `0x81`
@@ -192,3 +198,14 @@ STM32 P4 接入时必须逐 byte 复用这些权威向量。
   停止发送 MOTION_TARGET；STM32 的独立 250 ms 超时随后撤销 ARM。
 - ARM 时若 Pi 和兼容遥控输入都新鲜则锁定 Pi；锁定源超时后不会自动切换来源，
   必须重新显式 ARM。
+
+
+### CALIBRATE_LEVEL `0x08`
+
+Payload offset0为uint32 sequence，offset4为uint8显式岸上确认（必须1）。仅DISARM、250ms内有效IMU且序号比上次更新时可接受。将最新原始俯仰/横滚写入RAM水平参考，不改变相对偏航原点，不ARM，不写Flash。首次请求允许任意sequence，后续按int32差值判断更新（支持uint32回绕）。返回标准ACK（type0x08，result0成功，其余拒绝，回显sequence）。成功后STATUS bit3置位，STM32重启清除。主机应校验匹配ACK和新STATUS，不根据按钮点击直接显示校准成功。
+
+主机需要人工确认岸上放平，未ARM、回中并静止采样2秒；CRC或协议本身无法证明设备物理位置在岸上。未校准会被固件ARM安全门拒绝。其它消息布局、CRC与八路输出顺序保持不变。
+
+### 2026-10-07 PID diagnostic state extension
+
+Type 0x84 now uses 64 payload bytes; the first 61 bytes remain unchanged. Byte 61 is heading state, byte 62 depth state: 0 disabled, 1 disarmed, 2 RC stale, 3 sensor invalid/stale, 4 manual override, 5 locked. Byte 63 is the priority mixer's motion scale quantized to 0..255 (divide by 255). This measures reduction during priority combination only, not earlier motion normalization, subsequent ESC deadband compensation, or measured thrust. PC decoder accepts 49/61/64-byte variants; old firmware has no authoritative state reason.

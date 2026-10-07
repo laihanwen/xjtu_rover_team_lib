@@ -175,7 +175,7 @@ private:
       (current_time - status_received_).seconds() <= status_timeout_sec_;
     const bool telemetry_finite = std::isfinite(status_.depth) && std::isfinite(status_.yaw);
     const bool vehicle_ready = status_fresh && status_.connected && status_.armed &&
-      !status_.leak_detected && status_.error_flags == 0U && telemetry_finite;
+       status_.error_flags == 0U && telemetry_finite;
     executor_->set_vehicle_ready(vehicle_ready);
     executor_->set_pose(pose_fresh && pose_.valid, pose_.row, pose_.col);
 

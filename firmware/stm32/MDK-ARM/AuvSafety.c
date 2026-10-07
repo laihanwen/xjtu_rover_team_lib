@@ -9,8 +9,7 @@ static AuvSafetyContext safety;
 
 static uint8_t InputsSafe(void)
 {
-    return ((safety.leak_detected == 0U) &&
-            (safety.kill_active == 0U) &&
+    return ((safety.kill_active == 0U) &&
             (safety.sensors_valid != 0U)) ? 1U : 0U;
 }
 
@@ -27,7 +26,6 @@ void AuvSafety_Init(uint32_t now_ms)
     safety.last_heartbeat_ms = now_ms;
     safety.boot_ms = now_ms;
     safety.heartbeat_seen = 0U;
-    safety.leak_detected = 0U;
     safety.kill_active = 0U;
     safety.sensors_valid = 0U;
 }
@@ -62,12 +60,10 @@ AuvArmResult AuvSafety_RequestArm(uint8_t arm, uint32_t now_ms)
     return AUV_ARM_ACCEPTED;
 }
 
-void AuvSafety_SetInputs(uint8_t leak_detected,
-                         uint8_t kill_active,
+void AuvSafety_SetInputs(uint8_t kill_active,
                          uint8_t sensors_valid,
                          uint32_t now_ms)
 {
-    safety.leak_detected = (leak_detected != 0U) ? 1U : 0U;
     safety.kill_active = (kill_active != 0U) ? 1U : 0U;
     safety.sensors_valid = (sensors_valid != 0U) ? 1U : 0U;
     AuvSafety_Tick(now_ms);

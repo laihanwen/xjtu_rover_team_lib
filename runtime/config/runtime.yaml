@@ -1,12 +1,18 @@
 camera:
-  # Replace with the real, calibrated down-camera symlink.
-  source: /dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA
+  # Down camera is CSI; calibrate intrinsics for this camera.
+  source: csi:0
   width: 640
   height: 480
   fps: 30
   pixel_format: MJPG
   camera_matrix: []
   distortion_coefficients: []
+camera_front:
+  enabled: false
+  source: /dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA
+  width: 320
+  height: 240
+  fps: 30
 serial:
   device: ""
   baud: 115200
@@ -76,10 +82,28 @@ video:
   software_fallback_enabled: false
   width: 640
   height: 480
-  fps: 20
+  fps: 30
   bitrate_kbps: 2000
   segment_time_sec: 0.5
 web:
   bind: 192.168.137.201
   port: 8080
   assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: false
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 320
+  height: 240
+  camera_matrix: []
+  distortion: []
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false

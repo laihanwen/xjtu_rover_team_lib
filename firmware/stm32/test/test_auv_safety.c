@@ -5,7 +5,7 @@
 
 static void MakeReady(uint32_t now_ms)
 {
-    AuvSafety_SetInputs(0U, 0U, 1U, now_ms);
+    AuvSafety_SetInputs(0U, 1U, now_ms);
     AuvSafety_OnHeartbeat(now_ms);
 }
 
@@ -34,14 +34,14 @@ static void TestFaultsAndDisarm(void)
     AuvSafety_Init(0U);
     MakeReady(2000U);
     assert(AuvSafety_RequestArm(1U, 2000U) == AUV_ARM_ACCEPTED);
-    AuvSafety_SetInputs(1U, 0U, 1U, 2001U);
+    AuvSafety_SetInputs(1U, 1U, 2001U);
     assert(AuvSafety_GetState() == AUV_SAFETY_FAILSAFE);
     assert(AuvSafety_RequestArm(1U, 2001U) == AUV_ARM_UNSAFE);
     assert(AuvSafety_RequestArm(0U, 2001U) == AUV_ARM_ACCEPTED);
     assert(AuvSafety_GetState() == AUV_SAFETY_DISARMED);
-    AuvSafety_SetInputs(0U, 1U, 1U, 2002U);
+    AuvSafety_SetInputs(1U, 1U, 2002U);
     assert(AuvSafety_GetState() == AUV_SAFETY_FAILSAFE);
-    AuvSafety_SetInputs(0U, 0U, 0U, 2003U);
+    AuvSafety_SetInputs(0U, 0U, 2003U);
     assert(AuvSafety_GetState() == AUV_SAFETY_FAILSAFE);
 }
 
@@ -60,7 +60,7 @@ static void TestTickRollover(void)
 static void TestHeartbeatCannotArm(void)
 {
     AuvSafety_Init(0U);
-    AuvSafety_SetInputs(0U, 0U, 1U, 0U);
+    AuvSafety_SetInputs(0U, 1U, 0U);
     AuvSafety_OnHeartbeat(1U);
     assert(AuvSafety_GetState() == AUV_SAFETY_DISARMED);
     assert(AuvSafety_RequestArm(2U, 1U) == AUV_ARM_MALFORMED);

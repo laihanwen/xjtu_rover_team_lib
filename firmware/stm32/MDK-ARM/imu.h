@@ -29,14 +29,23 @@ typedef struct {
 extern FLOAT_Angle Angle_Measure;
 extern uint8_t imu_data_ready;
 extern volatile uint32_t imu_sample_sequence;
+extern volatile uint32_t imu_last_sample_ms;
+extern volatile uint32_t imu_uart_errors;
+extern volatile uint32_t imu_rx_restart_failures;
+extern volatile uint32_t imu_checksum_errors;
+extern volatile uint32_t imu_frame_timeouts;
 
 // 陀螺仪漂移补偿相关
 extern FLOAT_Angle imu_offset;  // 存储第一次有效数据的偏移量
 extern uint8_t imu_offset_calibrated;  // 标志位：是否已经校准偏移量
+extern volatile uint8_t imu_level_calibrated;
+uint8_t imu_calibrate_level(void); /* Explicit shore action, caller must ensure DISARM. */
+uint8_t imu_copy_fresh(FLOAT_Angle *angle, uint32_t *sequence, uint32_t *stamp);
 void imu_reset_offset(void);  // 重置偏移量校准（可选功能）
 
 // 函数声明
 void h30_configure(void);
+void h30_reset_rx(void);
 uint8_t h30_data_callback(uint8_t byte);
 void h30_parse_data(uint8_t *data, uint16_t len);
 float h30_bytes_to_float(uint8_t *bytes);
