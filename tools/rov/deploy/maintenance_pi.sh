@@ -11,11 +11,14 @@ mkdir -p "$backup"
 cp /etc/auv-runtime/runtime.yaml "$backup/runtime.yaml"
 cp -a /usr/local/lib/auv-rov "$backup/rov"
 cp /usr/local/bin/auv_runtime "$backup/auv_runtime"
+cp /etc/systemd/system/auv-rov.service.d/30-manual-trial.conf "$backup/30-manual-trial.conf"
 systemctl stop auv-rov auv-runtime
 cmake --install build --prefix /usr/local
 cp tools/rov/*.py /usr/local/lib/auv-rov/
 mkdir -p /usr/local/lib/auv-rov/web
 cp tools/rov/web/* /usr/local/lib/auv-rov/web/
+cp tools/rov/deploy/30-manual-trial.conf /etc/systemd/system/auv-rov.service.d/30-manual-trial.conf
+systemctl daemon-reload
 if [ "${1:-}" = --apply-pi-profile ]; then
     cp runtime/config/pi-rov.yaml /etc/auv-runtime/runtime.yaml
 fi
