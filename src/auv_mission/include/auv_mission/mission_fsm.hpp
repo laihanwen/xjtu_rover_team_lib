@@ -73,6 +73,8 @@ struct MissionFsmConfig
   double status_timeout_sec{1.0};
   bool allow_armed_during_visit{false};
   bool full_mission{false};
+  bool allow_armed_during_observation{false};
+  bool stop_after_map{false};
 };
 
 struct CommandResult

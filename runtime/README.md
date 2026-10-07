@@ -1,5 +1,7 @@
 # 树莓派轻量 Runtime
 
+A0/A1 新增独立观测入口 `config/pi-auv-observation.yaml`：安全启动、相对原点主动搜索、标签触发单黄色边建图与机载记录。构建、配置和实机标定见 [A0/A1交付说明](../docs/auv-a0-a1-implementation.md)。
+
 当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
 
 这个 C++ 进程与 ROS 节点共享 `auv_core`。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。

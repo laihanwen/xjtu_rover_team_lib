@@ -295,7 +295,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         h30_data_callback(received_byte);
     }
 		if (huart->Instance == USART2){
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
             AuvLink_RxComplete(huart);
 #else
 			#if AUV_UART2_M10_ENABLED
@@ -310,7 +310,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 #endif
 	  }
 		if (huart->Instance == USART3){
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
             uint8_t byte = usart3_depth_byte;
             float depth;
             int result;
@@ -333,7 +333,7 @@ void USART1_Receive_IT_Init(void) {
 void USART2_Receive_IT_Init(void) {
   AuvRcInput_Init();
   AuvM10_Reset(&m10_parser);
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
   huart3.Init.BaudRate = 115200U;
   if (HAL_UART_Init(&huart3) != HAL_OK) Error_Handler();
   (void)HAL_UART_Receive_IT(&huart3, &usart3_depth_byte, 1U);
@@ -369,7 +369,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
             HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[0], 1U) != HAL_OK)
             imu_rx_restart_failures++;
     } else if (huart->Instance == USART2) {
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
         AuvLink_RxError(huart);
 #else
         AuvRcInput_Init();
@@ -380,7 +380,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         (void)HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1U);
 #endif
     } else {
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
         AuvM10_Reset(&m10_parser);
         AuvLink_InvalidateDepth();
         if (huart3.RxState == HAL_UART_STATE_READY)

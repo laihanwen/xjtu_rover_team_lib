@@ -9,9 +9,10 @@
 #include <stddef.h>
 
 #include "AuvProtocol.h"
+#include "AuvRovConfig.h"
 
-#define AUV_MOTION_MAX_ABS_VELOCITY_MPS 5.0f
-#define AUV_MOTION_MAX_DEPTH_M 100.0f
+#define AUV_MOTION_MAX_ABS_VELOCITY_MPS (AUV_AUTONOMOUS_PROFILE ? 0.2f : 5.0f)
+#define AUV_MOTION_MAX_DEPTH_M (AUV_AUTONOMOUS_PROFILE ? AUV_AUTONOMY_MAX_DEPTH_M : 100.0f)
 #define AUV_MOTION_PI 3.141592654f
 
 static volatile AuvMotionTarget published;

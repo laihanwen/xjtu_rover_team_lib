@@ -18,9 +18,10 @@
 #include "usart.h"
 #include "AuvRovConfig.h"
 #include "AuvRcInput.h"
+#include <math.h>
 
 #ifndef AUV_LINK_UART_HANDLE
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
 #define AUV_LINK_UART_HANDLE huart2
 #else
 #define AUV_LINK_UART_HANDLE huart3
@@ -107,6 +108,12 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
 #if AUV_ROV_MANUAL_TRIAL
             if (frame->payload[4] == 1U &&
                 (!AuvRcInput_CanArm(now_ms) || !imu_level_calibrated))
+                result = AUV_ARM_UNSAFE;
+            else
+#endif
+#if AUV_AUTONOMOUS_PROFILE
+            if (frame->payload[4] == 1U &&
+                (!AUV_AUTONOMY_READY || !imu_level_calibrated))
                 result = AUV_ARM_UNSAFE;
             else
 #endif
@@ -498,7 +505,20 @@ void AuvLink_SetSafetyInputs(uint8_t kill_active,
 
 uint8_t AuvLink_UpdateDepth(float depth_m)
 {
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_AUTONOMOUS_PROFILE
+    if (!AUV_DEPTH_ZERO_CALIBRATED || !isfinite(depth_m) || !isfinite(AUV_DEPTH_ZERO_M)) {
+        AuvDepth_Invalidate(HAL_GetTick());
+        return 0U;
+    }
+    depth_m -= AUV_DEPTH_ZERO_M;
+    /* Near-surface pressure noise is not an impossible negative water depth. */
+    if (depth_m >= -0.03f && depth_m < 0.0f) depth_m = 0.0f;
+    if (!AuvDepth_Update(depth_m, HAL_GetTick())) {
+        AuvDepth_Invalidate(HAL_GetTick());
+        return 0U;
+    }
+    return 1U;
+#elif AUV_ROV_MANUAL_TRIAL
     return AuvDepth_UpdateGauge(depth_m, HAL_GetTick());
 #else
     return AuvDepth_Update(depth_m, HAL_GetTick());

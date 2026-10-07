@@ -34,7 +34,7 @@ def main():
     uart = None
     if args.forward:
         import serial
-        uart = serial.Serial(args.device, 115200, timeout=0, write_timeout=0.1)
+        uart = serial.Serial(args.device, 115200, timeout=0, write_timeout=0.1, exclusive=True)
     try:
         with socket.socket() as server:
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

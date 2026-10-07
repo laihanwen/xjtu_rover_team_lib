@@ -1,10 +1,17 @@
 #ifndef AUV_ROV_CONFIG_H
 #define AUV_ROV_CONFIG_H
+#include "AuvAutonomyConfig.h"
 
 /* Explicit manual commissioning profile; autonomous targets remain disabled. */
 #ifndef AUV_ROV_MANUAL_TRIAL
-#define AUV_ROV_MANUAL_TRIAL 1
+#define AUV_ROV_MANUAL_TRIAL (!AUV_AUTONOMOUS_PROFILE)
 #endif
+#if AUV_AUTONOMOUS_PROFILE && AUV_ROV_MANUAL_TRIAL
+#error AUV and ROV control profiles are mutually exclusive
+#endif
+/* UART layout is independent of control ownership: existing Pi=UART2, M10=UART3. */
+#define AUV_CURRENT_UART_LAYOUT (AUV_ROV_MANUAL_TRIAL || AUV_AUTONOMOUS_PROFILE)
+#define AUV_PROVEN_ATTITUDE_CONTROL (AUV_ROV_MANUAL_TRIAL || AUV_AUTONOMOUS_PROFILE)
 #define AUV_ROV_TRIAL_PWM_LIMIT 100.0f
 #define AUV_ROV_HIGH_PWM_LIMIT 125.0f
 #define AUV_ROV_TRIAL_ATTITUDE_ENABLED 1

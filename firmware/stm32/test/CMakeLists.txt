@@ -12,6 +12,12 @@ else()
     add_compile_options(-UNDEBUG)
 endif()
 
+add_executable(test_auv_autonomy test_auv_autonomy.c
+    ../MDK-ARM/AuvMotionTarget.c ../MDK-ARM/AuvProtocol.c)
+target_include_directories(test_auv_autonomy PRIVATE ../MDK-ARM)
+target_compile_definitions(test_auv_autonomy PRIVATE AUV_AUTONOMOUS_PROFILE=1)
+add_test(NAME auv_autonomy_defaults COMMAND test_auv_autonomy)
+
 add_executable(test_auv_protocol
     test_auv_protocol.c
     ../MDK-ARM/AuvProtocol.c

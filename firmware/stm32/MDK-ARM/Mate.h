@@ -9,6 +9,7 @@
 #include "PID.h"
 #include "Motor.h"
 #include "Move.h"
+#include "AuvAutonomyConfig.h"
 
 /*
  * Open-loop velocity feed-forward gains. They are deliberately compile-time
@@ -16,10 +17,18 @@
  * the final hull. They never bypass the common +/-450 PWM deviation limit.
  */
 #ifndef AUV_SURGE_PWM_PER_MPS
+#if AUV_AUTONOMOUS_PROFILE
+#define AUV_SURGE_PWM_PER_MPS AUV_AUTONOMY_SURGE_PWM_PER_TARGET
+#else
 #define AUV_SURGE_PWM_PER_MPS 300.0f
 #endif
+#endif
 #ifndef AUV_SWAY_PWM_PER_MPS
+#if AUV_AUTONOMOUS_PROFILE
+#define AUV_SWAY_PWM_PER_MPS AUV_AUTONOMY_SWAY_PWM_PER_TARGET
+#else
 #define AUV_SWAY_PWM_PER_MPS 300.0f
+#endif
 #endif
 
 void Mate_Task(void);

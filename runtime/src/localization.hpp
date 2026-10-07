@@ -1,5 +1,6 @@
 #pragma once
 #include "auv_mapping/plane_odometry.hpp"
+#include "auv_control/observation_search.hpp"
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
@@ -37,6 +38,11 @@ class Localization {
  }
  explicit Localization(Settings cfg):cfg_(std::move(cfg)){}
  double period()const{return 1/cfg_.hz;}bool enabled()const{return cfg_.enabled;}
+ auv_control::ObservationPose snapshot(double now)const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return {valid_ && now>=stamp_ && now-stamp_<=.3,continuous_,session_,stamp_,x_,y_,yaw_};
+ }
+ bool has_origin()const {std::lock_guard<std::mutex> lock(mutex_);return session_!=0;}
  void unavailable(const std::string& reason){std::lock_guard<std::mutex> lock(mutex_);fail(reason);}
  // Called by a dedicated worker with shared capture image (never opens another camera).
  void process(const cv::Mat& image,double stamp,double now,const YAML::Node& supplied=YAML::Node()){
