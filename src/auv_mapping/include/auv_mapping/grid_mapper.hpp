@@ -38,13 +38,19 @@ struct GridMapperConfig
   double line_band_ratio{0.035};
   double minimum_line_support{0.45};
   int stable_frames{3};
+  int yellow_oriented_frames{3};
   double maximum_corner_jitter_ratio{0.02};
+  double white_s_max{60.0};
+  double white_v_min{150.0};
+  double yellow_edge_min_coverage{0.5};
+  double yellow_edge_margin{0.3};
 };
 
 struct GridResult
 {
   bool geometry_valid{false};
   bool stable{false};
+  bool yellow_oriented{false};
   float confidence{0.0F};
   bool position_valid{false};
   float camera_row{0.0F};
@@ -70,6 +76,8 @@ private:
   bool find_outer_grid(
     const cv::Mat & mask, std::array<cv::Point2f, 4> & corners,
     double & area_ratio) const;
+  bool orient_yellow_bottom(
+    std::array<cv::Point2f, 4> & corners, const cv::Mat & yellow_mask) const;
   double measure_grid_line_support(const cv::Mat & rectified) const;
   bool update_stability(
     const std::array<cv::Point2f, 4> & corners, const cv::Size & image_size);
@@ -81,6 +89,7 @@ private:
   std::array<cv::Point2f, 4> previous_corners_{};
   bool previous_corners_valid_{false};
   int stable_count_{0};
+  int yellow_oriented_count_{0};
 };
 
 }  // namespace auv_mapping

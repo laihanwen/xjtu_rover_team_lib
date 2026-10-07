@@ -30,4 +30,14 @@ auv_semantic_mapper:
     line_band_ratio: 0.035
     minimum_line_support: 0.45
     stable_frames: 3
+    yellow_oriented_frames: 3
     maximum_corner_jitter_ratio: 0.02
+    # Task-one grid has one yellow edge plus three white edges. white_s_max and
+    # white_v_min select white pixels (low saturation, high value) so the white
+    # edges and internal divisions form a closed quadrilateral against the
+    # non-white pool floor; yellow_edge_min_coverage/margin disambiguate which
+    # of the four edges is the yellow bottom edge before the map is oriented.
+    white_s_max: 60.0
+    white_v_min: 150.0
+    yellow_edge_min_coverage: 0.5
+    yellow_edge_margin: 0.3
