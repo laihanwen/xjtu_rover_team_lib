@@ -1,4 +1,5 @@
 #include "csi_capture.hpp"
+#include "localization.hpp"
 #include "auv_core/semantic_map.hpp"
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
@@ -32,6 +33,7 @@
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <arpa/inet.h>
@@ -73,6 +75,7 @@ static bool propulsion_phase(auv_mission::MissionPhase phase) {
   }
 }
 struct Config {
+  Localization::Settings localization;
   std::string camera, serial, socket, log, debug_dir;
   bool front_enabled{};
   std::string front_source{"/dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA"};
@@ -104,6 +107,7 @@ struct Config {
 static Config load_config(const std::string& path) {
   const auto y = YAML::LoadFile(path);
   Config c;
+  c.localization=Localization::config(y["localization"]);
   c.camera = y["camera"]["source"].as<std::string>();
   c.camera_width = y["camera"]["width"].as<int>();
   c.camera_height = y["camera"]["height"].as<int>();
@@ -269,6 +273,8 @@ class Runtime {
     std::thread capture(&Runtime::capture_loop, this);
     std::thread front(&Runtime::front_loop, this);
     std::thread vision(&Runtime::vision_loop, this);
+    localization_=std::make_unique<Localization>(cfg_.localization);
+    std::thread localization(&Runtime::localization_loop,this);
     std::thread serial(&Runtime::serial_loop, this);
     std::thread control([this] {
       try { control_loop(); }
@@ -301,7 +307,7 @@ class Runtime {
     if (auto* server=web_server_.load()) server->stop();
     web.join();
 #endif
-    capture.join(); front.join(); vision.join(); control.join(); serial.join(); video.join();
+    capture.join(); front.join(); vision.join(); localization.join(); control.join(); serial.join(); video.join();
     event("SHUTDOWN", "DISARM requested");
     log_stop_=true;
     log_cv_.notify_all(); logger.join();
@@ -478,6 +484,32 @@ class Runtime {
         { std::lock_guard<std::mutex> lock(state_mutex_); front_detail_=e.what(); }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
       }
+    }
+  }
+  void localization_loop() {
+    std::uint64_t seen=0; double last=0;
+    while(running){
+      const double now=seconds();
+      if(now-last < localization_->period()) {std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
+      last=now;cv::Mat image;double stamp=0;
+      {std::lock_guard<std::mutex> lock(frame_mutex_);
+       if(seen!=frame_sequence_){seen=frame_sequence_;image=frame_;stamp=frame_time_;}}
+      try {
+        if(!image.empty()){
+          YAML::Node sensor;
+          if(!cfg_.serial.empty()){
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            sensor["stamp"]=status_time_;sensor["valid"]=status_.telemetry_valid;
+            sensor["armed"]=status_.armed;sensor["depth_m"]=status_.depth;
+            const double degrees=180/std::acos(-1);
+            sensor["roll_deg"]=status_.roll*degrees;sensor["pitch_deg"]=status_.pitch*degrees;sensor["yaw_deg"]=status_.yaw*degrees;
+          }
+          localization_->process(image,stamp,now,sensor);
+        }
+        else if(!frame_time_ || now-frame_time_>.3)localization_->unavailable("image_unavailable");
+        else continue;
+        if(localization_->enabled())event("LOCALIZATION",localization_->json(seconds()));
+      }catch(const std::exception&){localization_->unavailable("processing_error");}
     }
   }
   void vision_loop() {
@@ -1054,6 +1086,14 @@ class Runtime {
     if (!running) return;
     httplib::Server server;
     web_server_=&server;
+    server.Get("/api/localization",[this](const httplib::Request&,httplib::Response& res){
+      res.set_header("Cache-Control","no-store");res.set_content(localization_->json(seconds()),"application/json");
+    });
+    server.Post("/api/localization/reset",[this](const httplib::Request&,httplib::Response& res){
+      if(!localization_->reset(seconds())){res.status=409;res.set_content("{\"error\":\"Require calibrated fresh input, DISARM and 2 seconds stable attitude/depth\"}","application/json");return;}
+      event("LOCALIZATION_RESET",localization_->json(seconds()));
+      res.set_content(localization_->json(seconds()),"application/json");
+    });
     server.Get("/api/status",[this](const httplib::Request&,httplib::Response& res){
       res.set_content(command("status"),"application/json");
       res.set_header("Cache-Control","no-store");
@@ -1200,6 +1240,7 @@ class Runtime {
   std::atomic<double> last_control_time_{seconds()};
   float hold_depth_{},hold_yaw_{};
   std::size_t waypoint_index_{};
+  std::unique_ptr<Localization> localization_;
   bool tag_found_{},pose_valid_{},route_ready_{},all_visited_{},serial_connected_{},armed_requested_{},arm_ack_{},arm_pending_{},disarm_pending_{true};
   bool autonomous_start_attempted_{},autonomous_arm_attempted_{};
   bool gripper_ack_{},gripper_close_requested_{},gripper_open_requested_{},gripper_stop_requested_{};

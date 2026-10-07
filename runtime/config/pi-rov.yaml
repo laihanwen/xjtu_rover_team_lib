@@ -90,3 +90,21 @@ web:
   bind: 192.168.137.150
   port: 8080
   assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: false
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 320
+  height: 240
+  camera_matrix: []
+  distortion: []
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false

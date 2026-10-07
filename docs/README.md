@@ -2,6 +2,16 @@
 
 根目录 [README.md](../README.md) 负责项目入口；本目录负责整理设计依据、接口协议、部署手册、验收门槛和评审结论。硬件参数未知时，以 [AGENTS.md](../AGENTS.md) 的安全约束为准，不从示例值推断真实接线。
 
+## 阅读规则
+
+根README提供项目导航；模块README说明当前操作；project-status区分源码/部署/实机验证；reviews和deployment保存历史证据。历史文件中的参数不得覆盖当前配置。
+
+- [系统架构与资源所有权](architecture/system.md)
+- [轻量定位首版](localization.md)
+- [ROV当前操作](../tools/rov/README.md)
+- [维护与部署](../tools/rov/MAINTENANCE.md)
+- [ROV历史集成原文](../tools/rov/LEGACY_NOTES.md)
+
 ## 文档结构总览
 
 ```text

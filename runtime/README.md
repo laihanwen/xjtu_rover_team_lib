@@ -1,4 +1,6 @@
-# 轻量级 mission-one 运行时
+# 树莓派轻量 Runtime
+
+当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
 
 这个 C++ 进程与 ROS 节点共享 `auv_core`。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
 
@@ -14,7 +16,7 @@ cmake --build build-lightweight -j 3
 ctest --test-dir build-lightweight --output-on-failure
 ```
 
-原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 漏水 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
+原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
 
 复制并编辑 `runtime/config/runtime.yaml`。示例配置为 `debug` 模式并默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。生产环境中的相机源必须使用稳定的 `/dev/v4l/by-id/...` 符号链接。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成标定，运动仍然保持禁用状态。调试模式启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障后自动恢复运动。
 

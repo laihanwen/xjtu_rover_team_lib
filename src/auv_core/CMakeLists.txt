@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(auv_core VERSION 0.1.0 LANGUAGES C CXX)
 
-find_package(OpenCV REQUIRED COMPONENTS aruco calib3d core imgcodecs imgproc videoio)
+find_package(OpenCV REQUIRED COMPONENTS aruco calib3d core imgcodecs imgproc video videoio)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
@@ -56,6 +56,9 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/auv_coreConfig.cmake
 
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(test_plane_odometry ../auv_mapping/test/test_plane_odometry.cpp)
+  target_link_libraries(test_plane_odometry PRIVATE auv_core)
+  add_test(NAME plane_odometry COMMAND test_plane_odometry)
   add_executable(test_core test/test_core.cpp)
   target_link_libraries(test_core PRIVATE auv_core)
   add_test(NAME test_core COMMAND test_core)

@@ -97,7 +97,7 @@ def decode_status(payload):
 
 
 def decode_pid(payload):
-    if len(payload) not in (49,61):
+    if len(payload) not in (49,61,64):
         raise ValueError('bad PID diagnostic')
     names = ('roll_deg','pitch_deg','yaw_deg','roll_error_deg','pitch_error_deg',
              'yaw_error_deg','roll_correction','pitch_correction','yaw_correction',
@@ -111,9 +111,14 @@ def decode_pid(payload):
     result['yaw_target_deg'] = ((result['yaw_deg']+result['yaw_error_deg']+180)%360-180
         if result['heading_hold_active'] and result['yaw_deg'] is not None and
         result['yaw_error_deg'] is not None else None)
-    if len(payload)==61:
+    if len(payload)>=61:
         result.update(**{name:value if math.isfinite(value) else None for name,value in
             zip(('depth_m','depth_target_m','depth_correction'),struct.unpack_from('<3f',payload,49))})
         result.update(depth_hold_active=bool(payload[4]&32),
                       heading_requested=bool(payload[4]&64),depth_requested=bool(payload[4]&128))
+    if len(payload)==64:
+        states=('disabled','disarmed','rc_stale','sensor_invalid','manual_override','locked')
+        result.update(heading_state=states[payload[61]] if payload[61]<len(states) else 'unknown',
+                      depth_state=states[payload[62]] if payload[62]<len(states) else 'unknown',
+                      motion_scale=payload[63]/255.0)
     return result
