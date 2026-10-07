@@ -100,8 +100,14 @@ public:
     config.line_band_ratio = declare_parameter<double>("line_band_ratio", 0.035);
     config.minimum_line_support = declare_parameter<double>("minimum_line_support", 0.45);
     config.stable_frames = declare_parameter<int>("stable_frames", 3);
+    config.yellow_oriented_frames = declare_parameter<int>("yellow_oriented_frames", 3);
     config.maximum_corner_jitter_ratio = declare_parameter<double>(
       "maximum_corner_jitter_ratio", 0.02);
+    config.white_s_max = declare_parameter<double>("white_s_max", 60.0);
+    config.white_v_min = declare_parameter<double>("white_v_min", 150.0);
+    config.yellow_edge_min_coverage = declare_parameter<double>(
+      "yellow_edge_min_coverage", 0.5);
+    config.yellow_edge_margin = declare_parameter<double>("yellow_edge_margin", 0.3);
     mapper_ = std::make_unique<GridMapper>(config);
 
     configure_calibration();

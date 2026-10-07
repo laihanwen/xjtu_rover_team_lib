@@ -37,14 +37,18 @@
 namespace
 {
 
+// A synthetic down-camera frame: a perspective-warped 3x3 grid with three
+// white edges, one yellow bottom edge, and white internal divisions over a
+// dark-blue pool floor. Mirrors make_grid() in test_grid_mapper.cpp.
 cv::Mat make_node_test_grid()
 {
-  cv::Mat canonical(500, 500, CV_8UC3, cv::Scalar(220, 220, 220));
-  cv::rectangle(canonical, cv::Rect(8, 8, 484, 484), cv::Scalar(0, 255, 255), 18);
-  cv::line(canonical, cv::Point(167, 10), cv::Point(167, 490), cv::Scalar(20, 20, 20), 8);
-  cv::line(canonical, cv::Point(333, 10), cv::Point(333, 490), cv::Scalar(20, 20, 20), 8);
-  cv::line(canonical, cv::Point(10, 167), cv::Point(490, 167), cv::Scalar(20, 20, 20), 8);
-  cv::line(canonical, cv::Point(10, 333), cv::Point(490, 333), cv::Scalar(20, 20, 20), 8);
+  cv::Mat canonical(500, 500, CV_8UC3, cv::Scalar(120, 60, 20));
+  cv::rectangle(canonical, cv::Rect(8, 8, 484, 484), cv::Scalar(255, 255, 255), 18);
+  cv::line(canonical, cv::Point(8, 492), cv::Point(492, 492), cv::Scalar(0, 255, 255), 18);
+  cv::line(canonical, cv::Point(167, 10), cv::Point(167, 490), cv::Scalar(255, 255, 255), 8);
+  cv::line(canonical, cv::Point(333, 10), cv::Point(333, 490), cv::Scalar(255, 255, 255), 8);
+  cv::line(canonical, cv::Point(10, 167), cv::Point(490, 167), cv::Scalar(255, 255, 255), 8);
+  cv::line(canonical, cv::Point(10, 333), cv::Point(490, 333), cv::Scalar(255, 255, 255), 8);
 
   const std::array<cv::Point2f, 4> source{
     cv::Point2f(0.0F, 0.0F), cv::Point2f(499.0F, 0.0F),
@@ -53,7 +57,7 @@ cv::Mat make_node_test_grid()
     cv::Point2f(115.0F, 80.0F), cv::Point2f(550.0F, 115.0F),
     cv::Point2f(590.0F, 430.0F), cv::Point2f(70.0F, 455.0F)};
   const cv::Mat transform = cv::getPerspectiveTransform(source.data(), destination.data());
-  cv::Mat perspective(520, 660, CV_8UC3, cv::Scalar(5, 10, 15));
+  cv::Mat perspective(520, 660, CV_8UC3, cv::Scalar(120, 60, 20));
   cv::warpPerspective(
     canonical, perspective, transform, perspective.size(), cv::INTER_LINEAR,
     cv::BORDER_TRANSPARENT);
@@ -73,6 +77,7 @@ TEST(SemanticMapperNode, PublishesCompleteRowMajorMapAndRectifiedImage)
   options.parameter_overrides({
       rclcpp::Parameter("require_calibration", false),
       rclcpp::Parameter("stable_frames", 1),
+      rclcpp::Parameter("yellow_oriented_frames", 1),
       rclcpp::Parameter("expected_cone_count", 1),
       rclcpp::Parameter("image_topic", "/mapping_test/image"),
       rclcpp::Parameter("map_topic", "/mapping_test/map"),
