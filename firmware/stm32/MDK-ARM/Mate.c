@@ -401,6 +401,7 @@ void Mate_Task(void)
     // ===== 4. 构造唯一六维动力输入 u_dyn，再执行一次推力分配 =====
     VectorWrenchCommand dynamics_wrench;
     float motor_dev[VECTOR_THRUSTER_COUNT];
+    float diagnostic_motion_scale=1.0f;
 
     /*
      * 平移轴来自遥控，横滚/俯仰轴来自姿态闭环；偏航轴由开关在
@@ -455,7 +456,7 @@ void Mate_Task(void)
         VectorAllocate_Wrench(&motion,motion_dev);
         VectorAllocate_Wrench(&attitude,attitude_dev);
         MotorVector_ScaleToLimit(motion_dev,MOTOR_COMMAND_LIMIT);
-        (void)AuvPriority_Combine(motion_dev,attitude_dev,MOTOR_COMMAND_LIMIT,motor_dev);
+        diagnostic_motion_scale=AuvPriority_Combine(motion_dev,attitude_dev,MOTOR_COMMAND_LIMIT,motor_dev);
     }
 #else
     VectorAllocate_Wrench(&dynamics_wrench, motor_dev);
@@ -467,6 +468,13 @@ void Mate_Task(void)
     {
         uint32_t mask = __get_PRIMASK();
         __disable_irq();
+        pid_snapshot.heading_state = !AUV_ROV_AUTO_HOLD_ENABLED ? 0U :
+            !AuvSafety_IsArmed() ? 1U : !rc_fresh ? 2U : !imu_fresh ? 3U :
+            (MyRCKey[1] || MyRCKey[2]) ? 4U : heading_hold_active ? 5U : 3U;
+        pid_snapshot.depth_state = !(AUV_ROV_AUTO_HOLD_ENABLED && AUV_ROV_RELATIVE_DEPTH_ENABLED) ? 0U :
+            !AuvSafety_IsArmed() ? 1U : !rc_fresh ? 2U : !depth_fresh ? 3U :
+            (MyRCKey[5] || MyRCKey[6]) ? 4U : depth_control.active ? 5U : 3U;
+        pid_snapshot.motion_scale=(uint8_t)(diagnostic_motion_scale*255.0f+0.5f);
         pid_snapshot.tick_ms = HAL_GetTick();
         pid_snapshot.flags = (AuvSafety_IsArmed() ? 1U : 0U) |
             (imu_fresh ? 2U : 0U) | (roll_correction_active ? 4U : 0U) |

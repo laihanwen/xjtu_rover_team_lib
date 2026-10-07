@@ -4,6 +4,12 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from video_recorder import DatasetRecorder,MjpegAvi,jpeg_size,multipart_frame
 JPEG=base64.b64decode("/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYxLjE5LjEwMAD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABwEBAQEAAAAAAAAAAAAAAAAAAAUHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGAAgAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AjgDf0sAAAAAB/9k=")
 class RecorderTests(unittest.TestCase):
+ def test_start_failure_remains_in_status(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=DatasetRecorder('http://127.0.0.1:1',d)
+   with self.assertRaises(OSError):r.start()
+   self.assertFalse(r.status()['active'])
+   self.assertIn('录制启动失败',r.status()['error'])
  def test_avi_index_and_header(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'clip.avi';w=MjpegAvi(p,32,24)

@@ -14,6 +14,8 @@ cp /usr/local/bin/auv_runtime "$backup/auv_runtime"
 systemctl stop auv-rov auv-runtime
 cmake --install build --prefix /usr/local
 cp tools/rov/*.py /usr/local/lib/auv-rov/
+mkdir -p /usr/local/lib/auv-rov/web
+cp tools/rov/web/* /usr/local/lib/auv-rov/web/
 if [ "${1:-}" = --apply-pi-profile ]; then
     cp runtime/config/pi-rov.yaml /etc/auv-runtime/runtime.yaml
 fi

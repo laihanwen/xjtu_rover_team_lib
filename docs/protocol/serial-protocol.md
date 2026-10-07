@@ -205,3 +205,7 @@ STM32 P4 接入时必须逐 byte 复用这些权威向量。
 Payload offset0为uint32 sequence，offset4为uint8显式岸上确认（必须1）。仅DISARM、250ms内有效IMU且序号比上次更新时可接受。将最新原始俯仰/横滚写入RAM水平参考，不改变相对偏航原点，不ARM，不写Flash。首次请求允许任意sequence，后续按int32差值判断更新（支持uint32回绕）。返回标准ACK（type0x08，result0成功，其余拒绝，回显sequence）。成功后STATUS bit3置位，STM32重启清除。主机应校验匹配ACK和新STATUS，不根据按钮点击直接显示校准成功。
 
 主机需要人工确认岸上放平，未ARM、回中并静止采样2秒；CRC或协议本身无法证明设备物理位置在岸上。未校准会被固件ARM安全门拒绝。其它消息布局、CRC与八路输出顺序保持不变。
+
+### 2026-10-07 PID diagnostic state extension
+
+Type 0x84 now uses 64 payload bytes; the first 61 bytes remain unchanged. Byte 61 is heading state, byte 62 depth state: 0 disabled, 1 disarmed, 2 RC stale, 3 sensor invalid/stale, 4 manual override, 5 locked. Byte 63 is the priority mixer's motion scale quantized to 0..255 (divide by 255). This measures reduction during priority combination only, not earlier motion normalization, subsequent ESC deadband compensation, or measured thrust. PC decoder accepts 49/61/64-byte variants; old firmware has no authoritative state reason.

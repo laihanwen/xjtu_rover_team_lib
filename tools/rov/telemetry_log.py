@@ -32,6 +32,7 @@ class TelemetryLog:
         pid_fresh = bool(fresh and state.get('pid') and pid_age is not None and pid_age <= .3)
         return {'schema':1,'utc':datetime.now(timezone.utc).isoformat(),
                 'pc_monotonic_s':now,'connected':bool(state.get('connected')),
+                'localization':state.get('localization'),
                 'telemetry_age_s':age,'imu_valid':bool(fresh and all(
                     state.get('telemetry',{}).get(k) is not None
                     for k in ('roll_deg','pitch_deg','yaw_deg'))),

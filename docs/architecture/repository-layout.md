@@ -2,10 +2,14 @@
 
 本项目采用 monorepo。ROS 接口、树莓派运行时代码、STM32 固件、视觉训练配置和硬件文档需要共同演进，集中管理可以让一次协议修改在同一个提交中完成。若未来 STM32 固件需要独立发布，再将 `firmware/stm32` 拆分为独立仓库或 submodule。
 
+架构和资源所有权见 [系统架构](system.md)。本轮保留源码路径，以兼容现有 Keil/CMake、Python import 和服务部署。
+
 ## 目录职责
 
 | 目录 | 内容 | 构建方式 |
 |---|---|---|
+| `runtime/` | 原生C++双摄、HTTP与轻量任务运行时 | 根目录CMake |
+| `tools/rov/` | PC驾驶台、Pi桥、日志/录像、维护脚本 | Python / PowerShell |
 | `src/` | Raspberry Pi / PC 上运行的 ROS 2 packages | `colcon build` |
 | `firmware/stm32/` | STM32F405 八推实时控制、安全和外设代码 | Keil MDK-ARM；CMake/GCC 编译检查 |
 | `vision/` | YOLO 数据准备、训练、评估、导出及离线 OpenCV 实验 | 独立 uv 环境 |
@@ -29,6 +33,8 @@
 6. `auv_mission`：任务 FSM。
 7. `auv_control`：默认禁用动力的格子路线执行与安全门控。
 8. `auv_bringup`：系统启动和跨 package 参数。
+
+`src/auv_core` 是共享原生算法库，供根目录CMake和ROS模块使用；不计入上述八个ROS package。
 
 `auv_description` 仍是候选 package。只有形成清晰接口、独立实现和测试需求后再建立，
 避免为了目录完整而产生空 package。

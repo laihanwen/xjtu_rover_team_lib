@@ -98,7 +98,15 @@ class DatasetRecorder:
     def status(self):
         with self.lock:return json.loads(json.dumps(self.info))
     def start(self):
-        with self.control_lock:return self._start()
+        with self.control_lock:
+            try:
+                return self._start()
+            except Exception as error:
+                # Keep the failure visible across the console's status polls.
+                with self.lock:
+                    if not self.info['active']:
+                        self.info['error']='录制启动失败：'+str(error)
+                raise
     def _start(self):
         if any(t.is_alive() for t in self.threads):raise ValueError('录制仍在运行或正在停止')
         with urlopen(self.base_url+'/api/status',timeout=2) as r:state=json.load(r)

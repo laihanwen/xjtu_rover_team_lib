@@ -4,6 +4,7 @@ import json
 import socket
 import struct
 import time
+from localization_telemetry import LocalizationTelemetry
 from trial_protocol import Parser, LeaseGate, encode, manual_frame, centered, decode_status, decode_pid
 
 
@@ -34,7 +35,7 @@ class LevelCheck:
         return True
 
 
-def run(uart, server):
+def run(uart, server, localization=None):
     protocol = Parser()
     sequence = int(time.monotonic()*1000) & 0xffffffff
     telemetry = {}
@@ -184,6 +185,7 @@ def run(uart, server):
                                 arm_pending = None
                     if now-last_status >= .1:
                         last_status = now
+                        if localization:localization.offer(telemetry,telemetry_ms,now)
                         reply = {'lease': gate.issue(now), 'telemetry': telemetry,
                                  'telemetry_age': now-telemetry_ms, 'detail': detail,
                                  'pid': pid, 'pid_age': now-pid_ms if pid else None,
@@ -207,13 +209,16 @@ def main():
     parser.add_argument('--bind', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8888)
     parser.add_argument('--device', default='/dev/serial0')
+    parser.add_argument('--localization-telemetry',default='/run/auv-rov/localization-input.json')
     args = parser.parse_args()
     import serial
     with serial.Serial(args.device,115200,timeout=0,write_timeout=.1,exclusive=True) as uart:
         with socket.socket() as server:
             server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             server.bind((args.bind,args.port)); server.listen(1)
-            run(uart, server)
+            publisher=LocalizationTelemetry(args.localization_telemetry)
+            try:run(uart, server,publisher)
+            finally:publisher.close()
 
 
 if __name__ == '__main__':

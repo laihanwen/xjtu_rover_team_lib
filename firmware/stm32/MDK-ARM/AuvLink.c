@@ -296,13 +296,16 @@ static void SendStatus(uint32_t now_ms)
 
 static void SendPidDiagnostic(void)
 {
-    uint8_t payload[61];
+    uint8_t payload[64];
     MatePidSnapshot snapshot;
     Mate_GetPidSnapshot(&snapshot);
     AuvProtocol_WriteU32Le(payload, snapshot.tick_ms);
     payload[4] = snapshot.flags;
     for (uint32_t i=0; i<14; ++i)
         AuvProtocol_WriteF32Le(&payload[5+4*i], snapshot.values[i]);
+    payload[61]=snapshot.heading_state;
+    payload[62]=snapshot.depth_state;
+    payload[63]=snapshot.motion_scale;
     SendFrame(AUV_MSG_PID_DIAGNOSTIC, payload, sizeof(payload));
 }
 

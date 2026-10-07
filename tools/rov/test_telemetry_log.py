@@ -9,6 +9,14 @@ from trial_protocol import decode_pid, encode, Parser
 
 
 class LogTests(unittest.TestCase):
+    def test_hold_states_and_allocation_extension(self):
+        base=struct.pack('<IB14f',100,255,*([0]*14))
+        result=decode_pid(base+bytes([5,4,128]))
+        self.assertEqual(result['heading_state'],'locked')
+        self.assertEqual(result['depth_state'],'manual_override')
+        self.assertAlmostEqual(result['motion_scale'],128/255)
+        self.assertEqual(decode_pid(base+bytes([99,3,0]))['heading_state'],'unknown')
+        self.assertNotIn('heading_state',decode_pid(base))
     def test_pid_wire_and_wrapped_error(self):
         payload = struct.pack('<IB11f',1234,31,1,2,179,-1,-2,2,7,14,20,3,4)
         frame = Parser().push(encode(0x84,payload))[0]
