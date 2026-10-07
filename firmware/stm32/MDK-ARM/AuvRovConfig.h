@@ -36,11 +36,14 @@
 /* 0 restores manual translation + proven roll/pitch leveling only.
  * 1 replaces SA/SD gating with recentered-axis automatic hold. */
 #define AUV_ROV_AUTO_HOLD_ENABLED 1
-#define AUV_ROV_DEPTH_KP 80.0f
-#define AUV_ROV_DEPTH_KI 8.0f
-#define AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT 30.0f
+#define AUV_ROV_DEPTH_KP 360.0f
+#define AUV_ROV_DEPTH_KI 24.0f
+#define AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT 60.0f
 #define AUV_ROV_DEPTH_INTEGRAL_ERROR_BAND 0.015f
-#define AUV_ROV_DEPTH_OUTPUT_LIMIT 60.0f
+#define AUV_ROV_DEPTH_OUTPUT_LIMIT 120.0f
+/* 2026-10-07 water log: negative manual Fz reduces measured depth.
+ * Keep this legacy mixer convention separate from autonomous Z-up. */
+#define AUV_ROV_DEPTH_FZ_SIGN (1.0f)
 #define AUV_DEPTH_KI 1.0f /* output / (metre * second), NOT legacy per-tick KI */
 #define AUV_DEPTH_OUTPUT_LIMIT 400.0f
 #define AUV_DEPTH_FZ_SIGN (-1.0f) /* depth positive down, body Z positive up */

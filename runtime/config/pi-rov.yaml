@@ -93,7 +93,7 @@ web:
 
 # Independent read-only plane odometry. Do not mark verified until underwater calibration.
 localization:
-  enabled: false
+  enabled: true  # diagnostic startup; metric positions remain blocked without verified calibration
   hz: 10
   telemetry_file: /run/auv-rov/localization-input.json
   width: 320

@@ -40,7 +40,7 @@ int main(void)
     sample.sample_sequence++;
     sample.last_update_ms += 100U;
     output = AuvRovDepth_Step(&control, &sample, 1, 1, 0);
-    assert(output > 0); /* too deep -> up */
+    assert(output < 0); /* measured manual convention: negative Fz -> up */
     for (i = 0; i < 100; ++i)
         assert(AuvRovDepth_Step(&control, &sample, 1, 1, 0) == output);
     assert(AuvRovDepth_Step(&control, &sample, 0, 1, 0) == 0);
@@ -48,25 +48,26 @@ int main(void)
     sample.depth_m=-0.22f;
     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
     sample.depth_m=-0.12f;sample.sample_sequence++;sample.last_update_ms+=2000;
-    assert(fabsf(AuvRovDepth_Step(&control,&sample,1,1,0)-9.6f)<0.001f);
+    assert(fabsf(AuvRovDepth_Step(&control,&sample,1,1,0)+
+                 0.1f*AUV_ROV_DEPTH_KP+0.2f*AUV_ROV_DEPTH_KI)<0.001f);
     assert(fabsf(control.integral+0.2f)<0.001f);
     /* Persistent sinking learns upward buoyancy compensation, bounded. */
     for(i=0;i<100;i++) {
         sample.sample_sequence++; sample.last_update_ms+=1000;
         output=AuvRovDepth_Step(&control,&sample,1,1,0);
-        assert(output>0 && output<=AUV_ROV_DEPTH_OUTPUT_LIMIT);
+        assert(output<0 && output>=-AUV_ROV_DEPTH_OUTPUT_LIMIT);
         assert(fabsf(control.integral*AUV_ROV_DEPTH_KI)<=AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT+0.001f);
     }
     sample.depth_m=control.target; sample.sample_sequence++; sample.last_update_ms+=1000;
     output=AuvRovDepth_Step(&control,&sample,1,1,0);
-    assert(fabsf(output-AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT)<0.001f);
+    assert(fabsf(output+AUV_ROV_DEPTH_INTEGRAL_OUTPUT_LIMIT)<0.001f);
     /* Long sensor gaps do not accrue integral; saturation does not wind up. */
     sample.depth_m=control.target+2; sample.sample_sequence++; sample.last_update_ms+=5000;
     {float integral=control.integral;
-     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==AUV_ROV_DEPTH_OUTPUT_LIMIT);
+     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==-AUV_ROV_DEPTH_OUTPUT_LIMIT);
      assert(control.integral==integral);
      sample.sample_sequence++; sample.last_update_ms+=1000;
-     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==AUV_ROV_DEPTH_OUTPUT_LIMIT);
+     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==-AUV_ROV_DEPTH_OUTPUT_LIMIT);
      assert(control.integral==integral);}
     sample.depth_m=control.target-0.2f; sample.sample_sequence++; sample.last_update_ms+=1000;
     AuvRovDepth_Step(&control,&sample,1,1,0);
@@ -81,7 +82,7 @@ int main(void)
     assert(AuvRovDepth_Step(&control,&sample,1,1,0)==0);
     assert(fabsf(control.target-0.8f)<0.001f);
     sample.depth_m=0.7f;sample.sample_sequence++;sample.last_update_ms+=2000;
-    assert(AuvRovDepth_Step(&control,&sample,1,1,0)<0);
+    assert(AuvRovDepth_Step(&control,&sample,1,1,0)>0); /* too shallow -> down */
     assert(AuvRovDepth_Step(&control,&sample,0,1,0)==0);
     sample.depth_m=1.2f;
     assert(AuvRovDepth_Step(&control, &sample, 1, 0, NAN) == 0);
