@@ -1,0 +1,23 @@
+{
+  "read_only_application": true,
+  "range": [
+    "0x8000000",
+    "0x8006334"
+  ],
+  "candidates": [
+    {
+      "file": "firmware\\stm32\\MDK-ARM\\Copy_cup\\Copy_cup.hex",
+      "matches": false,
+      "differing_segments": 1,
+      "file_mtime": 1791238443.1664934
+    },
+    {
+      "file": "C:\\Users\\21670\\Desktop\\2026105\\八推矢量_代码开发_可改_摄像\\MDK-ARM\\Copy_cup\\Copy_cup.hex",
+      "matches": true,
+      "differing_segments": 0,
+      "file_mtime": 1791236397.5467725
+    }
+  ],
+  "state_after": "State.RUNNING",
+  "readback_sha256": "4e2971ee7444a417def1c71bf2727191f5cdb01b5061d6f3f1804ac1cf6d3ce6"
+}

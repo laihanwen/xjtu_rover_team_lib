@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+from startup import wait_for_socket
 from offline_replay import crc, frame, make_video, request
 
 
@@ -25,9 +26,9 @@ def main(binary, autonomous=False):
         root = pathlib.Path(temp)
         video = root / 'scene.avi'
         make_video(video)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
         replacements = {
-            '/dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA': f'file:{video}',
+            'csi:0': f'file:{video}',
             'device: ""': f'device: "{os.ttyname(slave)}"',
             '/run/auv-runtime/control.sock': str(root / 'control.sock'),
             '/run/auv-runtime/hls': str(root / 'hls'),
@@ -57,15 +58,15 @@ def main(binary, autonomous=False):
         path = root / 'runtime.yaml'
         path.write_text(config)
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        state = {'armed': False, 'leak': False, 'sequence': 0}
+        state = {'armed': False, 'sensor_error': False, 'sequence': 0}
 
         def emulator():
             incoming = bytearray()
             while not stop.is_set():
                 try:
                     state['sequence'] += 1
-                    flags = int(state['armed']) | (2 if state['leak'] else 0)
-                    payload = struct.pack('<IBIfffffB', state['sequence'], flags, 0,
+                    flags = int(state['armed'])
+                    payload = struct.pack('<IBIfffffB', state['sequence'], flags, 2 if state['sensor_error'] else 0,
                                           12., 1., 0., 0., 0., 0)
                     os.write(master, frame(0x80, payload))
                     ready, _, _ = select.select([master], [], [], .05)
@@ -99,10 +100,7 @@ def main(binary, autonomous=False):
         worker = threading.Thread(target=emulator, daemon=True)
         worker.start()
         try:
-            for _ in range(100):
-                if (root / 'control.sock').exists():
-                    break
-                time.sleep(.01)
+            wait_for_socket(proc, root / 'control.sock')
             for _ in range(100):
                 preflight = json.loads(request(str(root / 'control.sock'), 'status'))
                 if preflight['serial'] and preflight['camera_age_sec'] >= 0:
@@ -153,10 +151,7 @@ def main(binary, autonomous=False):
                 proc.wait(timeout=5)
                 proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL,
                                         stderr=subprocess.DEVNULL)
-                for _ in range(100):
-                    if (root / 'control.sock').exists():
-                        break
-                    time.sleep(.01)
+                wait_for_socket(proc, root / 'control.sock')
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
                     snapshot = json.loads(request(str(root / 'control.sock'), 'status'))
@@ -192,15 +187,15 @@ def main(binary, autonomous=False):
             count = len(targets)
             time.sleep(.2)
             assert all(t[1] == 0. and t[2] == 0. for t in targets[count:]), 'motion persisted after DISARM'
-            state['leak'] = True
+            state['sensor_error'] = True
             deadline = time.monotonic() + 1
             while time.monotonic() < deadline:
                 snapshot = json.loads(request(str(root / 'control.sock'), 'status'))
                 if snapshot['phase'] == 'FAULT':
                     break
                 time.sleep(.02)
-            assert snapshot['phase'] == 'FAULT' and snapshot['leak'], f'leak did not fault mission: {snapshot}'
-            state['leak'] = False
+            assert snapshot['phase'] == 'FAULT' and snapshot['error_flags'] != 0, f'sensor error did not fault mission: {snapshot}'
+            state['sensor_error'] = False
             time.sleep(.1)
             assert request(str(root / 'control.sock'), 'reset').startswith('OK')
             assert request(str(root / 'control.sock'), 'start').startswith('OK')

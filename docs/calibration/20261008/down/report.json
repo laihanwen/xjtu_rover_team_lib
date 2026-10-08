@@ -1,0 +1,1263 @@
+{
+  "image_size": [
+    320,
+    240
+  ],
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "model": "plumb_bob",
+  "sampled_frames": 218,
+  "detections": 159,
+  "diverse_views": 146,
+  "training_views": 116,
+  "rejected_training_views": 0,
+  "holdout_views": 30,
+  "rms_px": 0.09294464994534853,
+  "holdout_rms_px": 0.08978386119452404,
+  "holdout_errors_px": [
+    0.06319662183523178,
+    0.1167319044470787,
+    0.12310298532247543,
+    0.067186139523983,
+    0.07205241918563843,
+    0.06519223749637604,
+    0.10445665568113327,
+    0.0604182630777359,
+    0.12328983843326569,
+    0.0639653205871582,
+    0.0878753513097763,
+    0.06256309151649475,
+    0.08592791110277176,
+    0.07102584838867188,
+    0.07459749281406403,
+    0.07088671624660492,
+    0.06552968919277191,
+    0.08261841535568237,
+    0.08117714524269104,
+    0.09671295434236526,
+    0.14201390743255615,
+    0.095027394592762,
+    0.0864967629313469,
+    0.08936280757188797,
+    0.0797133594751358,
+    0.10741648077964783,
+    0.09852283447980881,
+    0.07128608226776123,
+    0.06923065334558487,
+    0.1318863332271576
+  ],
+  "camera_matrix": [
+    [
+      413.2923092526209,
+      0.0,
+      159.53937104149475
+    ],
+    [
+      0.0,
+      418.54172784620357,
+      95.11590719479291
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion_coefficients": [
+    0.674561075946785,
+    -0.7099226358925659,
+    -0.07017894158087441,
+    0.0008090055501311443,
+    -0.07124098219367185
+  ],
+  "intrinsic_std_deviations": [
+    1.3602613046154448,
+    1.529387375198857,
+    0.4132165530148779,
+    0.9382072859663922,
+    0.010762762220573062,
+    0.08929489020075587,
+    0.002160734017696426,
+    0.0006448903625288293,
+    0.3417396005849588,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_view_errors_px": [
+    0.06247675549455095,
+    0.09773098431609327,
+    0.08088848193294511,
+    0.10207804752539416,
+    0.10628822070930953,
+    0.12880147648349805,
+    0.13941882894161808,
+    0.12343911842587836,
+    0.1484646462060584,
+    0.11660711391623924,
+    0.06451871425060758,
+    0.06604285456075838,
+    0.06905750576672928,
+    0.06181784496093658,
+    0.056059937776135986,
+    0.06570835782361457,
+    0.061625966121614126,
+    0.057174934562664786,
+    0.0658914002995427,
+    0.06850006465300405,
+    0.0785694641179439,
+    0.06013404261748235,
+    0.09794652725623192,
+    0.12196415788171729,
+    0.08444664467034539,
+    0.07279694097202334,
+    0.12222968074382615,
+    0.09542369242334982,
+    0.05766966854916764,
+    0.06623097812582267,
+    0.05956295633087446,
+    0.07437466443226211,
+    0.06020082431501705,
+    0.06680857755762405,
+    0.06119773048953115,
+    0.06349654289676034,
+    0.08474102691786133,
+    0.09562350277082715,
+    0.12382679637527891,
+    0.10692472603841405,
+    0.10964971826575369,
+    0.07018414039382866,
+    0.05820880676027709,
+    0.06168918639810385,
+    0.14074988252694232,
+    0.07913529162924911,
+    0.06108632927572652,
+    0.06523118838177842,
+    0.06913897031209171,
+    0.09367624763822519,
+    0.06585926253326116,
+    0.07367809610430956,
+    0.07408949073149072,
+    0.0935616189657885,
+    0.09995436472435817,
+    0.07971783362921274,
+    0.0704371239370686,
+    0.0667369693401984,
+    0.07458059383699532,
+    0.1339257996114328,
+    0.06836610572547541,
+    0.06684870973160231,
+    0.07237820731337655,
+    0.0637677189005529,
+    0.07771700129722785,
+    0.07878417022110629,
+    0.06571557752411057,
+    0.11662859344582452,
+    0.074817100095111,
+    0.06557587263954107,
+    0.0684277535436849,
+    0.059534976069708805,
+    0.07582954127867848,
+    0.0562817643594903,
+    0.0713104526192491,
+    0.07380998013589729,
+    0.0687823246208768,
+    0.05747932376519152,
+    0.06530280603708942,
+    0.0584568662969818,
+    0.15105178380711343,
+    0.132679175912022,
+    0.15366912930315094,
+    0.16270543119933037,
+    0.04759426098683897,
+    0.07665227799524192,
+    0.10529955253162401,
+    0.1366203225271236,
+    0.05964884394951423,
+    0.05966914806104538,
+    0.10719430151745353,
+    0.1302191769824108,
+    0.17057381966196136,
+    0.11521341503309239,
+    0.09586747198392652,
+    0.06726660885281942,
+    0.06864450459217449,
+    0.07713646644113134,
+    0.07171333838871473,
+    0.0706914895077775,
+    0.08637503284410143,
+    0.0830747135015005,
+    0.07068384406963041,
+    0.07768646743334248,
+    0.0904382438655539,
+    0.24476798414988565,
+    0.05958894883332194,
+    0.08320737054045349,
+    0.06559271903787503,
+    0.05669414024522793,
+    0.07902211916675063,
+    0.08242771802100247,
+    0.0670815688675075,
+    0.06558837172691137,
+    0.1194015683183189,
+    0.22573096007202095
+  ],
+  "training_sources": [
+    {
+      "video": "output_100002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_100003.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200001.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200005.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200006.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200010.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200014.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200015.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200017.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200018.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200019.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200020.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200023.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200024.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200025.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200027.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200029.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200030.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200031.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200032.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200035.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200036.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300001.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300010.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300012.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300013.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300023.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300026.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300028.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300029.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300031.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300033.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300034.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300036.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300038.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300039.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300040.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300041.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300043.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300044.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300045.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300046.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300049.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300050.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300051.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300052.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300058.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300060.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400004.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400005.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400009.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400017.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400018.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400019.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400020.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400022.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400023.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400024.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400025.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400027.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400028.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400029.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400030.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400032.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400033.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400034.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400035.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400059.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500006.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500018.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500022.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500025.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500049.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600003.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600004.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600009.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600050.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600053.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600056.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600059.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600060.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700001.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700003.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700004.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700005.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700006.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700010.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700012.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700014.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700016.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700017.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700018.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700021.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700022.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700023.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700024.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700026.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700027.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700028.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700029.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "holdout_sources": [
+    {
+      "video": "output_100001.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200003.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200009.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200016.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200021.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200028.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_200034.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300009.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300014.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300030.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300037.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300042.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300048.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_300057.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400006.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400016.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400021.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400026.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400031.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_400056.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500016.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_500056.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_600054.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700013.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700020.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700025.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "output_700030.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "rectified_camera_matrix": [
+    [
+      461.0339369195245,
+      0.0,
+      159.6548195833806
+    ],
+    [
+      0.0,
+      451.24859327862134,
+      87.43444323581697
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "rectified_roi": [
+    0,
+    0,
+    319,
+    239
+  ]
+}

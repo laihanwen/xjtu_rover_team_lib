@@ -9,9 +9,10 @@
 #include <stddef.h>
 
 #include "AuvProtocol.h"
+#include "AuvRovConfig.h"
 
-#define AUV_MOTION_MAX_ABS_VELOCITY_MPS 5.0f
-#define AUV_MOTION_MAX_DEPTH_M 100.0f
+#define AUV_MOTION_MAX_ABS_VELOCITY_MPS (AUV_AUTONOMOUS_PROFILE ? 0.2f : 5.0f)
+#define AUV_MOTION_MAX_DEPTH_M (AUV_AUTONOMOUS_PROFILE ? AUV_AUTONOMY_MAX_DEPTH_M : 100.0f)
 #define AUV_MOTION_PI 3.141592654f
 
 static volatile AuvMotionTarget published;
@@ -80,7 +81,7 @@ uint8_t AuvMotionTarget_CopyFresh(uint32_t now_ms, AuvMotionTarget *target) {
 
   if (target == NULL)
     return 0U;
-  do {
+  for (;;) {
     before = publish_generation;
     after = before;
     if ((before & 1U) != 0U)
@@ -89,7 +90,8 @@ uint8_t AuvMotionTarget_CopyFresh(uint32_t now_ms, AuvMotionTarget *target) {
     timestamp = last_target_ms;
     *target = published;
     after = publish_generation;
-  } while ((before != after) || ((after & 1U) != 0U));
+    if (before == after && (after & 1U) == 0U) break;
+  }
   return ((seen != 0U) &&
           ((uint32_t)(now_ms - timestamp) <= AUV_MOTION_TARGET_TIMEOUT_MS))
              ? 1U

@@ -1,0 +1,39 @@
+{
+  "read_only_application": true,
+  "atomic_snapshot": false,
+  "motor_power_off_confirmed": true,
+  "phases": [
+    {
+      "label": "水平静止",
+      "skipped": false,
+      "sample_count": 70,
+      "mean_pitch": -0.5619111248425075,
+      "mean_roll": -0.2856687154088702,
+      "mean_yaw": -6.872537442616054
+    },
+    {
+      "label": "机头抬高",
+      "skipped": false,
+      "sample_count": 59,
+      "mean_pitch": -6.547649626004493,
+      "mean_roll": 0.21084716107885718,
+      "mean_yaw": -5.137506541559252
+    },
+    {
+      "label": "左侧抬高",
+      "skipped": false,
+      "sample_count": 60,
+      "mean_pitch": -0.4469134986400604,
+      "mean_roll": 8.428736972808839,
+      "mean_yaw": -3.9768840114275616
+    },
+    {
+      "label": "机头右转（水平）",
+      "skipped": false,
+      "sample_count": 65,
+      "mean_pitch": -0.9504034913503207,
+      "mean_roll": -0.4873536229133606,
+      "mean_yaw": -94.0632566011869
+    }
+  ]
+}

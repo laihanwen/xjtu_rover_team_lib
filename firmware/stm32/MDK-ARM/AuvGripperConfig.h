@@ -9,7 +9,7 @@
 /*
  * Keep this gate at zero until OPEN/CLOSE pulse widths have been measured on
  * the unloaded mechanism. With the gate disabled, commands are rejected and
- * PA8/TIM1_CH1 stays at the neutral pulse.
+ * PA8/TIM1_CH1 PWM stays disabled. A neutral pulse is a position command.
  */
 #define AUV_GRIPPER_CALIBRATED          0U
 
@@ -23,6 +23,13 @@
 
 /* Mate_Task runs every 10 ms. 10 us/tick gives a deliberately gentle ramp. */
 #define AUV_GRIPPER_SLEW_US_PER_TICK      10U
+
+/* TODO: measured safe start/excursion pulses, not guessed degrees. */
+#define AUV_GRIPPER_BOOT_TEST_ENABLED      0U
+#define AUV_GRIPPER_BOOT_START_US          0U
+#define AUV_GRIPPER_BOOT_EXCURSION_US      0U
+#define AUV_GRIPPER_BOOT_WAIT_MS        1000U
+#define AUV_GRIPPER_BOOT_HOLD_MS         300U
 
 /* Existing remote mapping: SB selects/enables the gripper, SA requests state. */
 #define AUV_GRIPPER_RC_CLOSE_MAX          80U

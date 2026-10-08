@@ -1,8 +1,9 @@
 # auv_mapping
 
-P8 structured 3×3 field mapper. The package detects the yellow outer border,
-validates the two internal horizontal and vertical divisions, rectifies the
-view with a homography, and publishes a deterministic row-major semantic map.
+P8 structured 3×3 field mapper. The package detects the 3×3 grid frame (three
+white edges plus one yellow edge), validates the two internal horizontal and
+vertical divisions, orients the rectified view so the yellow edge becomes the
+map's bottom edge, and publishes a deterministic row-major semantic map.
 
 P9 consumes `/mapping/rectified_image`. This node remains the sole semantic-map
 publisher and fuses fresh stable cone detections into `circle_cone` and
@@ -38,11 +39,14 @@ ros2 run auv_mapping semantic_mapper_node --ros-args \
 ```
 
 The default pipeline applies CLAHE luminance enhancement, HSV yellow
-segmentation, morphological filtering, convex quadrilateral validation,
-homography, and edge support checks around the four expected internal grid
-lines. All thresholds are ROS parameters in `auv_bringup/config/mapping.yaml`.
-Tune them from recorded underwater video rather than embedding pool-specific
-values in source code.
+segmentation combined with a white mask over low-saturation, high-value pixels
+(so the three white edges plus one yellow edge form a closed quadrilateral
+against the non-white pool floor), morphological filtering, convex quadrilateral
+validation, yellow-edge orientation, homography, and edge support checks around
+the four expected internal grid lines. All
+thresholds are ROS parameters in `auv_bringup/config/mapping.yaml`. Tune them
+from recorded underwater video rather than embedding pool-specific values in
+source code.
 
 ## Validate
 
@@ -53,5 +57,8 @@ rqt_image_view /mapping/debug_image
 ```
 
 `complete=true` requires three consecutive geometrically consistent frames, a completed temporal
-cone scan, and at least `expected_cone_count` targets (competition default: four). A plain yellow
-quadrilateral without two horizontal and two vertical internal divisions is rejected.
+cone scan, confirmed `orientation_valid`, and exactly `expected_cone_count` classified targets (competition default: four). A grid frame
+without two horizontal and two vertical internal divisions is rejected, and the generated map is
+oriented so the single yellow edge sits at the bottom.
+
+White edges require both single_yellow_edge=true and white_grid_edges=true. The core/runtime defaults retain the legacy mode; ROS mapping.yaml and Pi AUV templates explicitly select white edges. Set white_grid_edges=false for black-edge scenes. yellow_oriented_frames controls direction confirmation, which resets on rejected frames and corner changes. The A2 metric pose uses the same orientation_valid and yellow_edge fields; no second rotation is applied.

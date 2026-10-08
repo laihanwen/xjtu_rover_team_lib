@@ -23,6 +23,7 @@
 /* USER CODE BEGIN 0 */
 
 #include "RC.h"
+#include "imu.h"
 
 /* USER CODE END 0 */
 
@@ -273,6 +274,10 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 /* USER CODE BEGIN 1 */
 #include "AuvLink.h"
 #include "AuvRcInput.h"
+#include "AuvRovConfig.h"
+#include "AuvRovDepth.h"
+static AuvM10Parser m10_parser;
+static uint8_t usart3_depth_byte;
 // 定义正确的帧长度（根据协议最大262字节）
 #define IMU229_MAX_FRAME_LEN 262
 
@@ -283,33 +288,58 @@ uint8_t usart2_rx_byte = 0;
 //**回调函数**//
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
-        // 直接获取接收到的字节（HAL库已放入缓冲区）
-        // 注意：中断触发时，接收到的字节在 usart1_rx_buf[usart1_rx_cnt] 中
-        uint8_t received_byte = usart1_rx_buf[usart1_rx_cnt];   
-        // 传递给状态机处理
-        h30_data_callback(received_byte);      
-        // 移动到下一个位置
-        usart1_rx_cnt = (usart1_rx_cnt + 1) % IMU229_MAX_FRAME_LEN;     
-        // 继续接收下一个字节
-        HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[usart1_rx_cnt], 1);
+        uint8_t received_byte = usart1_rx_buf[0];
+        /* Re-arm before checksum/Euler work at 460800 baud. */
+        if (HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[0], 1U) != HAL_OK)
+            imu_rx_restart_failures++;
+        h30_data_callback(received_byte);
     }
 		if (huart->Instance == USART2){
-			AuvRcInput_PushByte(usart2_rx_byte, HAL_GetTick());
+#if AUV_CURRENT_UART_LAYOUT
+            AuvLink_RxComplete(huart);
+#else
+			#if AUV_UART2_M10_ENABLED
+            float depth;
+            int result = AuvM10_Push(&m10_parser, usart2_rx_byte, &depth);
+            if (result == 1) (void)AuvLink_UpdateDepth(depth);
+            else if (result < 0) AuvLink_InvalidateDepth();
+#else
+            AuvRcInput_PushByte(usart2_rx_byte, HAL_GetTick());
+#endif
 		    HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1);
+#endif
 	  }
 		if (huart->Instance == USART3){
-			AuvLink_RxComplete(huart);
+#if AUV_CURRENT_UART_LAYOUT
+            uint8_t byte = usart3_depth_byte;
+            float depth;
+            int result;
+            (void)HAL_UART_Receive_IT(&huart3, &usart3_depth_byte, 1U);
+            result = AuvM10_Push(&m10_parser, byte, &depth);
+            if (result == 1) (void)AuvLink_UpdateDepth(depth);
+            else if (result < 0) AuvLink_InvalidateDepth();
+#else
+            AuvLink_RxComplete(huart);
+#endif
 		}
 }
 
 // 初始化接收
 void USART1_Receive_IT_Init(void) {
     usart1_rx_cnt = 0;
-    HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[usart1_rx_cnt], 1);
+    if (HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[0], 1U) != HAL_OK)
+        imu_rx_restart_failures++;
 }
 void USART2_Receive_IT_Init(void) {
   AuvRcInput_Init();
+  AuvM10_Reset(&m10_parser);
+#if AUV_CURRENT_UART_LAYOUT
+  huart3.Init.BaudRate = 115200U;
+  if (HAL_UART_Init(&huart3) != HAL_OK) Error_Handler();
+  (void)HAL_UART_Receive_IT(&huart3, &usart3_depth_byte, 1U);
+#else
   HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1);
+#endif
 }
 
 void USART1_SetBaudRate_460800(void) {
@@ -326,5 +356,49 @@ void USART1_SetBaudRate_460800(void) {
 	if (HAL_UART_Init(&huart1) != HAL_OK) {
         Error_Handler();
     }
+}
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->ErrorCode & HAL_UART_ERROR_ORE)
+        __HAL_UART_CLEAR_OREFLAG(huart);
+    if (huart->Instance == USART1) {
+        imu_uart_errors++;
+        h30_reset_rx();
+        /* PE/FE/NE may leave reception active; never move its destination. */
+        if (huart1.RxState == HAL_UART_STATE_READY &&
+            HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[0], 1U) != HAL_OK)
+            imu_rx_restart_failures++;
+    } else if (huart->Instance == USART2) {
+#if AUV_CURRENT_UART_LAYOUT
+        AuvLink_RxError(huart);
+#else
+        AuvRcInput_Init();
+        AuvM10_Reset(&m10_parser);
+#if AUV_UART2_M10_ENABLED
+        AuvLink_InvalidateDepth();
+#endif
+        (void)HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1U);
+#endif
+    } else {
+#if AUV_CURRENT_UART_LAYOUT
+        AuvM10_Reset(&m10_parser);
+        AuvLink_InvalidateDepth();
+        if (huart3.RxState == HAL_UART_STATE_READY)
+            (void)HAL_UART_Receive_IT(&huart3,&usart3_depth_byte,1U);
+#else
+        AuvLink_RxError(huart);
+#endif
+    }
+}
+void USART1_Receive_Service(void)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (huart1.RxState == HAL_UART_STATE_READY) {
+        h30_reset_rx();
+        if (HAL_UART_Receive_IT(&huart1, &usart1_rx_buf[0], 1U) != HAL_OK)
+            imu_rx_restart_failures++;
+    }
+    __set_PRIMASK(primask);
 }
 /* USER CODE END 1 */

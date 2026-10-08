@@ -1,0 +1,16 @@
+{
+  "target_user_message": "正常运动时的前后翘头依旧严重，并且航向锁定也几乎没有发挥左右",
+  "target_message_utc": "2026-10-06T10:36:44.910Z",
+  "historical_sha256": "5af6fa26c3f0e4e983c6b54ae44ab9b839d430ab54275882156173ff8f9fff27",
+  "rebuilt_sha256": "5af6fa26c3f0e4e983c6b54ae44ab9b839d430ab54275882156173ff8f9fff27",
+  "compile_errors": 0,
+  "compile_warnings": 0,
+  "host_tests_passed": 14,
+  "device_flash_completed": false,
+  "pi_deployment_completed": false,
+  "blockers": [
+    "No available debug probes",
+    "Pi SSH connection timed out"
+  ],
+  "backup": "build/rollback-before-103644"
+}

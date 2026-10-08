@@ -32,5 +32,31 @@ int main(void)
     AuvRcInput_Init();
     PushFrame(expected, UINT32_MAX - 5U);
     assert(AuvRcInput_CopyFreshFrame(4U, actual) == 1U);
+    AuvRcInput_Init();
+    {
+        uint8_t frame[11]={0xa5,127,127,127,127,127,0,2,0,0,0};
+        assert(AuvRcInput_AcceptCrc(1U,frame,1U,100U));
+        assert(AuvRcInput_CanArm(100U));
+        assert(!AuvRcInput_AcceptCrc(1U,frame,1U,101U));
+        assert(!AuvRcInput_CanArm(351U));
+        frame[1]=200U;
+        assert(AuvRcInput_AcceptCrc(2U,frame,1U,352U));
+        assert(!AuvRcInput_CanArm(352U));
+        frame[1]=127U;
+        assert(AuvRcInput_AcceptCrc(3U,frame,0U,353U));
+        assert(!AuvRcInput_CanArm(353U));
+        frame[7]=1U;
+        assert(AuvRcInput_AcceptCrc(4U,frame,1U,354U));
+        frame[5]=255U; frame[10]=1U;
+        assert(AuvRcInput_AcceptCrc(5U,frame,1U,355U));
+        assert(AuvRcInput_CanArm(355U));
+        frame[7]=2U;
+        assert(!AuvRcInput_AcceptCrc(6U,frame,1U,356U));
+        frame[7]=1U; frame[10]=0U;
+        assert(!AuvRcInput_AcceptCrc(6U,frame,1U,356U));
+        frame[5]=127U;frame[7]=0U;
+        assert(AuvRcInput_AcceptCrc(6U,frame,0U,356U));
+        assert(!AuvRcInput_CanArm(356U));
+    }
     return 0;
 }

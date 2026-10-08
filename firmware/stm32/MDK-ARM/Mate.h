@@ -9,6 +9,7 @@
 #include "PID.h"
 #include "Motor.h"
 #include "Move.h"
+#include "AuvAutonomyConfig.h"
 
 /*
  * Open-loop velocity feed-forward gains. They are deliberately compile-time
@@ -16,15 +17,26 @@
  * the final hull. They never bypass the common +/-450 PWM deviation limit.
  */
 #ifndef AUV_SURGE_PWM_PER_MPS
+#if AUV_AUTONOMOUS_PROFILE
+#define AUV_SURGE_PWM_PER_MPS AUV_AUTONOMY_SURGE_PWM_PER_TARGET
+#else
 #define AUV_SURGE_PWM_PER_MPS 300.0f
 #endif
+#endif
 #ifndef AUV_SWAY_PWM_PER_MPS
+#if AUV_AUTONOMOUS_PROFILE
+#define AUV_SWAY_PWM_PER_MPS AUV_AUTONOMY_SWAY_PWM_PER_TARGET
+#else
 #define AUV_SWAY_PWM_PER_MPS 300.0f
+#endif
 #endif
 
 void Mate_Task(void);
 void Mate_Init(void);
 void Mate_GetThrusterOutputs(float output[VECTOR_THRUSTER_COUNT]);
+/* Last completed control iteration: angles, errors, gated PID moments, rates. */
+typedef struct { uint32_t tick_ms; uint8_t flags; float values[14]; uint8_t heading_state, depth_state, motion_scale; } MatePidSnapshot;
+void Mate_GetPidSnapshot(MatePidSnapshot *snapshot);
 /* 保留的 PWM 限幅接口，范围由 Mate.c 中的原有参数确定。 */
 float constrain(float a);
 

@@ -23,6 +23,7 @@ int main() {
   require(auv_core::decode_status(bytes,status) && status.telemetry_valid && !status.voltage_valid);
   auv_mapping::GridResult grid;
   grid.stable = true;
+  grid.orientation_valid = true;
   auv_vision::ConeObservation cone;
   cone.shape = auv_vision::ConeShape::kCircle; cone.row = 0; cone.col = 1; cone.confidence = 0.9F;
   auto map = auv_core::fuse_semantic_map(grid,{cone},true,{},1);

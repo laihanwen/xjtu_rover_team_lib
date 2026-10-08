@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from startup import wait_for_socket
 
 
 def crc(data):
@@ -39,8 +40,8 @@ def main(binary):
     device = os.ttyname(slave)
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
-        config = config.replace('/dev/v4l/by-id/REPLACE_WITH_REAL_CAMERA', '/dev/v4l/by-id/NO_CAMERA')
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
+        config = config.replace('csi:0', '/dev/v4l/by-id/NO_CAMERA')
         config = config.replace('device: ""', f'device: "{device}"')
         config = config.replace('/run/auv-runtime/control.sock', str(root / 'control.sock'))
         config = config.replace('/run/auv-runtime/hls', str(root / 'hls'))
@@ -52,12 +53,7 @@ def main(binary):
         path.write_text(config)
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
-            for _ in range(100):
-                if (root / 'control.sock').exists():
-                    break
-                time.sleep(.01)
-            else:
-                raise AssertionError('socket did not appear')
+            wait_for_socket(proc, root / 'control.sock')
             received = bytearray()
             status = struct.pack('<IBIfffffB', 1, 0, 0, 12., 1., 0., 0., 0., 0)
             assert len(status) == 30

@@ -1,0 +1,10 @@
+{
+  "firmware": "firmware\\stm32\\MDK-ARM\\Copy_cup\\Copy_cup.hex",
+  "hex_sha256": "48e7746273c50949f48db141682ada5de01dd0adb5e4d8cfdef2a8c3845a47d8",
+  "target": "stm32f405rg",
+  "motor_power_off_confirmed": true,
+  "arm_sent": false,
+  "verified": true,
+  "algorithm_ram": "SRAM 0x20000000..0x2001ffff",
+  "state_after_reset": "State.RUNNING"
+}

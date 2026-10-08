@@ -39,6 +39,8 @@ enum class MissionPhase
   kRotateValve,
   kReturnHome,
   kSurface,
+  kSurfaceForCones,
+  kRelocalizeSurface,
   kPaused,
   kComplete,
   kFault,
@@ -73,6 +75,10 @@ struct MissionFsmConfig
   double status_timeout_sec{1.0};
   bool allow_armed_during_visit{false};
   bool full_mission{false};
+  bool allow_armed_during_observation{false};
+  bool stop_after_map{false};
+  bool surface_before_visit{false};
+  double surface_relocalize_timeout_sec{15.0};
 };
 
 struct CommandResult
@@ -99,7 +105,7 @@ public:
   void tick(double now_sec);
   void force_fault(const std::string & detail, double now_sec);
   void update_status(
-    bool connected, bool armed, bool leak_detected, std::uint32_t error_flags,
+    bool connected, bool armed, std::uint32_t error_flags,
     double now_sec);
   void update_apriltag(bool found, double now_sec);
   void update_map(bool complete, bool all_cones_visited, double now_sec);
@@ -110,6 +116,7 @@ public:
   void update_valve(bool found, bool aligned, bool rotated, double now_sec);
   void update_home(bool reached, double now_sec);
   void update_surface(bool surfaced, double now_sec);
+  void update_surface_pose(bool ready, double now_sec);
 
   MissionSnapshot snapshot() const;
 
@@ -135,7 +142,6 @@ private:
   double surface_received_sec_{-1.0};
   bool connected_{false};
   bool armed_{false};
-  bool leak_detected_{false};
   std::uint32_t error_flags_{0U};
   bool apriltag_found_{false};
   bool map_complete_{false};
@@ -152,6 +158,8 @@ private:
   bool valve_rotated_{false};
   bool home_reached_{false};
   bool surfaced_{false};
+  bool surface_pose_ready_{false};
+  double surface_pose_received_sec_{-1.0};
 };
 
 std::string mission_phase_name(MissionPhase phase);

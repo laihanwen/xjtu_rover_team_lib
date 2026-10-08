@@ -1,0 +1,124 @@
+camera_front:
+  enabled: true
+  source: /dev/v4l/by-id/usb-HD_Camera_Manufacturer_USB_2.0_Camera-video-index0
+  width: 320
+  height: 240
+  fps: 30
+  # Provisional front calibration: visual preview only; not verified for metric pose.
+  preview_rectify: true
+  calibration_width: 320
+  calibration_height: 240
+  calibration_id: underwater-front-trial-20261008
+  calibration_quality: provisional_unstable_intrinsics
+  camera_matrix: [330.922779006695, 0.0, 148.05861974792015, 0.0, 351.869456969992, 141.7192514430644, 0.0, 0.0, 1.0]
+  distortion_coefficients: [-0.2574423751465809, -1.258184396225997, -0.07397539006050448, 0.0024943819270529946, 5.38508326862477]
+camera:
+  # CSI down camera; measured underwater intrinsics below.
+  source: csi:0
+  width: 320
+  height: 240
+  fps: 30
+  pixel_format: MJPG
+  # Underwater calibration 2026-10-08, original 320x240 pixels.
+  preview_rectify: true
+  calibration_width: 320
+  calibration_height: 240
+  calibration_id: underwater-down-20261008
+  calibration_quality: same_session_validated
+  camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
+  distortion_coefficients: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
+serial:
+  device: ""
+  baud: 115200
+control:
+  socket: /run/auv-runtime/control.sock
+operation:
+  # debug requires explicit auvctl commands. autonomous starts without an operator.
+  mode: debug
+  auto_start: false
+  auto_arm: false
+  startup_delay_sec: 5.0
+  startup_timeout_sec: 30.0
+  startup_stable_sec: 1.0
+vision:
+  expected_cones: 4
+  apriltag_family: tag36h11
+  grid_stable_frames: 3
+  cone_minimum_confidence: 0.72
+  cone_history_size: 5
+  cone_required_votes: 3
+  cone_clear_votes: 3
+planning:
+  maximum_targets: 8
+  target_object_types: [circle_cone, square_cone]
+  blocked_object_types: [obstacle, forbidden]
+mission:
+  profile: task_one
+  self_check_timeout_sec: 10.0
+  apriltag_timeout_sec: 30.0
+  map_timeout_sec: 30.0
+  planning_timeout_sec: 10.0
+  cone_visit_timeout_sec: 120.0
+  cucumber_search_timeout_sec: 60.0
+  cucumber_align_timeout_sec: 30.0
+  gripper_timeout_sec: 15.0
+  transport_timeout_sec: 120.0
+  valve_search_timeout_sec: 60.0
+  valve_align_timeout_sec: 30.0
+  valve_rotate_timeout_sec: 30.0
+  return_home_timeout_sec: 120.0
+  surface_timeout_sec: 60.0
+safety:
+  status_timeout_sec: 0.5
+  frame_timeout_sec: 0.5
+  pose_timeout_sec: 0.5
+  control_watchdog_timeout_sec: 0.25
+  actuator_status_timeout_sec: 0.5
+motion:
+  motion_commands_enabled: false
+  directions_calibrated: false
+  limits_calibrated: false
+  surge_from_row: 0.0
+  surge_from_col: 0.0
+  sway_from_row: 0.0
+  sway_from_col: 0.0
+  maximum_speed: 0.1
+  arrival_tolerance: 0.15
+  arrival_stable_ticks: 5
+logging:
+  events: /var/log/auv-runtime/events.ndjson
+  debug_dir: /var/log/auv-runtime/debug
+  max_event_bytes: 10485760
+video:
+  # MJPEG live preview and recording do not require the HLS encoder.
+  enabled: false
+  directory: /run/auv-runtime/hls
+  encoder: libx264
+  software_fallback_enabled: false
+  width: 640
+  height: 240
+  fps: 30
+  bitrate_kbps: 2000
+  segment_time_sec: 0.5
+web:
+  bind: 192.168.137.150
+  port: 8080
+  assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: true  # diagnostic startup; metric positions remain blocked without verified calibration
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 320
+  height: 240
+  camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
+  distortion: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false

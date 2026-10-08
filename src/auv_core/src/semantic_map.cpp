@@ -15,7 +15,10 @@ SemanticMap fuse_semantic_map(const auv_mapping::GridResult& geometry,
     if (!slot || slot->confidence < cone.confidence) slot = &cone;
   }
   result.cone_count = std::count_if(best.begin(), best.end(), [](auto* p) { return p != nullptr; });
-  result.complete = geometry.stable && cones_stable && result.cone_count >= expected_cones;
+  const bool classified = std::all_of(best.begin(),best.end(),[](const auto* cone) {
+    return !cone || cone->shape == auv_vision::ConeShape::kCircle || cone->shape == auv_vision::ConeShape::kSquare;
+  });
+  result.complete = geometry.stable && geometry.orientation_valid && cones_stable && classified && result.cone_count == expected_cones;
   result.grid.complete = result.complete;
   for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) {
     const auto* cone = best[static_cast<std::size_t>(r * 3 + c)];

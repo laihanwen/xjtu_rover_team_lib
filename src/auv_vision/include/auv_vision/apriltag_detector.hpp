@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "opencv2/aruco.hpp"
+#include "opencv2/objdetect/aruco_detector.hpp"
 #include "opencv2/core/mat.hpp"
 #include "opencv2/core/types.hpp"
 

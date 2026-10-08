@@ -110,8 +110,8 @@ int main(void)
 	USART1_SetBaudRate_460800();// 设置H30的波特率
   // 启动串口接收中断
 	USART1_Receive_IT_Init();
-	USART2_Receive_IT_Init();
 	AuvLink_Init();
+	USART2_Receive_IT_Init();
 	Mate_Init();
 
   /* USER CODE END 2 */
@@ -121,6 +121,7 @@ int main(void)
   while (1)
   {
 		//进入主循环
+    USART1_Receive_Service();
     AuvLink_Task();
     Mate_Task();
     /* USER CODE END WHILE */

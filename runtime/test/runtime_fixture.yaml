@@ -1,0 +1,109 @@
+camera:
+  # Down camera is CSI; calibrate intrinsics for this camera.
+  source: csi:0
+  width: 640
+  height: 480
+  fps: 30
+  pixel_format: MJPG
+  camera_matrix: []
+  distortion_coefficients: []
+camera_front:
+  enabled: false
+  source: /dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA
+  width: 320
+  height: 240
+  fps: 30
+serial:
+  device: ""
+  baud: 115200
+control:
+  socket: /run/auv-runtime/control.sock
+operation:
+  # debug requires explicit auvctl commands. autonomous starts without an operator.
+  mode: debug
+  auto_start: false
+  auto_arm: false
+  startup_delay_sec: 5.0
+  startup_timeout_sec: 30.0
+  startup_stable_sec: 1.0
+vision:
+  expected_cones: 4
+  apriltag_family: tag36h11
+  grid_stable_frames: 3
+  cone_minimum_confidence: 0.72
+  cone_history_size: 5
+  cone_required_votes: 3
+  cone_clear_votes: 3
+planning:
+  maximum_targets: 8
+  target_object_types: [circle_cone, square_cone]
+  blocked_object_types: [obstacle, forbidden]
+mission:
+  profile: task_one
+  self_check_timeout_sec: 10.0
+  apriltag_timeout_sec: 30.0
+  map_timeout_sec: 30.0
+  planning_timeout_sec: 10.0
+  cone_visit_timeout_sec: 120.0
+  cucumber_search_timeout_sec: 60.0
+  cucumber_align_timeout_sec: 30.0
+  gripper_timeout_sec: 15.0
+  transport_timeout_sec: 120.0
+  valve_search_timeout_sec: 60.0
+  valve_align_timeout_sec: 30.0
+  valve_rotate_timeout_sec: 30.0
+  return_home_timeout_sec: 120.0
+  surface_timeout_sec: 60.0
+safety:
+  status_timeout_sec: 0.5
+  frame_timeout_sec: 0.5
+  pose_timeout_sec: 0.5
+  control_watchdog_timeout_sec: 0.25
+  actuator_status_timeout_sec: 0.5
+motion:
+  motion_commands_enabled: false
+  directions_calibrated: false
+  limits_calibrated: false
+  surge_from_row: 0.0
+  surge_from_col: 0.0
+  sway_from_row: 0.0
+  sway_from_col: 0.0
+  maximum_speed: 0.1
+  arrival_tolerance: 0.15
+  arrival_stable_ticks: 5
+logging:
+  events: /var/log/auv-runtime/events.ndjson
+  debug_dir: /var/log/auv-runtime/debug
+  max_event_bytes: 10485760
+video:
+  enabled: true
+  directory: /run/auv-runtime/hls
+  encoder: h264_v4l2m2m
+  software_fallback_enabled: false
+  width: 640
+  height: 480
+  fps: 30
+  bitrate_kbps: 2000
+  segment_time_sec: 0.5
+web:
+  bind: 192.168.137.201
+  port: 8080
+  assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: false
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 320
+  height: 240
+  camera_matrix: []
+  distortion: []
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false

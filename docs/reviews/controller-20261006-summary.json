@@ -1,0 +1,60 @@
+{
+  "device": {
+    "name": "Radiomaster Pocket Joystick",
+    "guid": "030007aa09120000544f000000000000",
+    "axes": 8,
+    "buttons": 24,
+    "hats": 0
+  },
+  "duration_sec": 59.984,
+  "axis_ranges": [
+    {
+      "axis": 0,
+      "min": -0.98828,
+      "max": 0.99997
+    },
+    {
+      "axis": 1,
+      "min": -0.99609,
+      "max": 0.99997
+    },
+    {
+      "axis": 2,
+      "min": -0.98828,
+      "max": 0.99997
+    },
+    {
+      "axis": 3,
+      "min": -0.99219,
+      "max": 0.99997
+    },
+    {
+      "axis": 4,
+      "min": 0.94028,
+      "max": 0.94028
+    },
+    {
+      "axis": 5,
+      "min": -1.0,
+      "max": 0.99997
+    },
+    {
+      "axis": 6,
+      "min": -1.0,
+      "max": 0.99997
+    },
+    {
+      "axis": 7,
+      "min": 0.0,
+      "max": 0.0
+    }
+  ],
+  "buttons_with_changes": [
+    0,
+    1,
+    2
+  ],
+  "physical_order_confirmed": false,
+  "axis4_fixed": true,
+  "forwarded_to_ROV": false
+}

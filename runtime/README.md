@@ -1,18 +1,26 @@
-# 轻量级 mission-one 运行时
+# 树莓派轻量 Runtime
+
+2026-10-08 的水下标定已接入默认配置与 ROV/AUV 三个 Pi 配置：双摄 320×240，
+JPEG、MJPEG、HLS 预览矫正，自主建图、遍历网格定位和平面光流使用共享矫正图。
+定位计算使用对应 K 和零畸变，上浮后切换独立表面标定。前视参数为试验标定，
+只用于显示，未用于测距。AUV 本机录像保留原图。
+构建、运行、图像空间及验证限制见 [标定接入说明](../docs/calibration/20261008/runtime-integration.md)。
+
+网线实机调试使用翻新的只读监视台：配置、安全门、深度姿态、双摄、A2 实测位置、机载记录与诊断导出。启用步骤见 [网线调试说明](../docs/auv-monitor-debug.md)。
+
+A2 入口为 `config/pi-auv-task-one.yaml`：建图后限速上浮、独立表面标定重定位、禁止重复进入锥格的整段规划、实测轨迹与节点确认。详见 [A2交付说明](../docs/auv-a2-implementation.md)。模板默认关闭运动，需要实机标定；`auv_surface_replay` 提供索引录像定位回放。
+
+A0/A1 新增独立观测入口 `config/pi-auv-observation.yaml`：安全启动、相对原点主动搜索、标签触发单黄色边建图与机载记录。构建、配置和实机标定见 [A0/A1交付说明](../docs/auv-a0-a1-implementation.md)。
+
+当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
 
 这个 C++ 进程与 ROS 节点共享 `auv_core`。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
-
-已按 `/home/hanwen/桌面/pi` 的真机代码接入双摄像头基础链路：下视 USB 相机继续通过
-稳定的 `/dev/v4l/by-id/...` 路径承担任务一视觉，前视 OV5647 CSI 相机通过
-`rpicam-vid` 的 MJPEG 管道采集。任务一默认把前视相机作为可观测但非阻断设备；完整任务
-必须设置 `front_camera.required: true`。状态接口分别报告两路帧年龄、帧数和前视帧率，
-网页同时显示下视 HLS 与前视快照。
 
 `mission.profile` 默认为 `task_one`。共享Mission FSM已经定义完整比赛阶段；设置为`full`后，四锥阶段会继续进入海参、抓取、运输、释放、转盘、返航和上浮流程。但在前视视觉和后续运动控制接通前，完整模式会按阶段超时进入FAULT，不能视为可下水的完整任务配置。
 
 ## 原生构建
 
-在 Debian 13 / Raspberry Pi OS 上，确保已安装 `cmake`、`ninja-build`、`g++`、`libopencv-dev`、`libyaml-cpp-dev`、`libcpp-httplib-dev`、`ffmpeg` 和 `rpicam-apps`，然后执行：
+在 Debian 13 / Raspberry Pi OS 上，确保已安装 `cmake`、`ninja-build`、`g++`、`libopencv-dev`、`libyaml-cpp-dev`、`libcpp-httplib-dev` 和 `ffmpeg`，然后执行：
 
 ```sh
 cmake -S . -B build-lightweight -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -20,20 +28,9 @@ cmake --build build-lightweight -j 3
 ctest --test-dir build-lightweight --output-on-failure
 ```
 
-不打开串口或摄像头，仅检查配置结构与安全约束：
+原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
 
-```sh
-./build-lightweight/runtime/auv_runtime --check-config runtime/config/runtime.yaml
-```
-
-原生 CTest 覆盖核心地图/规划/状态校验，以及 PTY 串口故障测试。如果系统 Python 也已安装 OpenCV 和 NumPy，还会额外加入合成的 AprilTag / 网格 / 锥形物视频回放，以及虚拟 STM32 的 ARM / ACK / 限制 / 漏水 / 进程退出测试。这些测试仅使用伪终端，不会访问真实串口。
-
-复制并编辑 `runtime/config/runtime.yaml`。示例配置为 `debug` 模式并默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。下视 USB 相机必须使用稳定的 `/dev/v4l/by-id/...` 符号链接；前视 CSI 使用 `source: "rpicam:"`。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成标定，运动仍然保持禁用状态。调试模式启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障后自动恢复运动。
-
-参考代码中 `/dev/serial0`、115200 已经通过树莓派真机验证，可以作为 `serial.device`，但
-必须确认它现在连接的是 STM32 的 CRC AUV link（默认 PC10/PC11、USART3），而不是旧版
-PA2/PA3、USART2 的 11 字节遥控转发口。旧版 `0xA5/0xA6/0xA7` 链路没有显式 ARM、
-heartbeat 和 CRC16，不能作为自主控制主链路直接合并。
+复制并编辑 `runtime/config/runtime.yaml`。示例配置为 `debug` 模式并默认拒绝运动：`motion_commands_enabled: false`，串口设备为空，控制方向和相机内参均未校准。生产环境中的相机源必须使用稳定的 `/dev/v4l/by-id/...` 符号链接。`file:/absolute/path/video.mp4` 可用于离线回放，但若未完成标定，运动仍然保持禁用状态。调试模式启动时处于 INIT 和 DISARM 状态，并需要执行 `auvctl start`；它不会在故障后自动恢复运动。
 
 ```sh
 ./build-lightweight/runtime/auv_runtime runtime/config/runtime.yaml
@@ -43,6 +40,20 @@ heartbeat 和 CRC16，不能作为自主控制主链路直接合并。
 ```
 
 `auvctl` 通过 `/run/auv-runtime/control.sock`（模式 `0660`）进行控制，适合通过 SSH 使用。SSH 用户必须属于 `auv` 组。执行 ARM 还需要满足额外条件：`auvctl arm --confirm SAFE_TO_ARM`，并且必须具备新鲜且安全的 STM32 STATUS、VISIT_CONES、已校准的运动配置，以及显式启用的运动控制。`pause`、`abort`、`disarm` 和故障条件都会撤销运动并请求 DISARM。若 Linux 异常退出，STM32 心跳丢失仍然是最终的安全屏障。
+
+## 双摄像头
+
+参考补充代码 `two_camera.py` / `two_camera_fast.py` 的独立采集、最新帧覆盖和 CSI MJPEG 管道方式，运行时可同时采集 USB 与 CSI。操作者确认CSI为下视、USB为前视。CSI下视帧输入AprilTag、九宫格及交通锥视觉；USB前视独立采集与预览，尚未接入海参或转盘识别。
+
+下视使用 `camera.source: csi:0`（或 `csi:1`）；启用 `camera_front.enabled: true`，前视使用实际USB `/dev/v4l/by-id/...`设备，并配置宽、高和帧率；本地待部署Pi模板目标 320×240、30 fps。CSI 需要系统提供 `rpicam-vid`。默认配置关闭第二相机，兼容单相机与离线测试。
+
+两路独立采集，只保留最新帧；CSI 使用有界 MJPEG 缓冲、超时读取、进程重启和退出清理，避免CSI堵塞拖住USB前视或控制；下视过期仍触发原有任务视觉保护。USB 使用 V4L2 单帧缓冲。默认网页双路MJPEG独立预览；HLS兼容预览固定节奏直接取采集最新帧，两路共用一个 H.264 编码器，输出 640×240，左侧CSI下视、右侧USB前视。超过帧时限的画面置黑。
+
+CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相机进程。服务等待 `network-online.target` 后启动，避免开机静态 IP 尚未就绪导致网页绑定失败。实际 Pi 的硬件编码存在后续 HLS 分段缺少 SPS/PPS 的问题，当前部署显式选择 `libx264`、`ultrafast`、单线程、15 fps；硬件编码 HLS 尚未验收，不能只凭 HTTP 200 判定视频可播放。软件编码添加关键帧参数头，机制参考 [FFmpeg bitstream filter 文档](https://ffmpeg.org/ffmpeg-bitstream-filters.html#dump_005fextra)，实机需通过后续分段独立解码检查。
+
+只读接口 `/api/camera/down.jpg` 和 `/api/camera/front.jpg` 返回各自最新 JPEG；过期时返回 HTTP 503。`/api/status` 增加 `down_capture_frames`、`front_frames`、`front_hz`、`front_camera_age_sec`、`front_degraded` 和 `front_detail`。采集帧率、视觉处理帧率与视频输出帧率分别统计，不能相互代替。
+
+`ctest --test-dir build-lightweight --output-on-failure` 包含 MJPEG 分包/缓冲上限测试，以及双相机模拟、CSI分别作为下视/前视时卡住后的另一相机及控制持续运行、子进程退出清理测试；这些测试不访问真实硬件或串口。
 
 ## 自主模式
 
@@ -67,3 +78,19 @@ STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超�
 请参考 [deploy/TESTING.md](deploy/TESTING.md) 中分阶段、只读的 Pi 检查流程。`run_bench.sh preflight` 会验证部署安全性，并将缺失的硬件标记为 pending；`camera`、`serial`、`fault-watch`、`endurance` 和 `collect` 提供聚焦检查和保存的 JSON 报告。耐久测试脚本会调用 `acceptance.py`，测量视觉/控制/心跳速率、滚动帧延迟、进程树 CPU 和 RSS、温度及节流状态，并要求具备有效的相机和 STM32 状态。缺失节流数据不计入通过。
 
 在校准相机、行/列到机体坐标系的符号方向、速度限制和串口设备之前，不要设置 `motion_commands_enabled: true`。首次运动测试必须断开推进器电源，移除螺旋桨，或确保推进器牢固固定。2026-10-04 日，Debian 13 原生构建和两次 Pi CTest 已通过。30 分钟热性能运行、真实相机/HLS 测试、真实 STM32 试验台运行，以及无螺旋桨闭环验收仍待硬件完成。
+
+当前硬件无漏水检测；固件和任务判断已移除此分支。状态协议中的旧漏水状态位保留且不使用，ROS Stm32Status不再含该字段，需要重新编译相关ROS包。急停、传感器有效性和通信超时保护保留。新版页面为只读任务中心，控制仍使用auvctl。
+
+
+## 回传与训练录像帧率
+
+`/api/camera/down.mjpeg`、`/api/camera/front.mjpeg`提供multipart长连接；每帧包含Content-Length、X-Frame-Time-Monotonic、X-Camera-Source。CSI直接复用rpicam MJPEG字节；USB采集后只编码一次。JPEG快照接口同样复用缓存。图像和时间标记在同一把锁中发布，时间是Pi收到/解码该帧时的单调时钟，不是相机硬件曝光时间，不代表硬件同步双摄。
+
+`/api/status`新增down_hz、video_enabled；down_hz/front_hz为采集间隔估计，vision_hz仅为识别处理速度。PC录制显示received_fps，且按来源时间戳去重，不把重复帧计作新采集帧。目标30fps和实际稳定帧率应分别核对。原有HLS历史实测配置仍为15fps软件编码，本次模板调整尚未部署；不能把本地模板或模拟测试结果当作实机测量。
+
+长连接实现使用cpp-httplib的[chunked content provider](https://github.com/yhirose/cpp-httplib#chunked-transfer-encoding)，整帧一次写入并启用TCP_NODELAY。最多4条流、8个HTTP工作线程，慢客户端只读取最新缓存，写入超时2秒；不占用控制循环或视觉处理线程。无新帧2秒关闭流，网页下一秒尝试重连；录制读取失败重连并保留已有视频，持续失败停止并收尾。树莓派资源紧张而不需要HLS时可将video.enabled设为false，MJPEG与录像仍可用；保持web.enabled为true。
+
+固件改为岸上手动水平基准，STM32重启后需要通过ROV驾驶台显式完成校准再请求ARM。未完成校准的自动任务ARM也会被底层安全门拒绝。此版本不要在水下姿态不明确时校零。
+
+
+Pi相机专用配置现保存在`runtime/config/pi-rov.yaml`，并随安装复制到配置目录；默认两摄320×240、30fps，MJPEG开启，HLS编码关闭以减轻CPU负担。此文件不会自动覆盖既有运行配置。部署后应先只读测速和检查录制片段，再启用运动。

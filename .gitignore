@@ -43,6 +43,9 @@
 /firmware/stm32/.project
 /firmware/stm32/.cproject
 /firmware/stm32/MDK-ARM/Copy_cup/
+/firmware/stm32/MDK-ARM/AUV_A0/
+/firmware/stm32/MDK-ARM/*.generated.uvprojx
+/firmware/stm32/MDK-ARM/Copy_cup_auv.uvprojx
 /firmware/stm32/MDK-ARM/*.uvguix.*
 /firmware/stm32/MDK-ARM/*.uvoptx
 /firmware/stm32/MDK-ARM/*.lst
@@ -59,6 +62,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.calibration-venv/
 venv/
 /vision/runs/
 *.ses
@@ -84,3 +88,7 @@ compile_commands.json
 # Local fallback Git metadata (used only when the managed environment mounts
 # an unusable read-only .git placeholder).
 /.git-data/
+
+# Locally recorded training videos and frame timestamps
+/data/rov-recordings/
+firmware/stm32/MDK-ARM/RTE/_AUV_A0/

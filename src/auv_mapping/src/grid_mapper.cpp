@@ -38,6 +38,16 @@ GridMapper::GridMapper(GridMapperConfig config)
     throw std::invalid_argument("grid area ratios are invalid");
   }
   if (config_.polygon_epsilon_ratio <= 0.0 || config_.polygon_epsilon_ratio >= 0.2 ||
+    config_.yellow_oriented_frames <= 0 ||
+    !std::isfinite(config_.white_s_max) || !std::isfinite(config_.white_v_min) ||
+    config_.white_s_max < 0 || config_.white_s_max > 255 ||
+    config_.white_v_min < 0 || config_.white_v_min > 255 ||
+    (config_.white_grid_edges && !config_.single_yellow_edge) ||
+    config_.dark_value_max < 1 || config_.dark_value_max > 200 ||
+    !std::isfinite(config_.yellow_edge_minimum_support) ||
+    config_.yellow_edge_minimum_support <= 0 || config_.yellow_edge_minimum_support > 1 ||
+    !std::isfinite(config_.yellow_edge_margin) || config_.yellow_edge_margin <= 0 ||
+    config_.yellow_edge_margin > 1 ||
     config_.clahe_clip_limit <= 0.0 || config_.minimum_corner_angle_degrees <= 0.0 ||
     config_.maximum_corner_angle_degrees >= 180.0 ||
     config_.maximum_corner_angle_degrees <= config_.minimum_corner_angle_degrees ||
@@ -54,6 +64,7 @@ void GridMapper::reset()
 {
   previous_corners_valid_ = false;
   stable_count_ = 0;
+  orientation_count_ = 0;
 }
 
 std::array<cv::Point2f, 4> GridMapper::order_corners(
@@ -90,7 +101,8 @@ bool GridMapper::find_outer_grid(
   double & area_ratio) const
 {
   std::vector<std::vector<cv::Point>> contours;
-  cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+  cv::findContours(mask.clone(), contours,
+    config_.single_yellow_edge ? cv::RETR_LIST : cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
   const double image_area = static_cast<double>(mask.rows) * mask.cols;
   double best_area = 0.0;
   std::array<cv::Point2f, 4> best{};
@@ -257,9 +269,22 @@ GridResult GridMapper::process(const cv::Mat & bgr_image)
 
   GridResult result;
   double area_ratio = 0.0;
-  if (!find_outer_grid(mask, result.corners, area_ratio)) {
+  cv::Mat structure = mask.clone();
+  if (config_.single_yellow_edge) {
+    cv::Mat dark;
+    // Dark grid lines and the single yellow boundary form the outer structure.
+    if (config_.white_grid_edges) {
+      cv::inRange(hsv, cv::Scalar(0, 0, config_.white_v_min),
+        cv::Scalar(179, config_.white_s_max, 255), dark);
+    } else {
+      cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(179, 255, config_.dark_value_max), dark);
+    }
+    cv::bitwise_or(dark, mask, structure);
+    cv::morphologyEx(structure, structure, cv::MORPH_CLOSE, kernel);
+  }
+  if (!find_outer_grid(structure, result.corners, area_ratio)) {
     reset();
-    result.reason = "no valid yellow quadrilateral";
+    result.reason = config_.single_yellow_edge ? "no closed grid boundary" : "no valid yellow quadrilateral";
     result.debug_image = draw_debug(bgr_image, mask, result);
     return result;
   }
@@ -268,6 +293,36 @@ GridResult GridMapper::process(const cv::Mat & bgr_image)
   const std::array<cv::Point2f, 4> destination{
     cv::Point2f(0.0F, 0.0F), cv::Point2f(maximum, 0.0F),
     cv::Point2f(maximum, maximum), cv::Point2f(0.0F, maximum)};
+  if (config_.single_yellow_edge) {
+    cv::Mat canonical_yellow;
+    cv::warpPerspective(mask, canonical_yellow,
+      cv::getPerspectiveTransform(result.corners.data(), destination.data()),
+      cv::Size(config_.output_size, config_.output_size));
+    const int n = config_.output_size;
+    const int band = std::max(4, static_cast<int>(n * config_.line_band_ratio));
+    const int inset = n / 10;
+    const std::array<cv::Rect, 4> edges{
+      cv::Rect(inset, 0, n-2*inset, band), cv::Rect(n-band, inset, band, n-2*inset),
+      cv::Rect(inset, n-band, n-2*inset, band), cv::Rect(0, inset, band, n-2*inset)};
+    std::array<double, 4> support{};
+    for (int i=0; i<4; ++i) {
+      cv::Mat coverage;
+      cv::reduce(canonical_yellow(edges[i]), coverage, i%2 ? 1 : 0, cv::REDUCE_MAX);
+      support[i] = static_cast<double>(cv::countNonZero(coverage)) / (n-2*inset);
+    }
+    const int edge = static_cast<int>(std::max_element(support.begin(),support.end())-support.begin());
+    double second = 0;
+    for (int i=0; i<4; ++i) if(i!=edge) second=std::max(second,support[i]);
+    if (support[edge] < config_.yellow_edge_minimum_support ||
+        support[edge]-second < config_.yellow_edge_margin) {
+      reset(); result.reason="yellow direction edge missing or ambiguous";
+      result.debug_image=draw_debug(bgr_image,mask,result); return result;
+    }
+    result.yellow_edge=edge;
+    // Preserve winding, rotate so the observed edge becomes canonical bottom (2->3).
+    std::rotate(result.corners.begin(),result.corners.begin()+(edge+2)%4,result.corners.end());
+  }
+  result.orientation_valid = !config_.single_yellow_edge;
   const cv::Mat transform = cv::getPerspectiveTransform(result.corners.data(), destination.data());
   std::vector<cv::Point2f> camera_center{
     cv::Point2f(
@@ -277,9 +332,10 @@ GridResult GridMapper::process(const cv::Mat & bgr_image)
   cv::perspectiveTransform(camera_center, rectified_center, transform);
   if (!rectified_center.empty()) {
     const float grid_scale = 3.0F / static_cast<float>(config_.output_size);
-    result.camera_col = std::clamp(rectified_center[0].x * grid_scale, 0.0F, 3.0F);
-    result.camera_row = std::clamp(rectified_center[0].y * grid_scale, 0.0F, 3.0F);
-    result.position_valid = true;
+    result.camera_col = rectified_center[0].x * grid_scale;
+    result.camera_row = rectified_center[0].y * grid_scale;
+    result.position_valid = std::isfinite(result.camera_col) && std::isfinite(result.camera_row) &&
+      result.camera_col >= 0 && result.camera_col < 3 && result.camera_row >= 0 && result.camera_row < 3;
   }
   cv::warpPerspective(
     bgr_image, result.rectified, transform,
@@ -295,6 +351,13 @@ GridResult GridMapper::process(const cv::Mat & bgr_image)
 
   result.geometry_valid = true;
   result.stable = update_stability(result.corners, bgr_image.size());
+  if (config_.single_yellow_edge) {
+    // Corner/order changes restart BOTH geometry and direction confirmation.
+    orientation_count_ = stable_count_ == 1 ? 1 :
+      std::min(orientation_count_ + 1, config_.yellow_oriented_frames);
+    result.orientation_valid = orientation_count_ >= config_.yellow_oriented_frames;
+    result.position_valid = result.position_valid && result.orientation_valid;
+  }
   const double normalized_area = std::min(
     1.0, area_ratio / std::max(config_.minimum_area_ratio, 0.5));
   result.confidence = static_cast<float>(

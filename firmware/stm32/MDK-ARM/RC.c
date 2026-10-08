@@ -48,10 +48,12 @@ void RC_Translate(uint8_t *RcData)
 
     // 按键通道
     MyRCKey[9]  = RcData[5];   // 舵机角度
-    MyRCKey[10] = RcData[6];   // 速度档位(SC)
-    MyRCKey[11] = RcData[7];   // 舵机档
-    MyRCKey[12] = RcData[8];   // SD/PITCH 25度开关（原RcData[10]）
-    MyRCKey[YAW_PID_SWITCH] = (RcData[9] != 0U) ? 1U : 0U; // YAW PID独立开关
+    MyRCKey[10] = RcData[6];   // 独立速度档位
+    MyRCKey[11] = RcData[7];   // SC: 0=不选，1=摄像头，2=主舵机占位
+    MyRCKey[YAW_PID_SWITCH] = (RcData[8] != 0U) ? 1U : 0U;
+    MyRCKey[DEPTH_HOLD_SWITCH] = (RcData[9] != 0U) ? 1U : 0U;
+
+    MyRCKey[CAMERA_DIAL_VALID] = (RcData[10] == 1U) ? 1U : 0U;
 
     RcData[0] = 0;  // 帧头清零，防止重复解析
 }
@@ -61,7 +63,7 @@ void RC_Translate(uint8_t *RcData)
  */
 uint8_t RC_WhetherSE_IN_JustNow(void)
 {
-    if (MyRCKey[13] == 1 && LastMyRCKey[13] == 0)
+    if (MyRCKey[YAW_PID_SWITCH] == 1 && LastMyRCKey[YAW_PID_SWITCH] == 0)
         return FirstTime;
     return NotFirstTime;
 }
@@ -71,7 +73,7 @@ uint8_t RC_WhetherSE_IN_JustNow(void)
  */
 uint8_t RC_WhetherSE_OUT_JustNow(void)
 {
-    if (MyRCKey[13] == 0 && LastMyRCKey[13] == 1)
+    if (MyRCKey[YAW_PID_SWITCH] == 0 && LastMyRCKey[YAW_PID_SWITCH] == 1)
         return FirstTime;
     return NotFirstTime;
 }

@@ -1,0 +1,24 @@
+{
+  "guid": "030007aa09120000544f000000000000",
+  "motion_axes": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "motion_signs": [
+    1,
+    1,
+    -1,
+    -1
+  ],
+  "speed_axis": 5,
+  "servo_select_axis": 6,
+  "yaw_button": 1,
+  "depth_button": 0,
+  "dial_axis": 4,
+  "notes": "2026-10-07 operator-labelled read-only test: SI axis4, down endpoint -0.80176, up endpoint 0.21136; SC axis6 down=-1 middle=0 up=0.99997. Independent deadman axis5 (left shoulder upper), web speed selection overrides byte6. Motion signs and yaw/depth buttons retained from prior configuration. Camera mechanical direction not yet tested. Evidence: docs/reviews/camera-servo-mapping-20261007.json",
+  "deadman_axis": 5,
+  "dial_min": -0.80176,
+  "dial_max": 0.21136
+}

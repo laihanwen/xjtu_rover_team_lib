@@ -1,3 +1,8 @@
+#include "csi_capture.hpp"
+#include "camera_rectifier.hpp"
+#include "localization.hpp"
+#include "mission_recorder.hpp"
+#include "runtime_config.hpp"
 #include "auv_core/semantic_map.hpp"
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
@@ -5,6 +10,7 @@
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
+#include "auv_stm32_bridge/depth_sample.hpp"
 #include "auv_stm32_bridge/gripper_protocol.hpp"
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
@@ -12,7 +18,6 @@
 #include "auv_vision/apriltag_detector.hpp"
 #include "auv_vision/camera_source.hpp"
 #include "auv_vision/cone_detector.hpp"
-#include "rpicam_source.hpp"
 #include <yaml-cpp/yaml.h>
 #include <atomic>
 #include <algorithm>
@@ -32,6 +37,7 @@
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <arpa/inet.h>
@@ -54,8 +60,17 @@ static std::string json_escape(const std::string& s) {
   for (char c : s) { if (c == '"' || c == '\\') out += '\\'; if (c >= 32) out += c; }
   return out;
 }
-static bool propulsion_phase(auv_mission::MissionPhase phase) {
+static std::string json_number(double value) {return std::isfinite(value)?std::to_string(value):"null";}
+static bool surface_grid_phase(auv_mission::MissionPhase phase) {
+  return phase==auv_mission::MissionPhase::kRelocalizeSurface ||
+      phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones;
+}
+static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traversal=false) {
+  if(surface_traversal && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
+    phase==auv_mission::MissionPhase::kRelocalizeSurface || phase==auv_mission::MissionPhase::kPlanCones))return true;
   switch (phase) {
+    case auv_mission::MissionPhase::kSearchAprilTag:
+    case auv_mission::MissionPhase::kBuildMap:
     case auv_mission::MissionPhase::kVisitCones:
     case auv_mission::MissionPhase::kSearchCucumber:
     case auv_mission::MissionPhase::kAlignCucumber:
@@ -72,212 +87,35 @@ static bool propulsion_phase(auv_mission::MissionPhase phase) {
       return false;
   }
 }
-struct Config {
-  std::string camera, serial, socket, log, debug_dir;
-  std::string operation_mode{"debug"};
-  bool auto_start{}, auto_arm{};
-  double startup_delay{5.0}, startup_timeout{30.0}, startup_stable{1.0};
-  int camera_width{640}, camera_height{480};
-  double camera_fps{30.0};
-  std::string camera_pixel_format{"MJPG"}, apriltag_family{"tag36h11"};
-  int baud{}, expected_cones{4};
-  double status_timeout{0.5}, frame_timeout{0.5}, pose_timeout{0.5}, control_watchdog_timeout{0.25};
-  double actuator_status_timeout{0.5};
-  bool motion_enabled{}, directions_calibrated{}, limits_calibrated{};
-  auv_control::RouteExecutorConfig route;
-  auv_mapping::GridMapperConfig grid;
-  auv_vision::ConeDetectorConfig cone;
-  auv_vision::ConeTrackerConfig tracker;
-  auv_mission::MissionFsmConfig mission;
-  std::string mission_profile{"task_one"};
-  auv_planning::GridPlannerConfig planner;
-  bool video_enabled{}, software_fallback{};
-  std::string video_dir,video_encoder,web_bind,web_assets;
-  int web_port{},video_width{640},video_height{480},video_fps{20},video_bitrate_kbps{2000};
-  double segment_time{0.5};
-  std::uint64_t max_event_bytes{10*1024*1024};
-  std::vector<double> camera_matrix, distortion;
-  bool front_camera_enabled{}, front_camera_required{};
-  std::string front_camera_source{"rpicam:"};
-  int front_camera_width{640}, front_camera_height{480}, front_camera_fps{30};
-  std::string front_camera_pixel_format{"MJPG"};
-  double front_camera_ev{}, front_camera_gain{}, front_camera_brightness{0.4};
-  std::string front_camera_denoise{"cdn_fast"};
-  int front_camera_quality{50};
-};
-static Config load_config(const std::string& path) {
-  const auto y = YAML::LoadFile(path);
-  Config c;
-  c.camera = y["camera"]["source"].as<std::string>();
-  c.camera_width = y["camera"]["width"].as<int>();
-  c.camera_height = y["camera"]["height"].as<int>();
-  c.camera_fps = y["camera"]["fps"].as<double>();
-  c.camera_pixel_format = y["camera"]["pixel_format"].as<std::string>();
-  c.serial = y["serial"]["device"].as<std::string>();
-  c.baud = y["serial"]["baud"].as<int>();
-  c.socket = y["control"]["socket"].as<std::string>();
-  c.operation_mode = y["operation"]["mode"].as<std::string>();
-  c.auto_start = y["operation"]["auto_start"].as<bool>();
-  c.auto_arm = y["operation"]["auto_arm"].as<bool>();
-  c.startup_delay = y["operation"]["startup_delay_sec"].as<double>();
-  c.startup_timeout = y["operation"]["startup_timeout_sec"].as<double>();
-  c.startup_stable = y["operation"]["startup_stable_sec"].as<double>();
-  c.log = y["logging"]["events"].as<std::string>();
-  c.debug_dir = y["logging"]["debug_dir"].as<std::string>();
-  c.expected_cones = y["vision"]["expected_cones"].as<int>();
-  c.apriltag_family = y["vision"]["apriltag_family"].as<std::string>();
-  c.grid.stable_frames = y["vision"]["grid_stable_frames"].as<int>();
-  c.cone.minimum_confidence = y["vision"]["cone_minimum_confidence"].as<double>();
-  c.tracker.history_size = y["vision"]["cone_history_size"].as<int>();
-  c.tracker.required_votes = y["vision"]["cone_required_votes"].as<int>();
-  c.tracker.clear_votes = y["vision"]["cone_clear_votes"].as<int>();
-  c.planner.maximum_targets = y["planning"]["maximum_targets"].as<std::size_t>();
-  c.planner.target_object_types = y["planning"]["target_object_types"].as<std::vector<std::string>>();
-  c.planner.blocked_object_types = y["planning"]["blocked_object_types"].as<std::vector<std::string>>();
-  c.status_timeout = y["safety"]["status_timeout_sec"].as<double>();
-  c.frame_timeout = y["safety"]["frame_timeout_sec"].as<double>();
-  c.pose_timeout = y["safety"]["pose_timeout_sec"].as<double>();
-  c.control_watchdog_timeout = y["safety"]["control_watchdog_timeout_sec"].as<double>();
-  c.actuator_status_timeout = y["safety"]["actuator_status_timeout_sec"].as<double>();
-  c.motion_enabled = y["motion"]["motion_commands_enabled"].as<bool>();
-  c.directions_calibrated = y["motion"]["directions_calibrated"].as<bool>();
-  c.limits_calibrated = y["motion"]["limits_calibrated"].as<bool>();
-  c.route.surge_from_row = y["motion"]["surge_from_row"].as<double>();
-  c.route.surge_from_col = y["motion"]["surge_from_col"].as<double>();
-  c.route.sway_from_row = y["motion"]["sway_from_row"].as<double>();
-  c.route.sway_from_col = y["motion"]["sway_from_col"].as<double>();
-  c.route.maximum_speed = y["motion"]["maximum_speed"].as<double>();
-  c.route.arrival_tolerance = y["motion"]["arrival_tolerance"].as<double>();
-  c.route.arrival_stable_ticks = y["motion"]["arrival_stable_ticks"].as<int>();
-  c.mission.self_check_timeout_sec = y["mission"]["self_check_timeout_sec"].as<double>();
-  c.mission.apriltag_timeout_sec = y["mission"]["apriltag_timeout_sec"].as<double>();
-  c.mission.map_timeout_sec = y["mission"]["map_timeout_sec"].as<double>();
-  c.mission.planning_timeout_sec = y["mission"]["planning_timeout_sec"].as<double>();
-  c.mission.cone_visit_timeout_sec = y["mission"]["cone_visit_timeout_sec"].as<double>();
-  c.mission_profile = y["mission"]["profile"].as<std::string>();
-  c.mission.full_mission = c.mission_profile == "full";
-  c.mission.cucumber_search_timeout_sec = y["mission"]["cucumber_search_timeout_sec"].as<double>();
-  c.mission.cucumber_align_timeout_sec = y["mission"]["cucumber_align_timeout_sec"].as<double>();
-  c.mission.gripper_timeout_sec = y["mission"]["gripper_timeout_sec"].as<double>();
-  c.mission.transport_timeout_sec = y["mission"]["transport_timeout_sec"].as<double>();
-  c.mission.valve_search_timeout_sec = y["mission"]["valve_search_timeout_sec"].as<double>();
-  c.mission.valve_align_timeout_sec = y["mission"]["valve_align_timeout_sec"].as<double>();
-  c.mission.valve_rotate_timeout_sec = y["mission"]["valve_rotate_timeout_sec"].as<double>();
-  c.mission.return_home_timeout_sec = y["mission"]["return_home_timeout_sec"].as<double>();
-  c.mission.surface_timeout_sec = y["mission"]["surface_timeout_sec"].as<double>();
-  c.mission.status_timeout_sec = c.status_timeout;
-  c.mission.allow_armed_during_visit = true;
-  c.video_enabled = y["video"]["enabled"].as<bool>();
-  c.video_dir = y["video"]["directory"].as<std::string>();
-  c.video_encoder = y["video"]["encoder"].as<std::string>();
-  c.video_width = y["video"]["width"].as<int>();
-  c.video_height = y["video"]["height"].as<int>();
-  c.video_fps = y["video"]["fps"].as<int>();
-  c.video_bitrate_kbps = y["video"]["bitrate_kbps"].as<int>();
-  c.segment_time = y["video"]["segment_time_sec"].as<double>();
-  c.software_fallback = y["video"]["software_fallback_enabled"].as<bool>();
-  c.web_bind = y["web"]["bind"].as<std::string>();
-  c.web_port = y["web"]["port"].as<int>();
-  c.web_assets = y["web"]["assets"].as<std::string>();
-  c.max_event_bytes = y["logging"]["max_event_bytes"].as<std::uint64_t>();
-  if (y["camera"]["camera_matrix"]) c.camera_matrix = y["camera"]["camera_matrix"].as<std::vector<double>>();
-  if (y["camera"]["distortion_coefficients"]) c.distortion = y["camera"]["distortion_coefficients"].as<std::vector<double>>();
-  if (const auto front = y["front_camera"]) {
-    c.front_camera_enabled = front["enabled"].as<bool>(false);
-    c.front_camera_required = front["required"].as<bool>(false);
-    c.front_camera_source = front["source"].as<std::string>("rpicam:");
-    c.front_camera_width = front["width"].as<int>(640);
-    c.front_camera_height = front["height"].as<int>(480);
-    c.front_camera_fps = front["fps"].as<int>(30);
-    c.front_camera_pixel_format = front["pixel_format"].as<std::string>("MJPG");
-    c.front_camera_ev = front["exposure_compensation"].as<double>(0.0);
-    c.front_camera_gain = front["gain"].as<double>(0.0);
-    c.front_camera_brightness = front["brightness"].as<double>(0.4);
-    c.front_camera_denoise = front["denoise"].as<std::string>("cdn_fast");
-    c.front_camera_quality = front["quality"].as<int>(50);
-  }
-  if (c.camera.rfind("/dev/v4l/by-id/", 0) != 0 && c.camera.rfind("file:", 0) != 0)
-    throw std::runtime_error("camera source must be /dev/v4l/by-id/... or file:...");
-  const bool front_source_valid = c.front_camera_source == "rpicam:" ||
-    c.front_camera_source.rfind("/dev/v4l/by-id/", 0) == 0 ||
-    c.front_camera_source.rfind("file:", 0) == 0;
-  if (c.front_camera_enabled && !front_source_valid)
-    throw std::runtime_error("front camera source must be rpicam:, /dev/v4l/by-id/... or file:...");
-  if (c.front_camera_required && !c.front_camera_enabled)
-    throw std::runtime_error("required front camera must be enabled");
-  if (c.mission.full_mission && !c.front_camera_required)
-    throw std::runtime_error("full mission requires front_camera.required=true");
-  if (c.front_camera_width <= 0 || c.front_camera_width > 1920 ||
-      c.front_camera_height <= 0 || c.front_camera_height > 1080 ||
-      c.front_camera_fps <= 0 || c.front_camera_fps > 120 ||
-      c.front_camera_pixel_format.size() != 4 || c.front_camera_gain < 0 ||
-      c.front_camera_brightness < -1 || c.front_camera_brightness > 1 ||
-      c.front_camera_quality < 1 || c.front_camera_quality > 100)
-    throw std::runtime_error("invalid front camera configuration");
-  if (c.camera_width <= 0 || c.camera_width > 1920 || c.camera_height <= 0 ||
-      c.camera_height > 1080 || c.camera_fps <= 0 || c.camera_fps > 120 ||
-      c.camera_pixel_format.size() != 4 || c.grid.stable_frames <= 0 ||
-      c.cone.minimum_confidence <= 0 || c.cone.minimum_confidence > 1 ||
-      c.baud <= 0 || c.expected_cones < 1 || c.expected_cones > 9 || c.status_timeout <= 0 ||
-      c.frame_timeout <= 0 || c.pose_timeout <= 0 || c.control_watchdog_timeout <= 0 ||
-      c.actuator_status_timeout <= 0 ||
-      c.control_watchdog_timeout >= c.status_timeout || c.socket.empty() ||
-      c.log.empty() || c.debug_dir.empty() || c.startup_delay < 0 ||
-      c.startup_timeout <= c.startup_delay || c.startup_stable <= 0 ||
-      c.startup_stable >= c.startup_timeout-c.startup_delay)
-    throw std::runtime_error("invalid runtime configuration");
-  if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
-    throw std::runtime_error("operation.mode must be debug or autonomous");
-  if (c.mission_profile != "task_one" && c.mission_profile != "full")
-    throw std::runtime_error("mission.profile must be task_one or full");
-  if (c.operation_mode == "debug" && (c.auto_start || c.auto_arm))
-    throw std::runtime_error("automatic operation is only valid in autonomous mode");
-  if (c.operation_mode == "autonomous" && !c.auto_start)
-    throw std::runtime_error("autonomous mode requires auto_start");
-  if (c.auto_arm && !c.motion_enabled)
-    throw std::runtime_error("auto_arm requires motion_commands_enabled");
-  in_addr web_addr{};
-  const bool web_ip_valid = ::inet_pton(AF_INET,c.web_bind.c_str(),&web_addr) == 1;
-  const auto web_ip = ntohl(web_addr.s_addr);
-  const bool wired_web_address = web_ip_valid &&
-    ((web_ip & 0xffffff00U) == 0xc0a88900U ||
-     (web_ip & 0xffffff00U) == 0xc0a83200U) &&
-    (web_ip & 0xffU) >= 2U && (web_ip & 0xffU) <= 254U;
-  if (!wired_web_address || c.web_port <= 0 || c.web_port > 65535 ||
-      c.video_dir.empty() || c.web_assets.empty() ||
-      c.video_width <= 0 || c.video_width > 1920 ||
-      c.video_height <= 0 || c.video_height > 1080 ||
-      c.video_fps <= 0 || c.video_fps > 60 ||
-      c.video_bitrate_kbps <= 0 || c.segment_time <= 0 || c.max_event_bytes < 1024 ||
-      (c.video_encoder != "h264_v4l2m2m" && c.video_encoder != "libx264"))
-    throw std::runtime_error("invalid video or wired web configuration");
-  if (c.motion_enabled && (c.serial.empty() || !c.directions_calibrated || !c.limits_calibrated ||
-      c.route.maximum_speed <= 0 || c.route.maximum_speed > 0.2 ||
-      c.camera_matrix.size() != 9 || c.distortion.empty() ||
-      !std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
-        c.route.surge_from_col*c.route.sway_from_row) ||
-      std::abs(c.route.surge_from_row*c.route.sway_from_col-
-        c.route.surge_from_col*c.route.sway_from_row) < 1e-6))
-    throw std::runtime_error("motion requires calibrated directions, limits and serial device");
-  if (!c.camera_matrix.empty() && c.camera_matrix.size() != 9)
-    throw std::runtime_error("camera_matrix must contain 9 values");
-  if (!c.distortion.empty() && c.distortion.size() != 4 && c.distortion.size() != 5 &&
-      c.distortion.size() != 8 && c.distortion.size() != 12 && c.distortion.size() != 14)
-    throw std::runtime_error("distortion_coefficients has invalid size");
-  for (auto value : c.camera_matrix) if (!std::isfinite(value)) throw std::runtime_error("camera_matrix contains NaN or infinity");
-  for (auto value : c.distortion) if (!std::isfinite(value)) throw std::runtime_error("distortion contains NaN or infinity");
-  if (!c.camera_matrix.empty() && (c.camera_matrix[0] <= 0 || c.camera_matrix[4] <= 0))
-    throw std::runtime_error("camera focal lengths must be positive");
-  return c;
-}
 class Runtime {
  public:
   explicit Runtime(Config cfg) : cfg_(std::move(cfg)), mission_(cfg_.mission),
-    route_(cfg_.route), planner_(cfg_.planner) {
+    route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search),
+    ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal) {
     (void)auv_vision::AprilTagDetector(cfg_.apriltag_family);
     (void)auv_mapping::GridMapper(cfg_.grid);
     (void)auv_vision::ConeDetector(cfg_.cone);
     (void)auv_vision::ConeTracker(cfg_.tracker);
+    localization_=std::make_unique<Localization>(cfg_.localization);
+    run_id_=std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count())+"-"+
+      std::to_string(Clock::now().time_since_epoch().count());
+    if(cfg_.recording_enabled) {
+      run_dir_=cfg_.recording_dir+"/"+run_id_;
+      if(!std::filesystem::create_directories(run_dir_))throw std::runtime_error("recording run directory already exists");
+      recorder_=std::make_unique<MissionRecorder>(run_dir_,cfg_.recording_segment,cfg_.recording_reserve);
+      cfg_.log=run_dir_+"/events.ndjson";cfg_.debug_dir=run_dir_+"/evidence";
+      const auto source=YAML::LoadFile(cfg_.config_source);
+      std::ofstream config_copy(run_dir_+"/config.yaml");config_copy<<source;
+      YAML::Node manifest;
+      manifest["run_id"]=run_id_;manifest["mode"]=cfg_.operation_mode;
+      manifest["profile"]=cfg_.mission_profile;manifest["time_basis"]="Pi receive steady seconds; not exposure timestamps";
+      manifest["video_format"]="received JPEG frames in MJPEG segments with JSONL offsets/timestamps";
+      manifest["release"]=source["release"] ? source["release"] : YAML::Node("unverified");
+      manifest["localization"]=source["localization"];
+      std::ofstream out(run_dir_+"/manifest.yaml");out<<manifest;
+      if(!out||!config_copy)throw std::runtime_error("cannot save run provenance");
+    }
     std::filesystem::create_directories(std::filesystem::path(cfg_.log).parent_path());
     log_.open(cfg_.log, std::ios::app);
     if (!log_) throw std::runtime_error("cannot open event log");
@@ -287,8 +125,10 @@ class Runtime {
     event("BOOT", "mode=" + cfg_.operation_mode + " DISARM");
     std::thread logger(&Runtime::logger_loop, this);
     std::thread capture(&Runtime::capture_loop, this);
-    std::thread front_capture(&Runtime::front_capture_loop, this);
+    std::thread front(&Runtime::front_loop, this);
     std::thread vision(&Runtime::vision_loop, this);
+    std::thread localization(&Runtime::localization_loop,this);
+    std::thread recorder(&Runtime::recording_loop,this);
     std::thread serial(&Runtime::serial_loop, this);
     std::thread control([this] {
       try { control_loop(); }
@@ -321,7 +161,7 @@ class Runtime {
     if (auto* server=web_server_.load()) server->stop();
     web.join();
 #endif
-    capture.join(); front_capture.join(); vision.join(); control.join(); serial.join(); video.join();
+    capture.join(); front.join(); vision.join(); localization.join(); control.join(); serial.join(); video.join(); recorder.join();
     event("SHUTDOWN", "DISARM requested");
     log_stop_=true;
     log_cv_.notify_all(); logger.join();
@@ -332,7 +172,7 @@ class Runtime {
     std::ostringstream line;
     const auto unix_ms=std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch()).count();
-    line << "{\"timestamp_unix_ms\":" << unix_ms << ",\"steady_sec\":" << seconds()
+    line << "{\"run_id\":\""<<run_id_<<"\",\"timestamp_unix_ms\":" << unix_ms << ",\"steady_sec\":" << seconds()
          << ",\"event\":\"" << json_escape(name)
          << "\",\"detail\":\"" << json_escape(detail) << "\"}\n";
     { std::lock_guard<std::mutex> lock(log_mutex_);
@@ -353,7 +193,7 @@ class Runtime {
         if (log_.tellp() >= static_cast<std::streampos>(cfg_.max_event_bytes) ||
             seconds()-log_started_ > 86400) {
           log_.close();
-          std::filesystem::rename(cfg_.log,cfg_.log+".1");
+          std::filesystem::rename(cfg_.log,cfg_.log+"."+std::to_string(++log_segment_));
           log_.open(cfg_.log,std::ios::trunc);
           log_started_=seconds();
         }
@@ -375,25 +215,58 @@ class Runtime {
   }
   bool status_fresh(double now) const { return status_time_ > 0 && now - status_time_ <= cfg_.status_timeout; }
   bool safe_status(double now) const {
-    return serial_connected_ && status_fresh(now) && !status_.leak_detected &&
+    return serial_connected_ && status_fresh(now) &&
       status_.error_flags == 0 && status_.telemetry_valid;
   }
   bool gripper_status_fresh(double now) const {
     return gripper_time_ > 0 && now-gripper_time_ <= cfg_.actuator_status_timeout;
   }
-  bool front_camera_fresh(double now) const {
-    return !cfg_.front_camera_required ||
-      (front_frame_time_ > 0 && now-front_frame_time_ <= cfg_.frame_timeout);
+  bool recording_ready(double now) const {
+    return !cfg_.recording_required || (recording_detail_.empty() && !log_degraded_ &&
+      recording_down_time_>0 && now-recording_down_time_.load()<=cfg_.frame_timeout+1 &&
+      (!cfg_.front_enabled || (recording_front_time_>0 && now-recording_front_time_.load()<=cfg_.frame_timeout+1)));
   }
   bool arm_gate_ready(double now) const {
+    const auto phase=mission_.snapshot().phase;
+    const bool observation_ready=cfg_.search.enabled &&
+      (phase==auv_mission::MissionPhase::kSearchAprilTag || phase==auv_mission::MissionPhase::kBuildMap) &&
+      localization_->snapshot(now).valid;
+    const bool route_ready=!cfg_.mission.surface_before_visit && pose_valid_ && now-pose_time_<=cfg_.pose_timeout && map_.complete && route_ready_ &&
+      phase==auv_mission::MissionPhase::kVisitCones;
     return cfg_.motion_enabled && cfg_.directions_calibrated && cfg_.limits_calibrated &&
       !cfg_.serial.empty() && fault_.empty() && safe_status(now) && !status_.armed &&
-      pose_valid_ && now-pose_time_ <= cfg_.pose_timeout &&
-      frame_time_ > 0 && now-frame_time_ <= cfg_.frame_timeout && map_.complete && route_ready_ &&
-      mission_.snapshot().phase == auv_mission::MissionPhase::kVisitCones;
+      recording_ready(now) && frame_time_>0 && now-frame_time_<=cfg_.frame_timeout &&
+      (!cfg_.traversal.enabled||depth_sample_fresh(now)) && (observation_ready||route_ready);
+  }
+  bool depth_sample_fresh(double now) const {
+    return depth_sample_.valid && depth_sample_received_>0 && now>=depth_sample_received_ &&
+      now-depth_sample_received_+depth_sample_.age_sec<=cfg_.traversal.depth_sample_timeout_sec;
+  }
+  bool surface_grid_fresh(double now) const {
+    return metric_pose_.valid && metric_pose_.surface_frame && metric_pose_.stamp>surface_reacquire_start_ && now>=metric_pose_.stamp &&
+      now-metric_pose_.stamp<=cfg_.traversal.pose_timeout_sec;
+  }
+  void queue_trajectory_locked(double now,const std::string& source) {
+    if(!cfg_.mission.surface_before_visit)return;
+    if(trajectory_queue_.size()>=256){set_fault_locked("trajectory recording queue overflow");return;}
+    const auto local=localization_->snapshot(now);
+    std::ostringstream out;out.precision(15);
+    out<<"{\"run_id\":\""<<run_id_<<"\",\"control_steady_sec\":"<<now
+      <<",\"phase\":\""<<auv_mission::mission_phase_name(mission_.snapshot().phase)<<"\",\"source\":\""<<source
+      <<"\",\"frame_sequence\":"<<metric_pose_.sequence<<",\"frame_steady_sec\":"<<metric_pose_.stamp
+      <<",\"grid_valid\":"<<(metric_pose_.valid?"true":"false")<<",\"grid_row\":"<<json_number(metric_pose_.row)
+      <<",\"grid_col\":"<<json_number(metric_pose_.col)<<",\"reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
+      <<",\"grid_reason\":\""<<json_escape(metric_pose_.reason)<<"\",\"underwater_valid\":"<<(local.valid?"true":"false")
+      <<",\"underwater_session\":"<<local.session<<",\"underwater_steady_sec\":"<<local.stamp
+      <<",\"underwater_x_m\":"<<json_number(local.x)<<",\"underwater_y_m\":"<<json_number(local.y)
+      <<",\"depth_m\":"<<json_number(status_.depth)<<",\"depth_sensor_sequence\":"<<depth_sample_.sensor_sequence
+      <<",\"depth_sample_age_sec\":"<<depth_sample_.age_sec+std::max(0.0,now-depth_sample_received_)
+      <<",\"yaw_rad\":"<<json_number(status_.yaw)<<",\"waypoint\":"<<waypoint_index_<<"}\n";
+    trajectory_queue_.push_back(out.str());
   }
   void request_arm_locked(const std::string& source) {
-    hold_depth_=status_.depth; hold_yaw_=status_.yaw;
+    hold_depth_=cfg_.search.enabled ? static_cast<float>(cfg_.search.depth_m) : status_.depth;
+    hold_yaw_=cfg_.search.enabled ? static_cast<float>(std::remainder(origin_absolute_yaw_+cfg_.search.yaw_rad,2*CV_PI)) : status_.yaw;
     armed_requested_ = true; arm_ack_ = false; arm_pending_ = true; arm_time_=0;
     event("ARM_REQUEST", source);
   }
@@ -414,86 +287,211 @@ class Runtime {
     return false;
   }
   void capture_loop() {
-    auto source_name = cfg_.camera.rfind("file:", 0) == 0 ? cfg_.camera.substr(5) : cfg_.camera;
+    const bool csi=cfg_.camera.rfind("csi:",0)==0;
+    auto source_name = cfg_.camera.rfind("file:",0)==0 ? cfg_.camera.substr(5) : cfg_.camera;
+    CsiCapture capture;
     auv_vision::CameraSource camera({source_name,cfg_.camera_width,cfg_.camera_height,
-      cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0) == 0});
+      cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0)==0});
+    CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
+        cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
+    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+        cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
+    double last_ready=seconds();
+    bool received=false;
     while (running) {
       try {
-      if (!camera.is_open() && !camera.open()) { std::this_thread::sleep_for(std::chrono::seconds(1)); continue; }
-      cv::Mat image;
-      if (!camera.read(image)) { camera.close(); std::this_thread::sleep_for(std::chrono::milliseconds(200)); continue; }
-      std::lock_guard<std::mutex> lock(frame_mutex_);
-      frame_ = image;
-    frame_time_ = seconds();
-      ++frame_sequence_;
-      } catch (const std::exception& e) {
-        camera.close(); fault(std::string("camera: ")+e.what());
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-      }
-    }
-  }
-  void set_front_camera_detail(const std::string & detail) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    front_camera_detail_ = detail;
-  }
-  void publish_front_frame(cv::Mat image) {
-    const double now = seconds();
-    std::lock_guard<std::mutex> lock(front_frame_mutex_);
-    front_frame_ = std::move(image);
-    if (front_frame_time_ > 0 && now > front_frame_time_) {
-      const double instantaneous = 1.0 / (now-front_frame_time_.load());
-      front_camera_hz_ = front_camera_hz_ <= 0 ? instantaneous :
-        0.9*front_camera_hz_+0.1*instantaneous;
-    }
-    front_frame_time_ = now;
-    ++front_frame_sequence_;
-  }
-  void front_capture_loop() {
-    if (!cfg_.front_camera_enabled) return;
-    if (cfg_.front_camera_source == "rpicam:") {
-      RpicamSource camera({cfg_.front_camera_width, cfg_.front_camera_height,
-        cfg_.front_camera_fps, cfg_.front_camera_ev, cfg_.front_camera_gain,
-        cfg_.front_camera_brightness, cfg_.front_camera_denoise,
-        cfg_.front_camera_quality});
-      while (running) {
-        if (!camera.is_open() && !camera.open()) {
-          set_front_camera_detail("cannot start rpicam-vid");
-          std::this_thread::sleep_for(std::chrono::seconds(1));
-          continue;
+        if(csi && !capture.is_open()) {
+          capture.open(cfg_.camera.back()-'0',cfg_.camera_width,cfg_.camera_height,
+                       static_cast<int>(cfg_.camera_fps));
+          last_ready=seconds(); received=false;
+        }
+        if(!csi && !camera.is_open() && !camera.open()) {
+          std::this_thread::sleep_for(std::chrono::seconds(1)); continue;
         }
         cv::Mat image;
-        if (camera.read(image, 250)) {
-          publish_front_frame(std::move(image));
-          set_front_camera_detail("");
-        } else if (!camera.is_open()) {
-          set_front_camera_detail("rpicam-vid exited; retrying");
-          camera.close();
-          std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::vector<std::uint8_t> jpeg;
+        const bool ready=csi ? capture.read(image,&jpeg) : camera.read(image);
+        if(!ready) {
+          if(csi && seconds()-last_ready>(received ? 2.0 : 8.0))
+            throw std::runtime_error("down CSI frame timeout");
+          if(!csi)camera.close();
+          std::this_thread::sleep_for(std::chrono::milliseconds(csi ? 10 : 200));
+          continue;
         }
+        last_ready=seconds(); received=true;
+        const double previous=frame_time_.load();
+        if (previous>0 && last_ready>previous)
+          down_hz_=down_hz_<=0 ? 1.0/(last_ready-previous) : .9*down_hz_.load()+.1/(last_ready-previous);
+        bool surface_frame=false;
+        {std::lock_guard<std::mutex> lock(state_mutex_);
+         surface_frame=cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase);}
+        cv::Mat corrected=surface_frame?surface.apply(image):underwater.apply(image);
+        cv::Mat display=cfg_.down_preview_rectify?corrected:image;
+        std::vector<std::uint8_t> raw_jpeg;
+        if(cfg_.recording_enabled && cfg_.down_preview_rectify) {
+          if(csi)raw_jpeg=jpeg;
+          else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+            throw std::runtime_error("raw down JPEG encode failed");
+        }
+        if ((!csi || cfg_.down_preview_rectify) &&
+            !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+          throw std::runtime_error("down JPEG encode failed");
+        { std::lock_guard<std::mutex> lock(frame_mutex_);
+          if(cfg_.recording_enabled)down_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
+          down_jpeg_=std::move(jpeg);
+          down_preview_frame_=display;
+          down_rectified_frame_=corrected;down_surface_frame_=surface_frame;
+          frame_=image; frame_time_=last_ready; ++frame_sequence_; ++down_capture_frames_;
+        }
+      } catch(const std::exception& e) {
+        capture.close(); camera.close(); fault(std::string("down camera: ")+e.what());
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
       }
-      camera.close();
-      return;
     }
-    const bool file = cfg_.front_camera_source.rfind("file:", 0) == 0;
-    const auto source = file ? cfg_.front_camera_source.substr(5) : cfg_.front_camera_source;
-    auv_vision::CameraSource camera({source, cfg_.front_camera_width,
-      cfg_.front_camera_height, static_cast<double>(cfg_.front_camera_fps),
-      cfg_.front_camera_pixel_format, file});
+  }
+  void front_loop() {
+    if (!cfg_.front_enabled) return;
+    const bool csi=cfg_.front_source.rfind("csi:",0)==0;
+    const auto source=csi ? cfg_.front_source :
+      (cfg_.front_source.rfind("file:",0)==0 ? cfg_.front_source.substr(5) : cfg_.front_source);
+    CsiCapture capture;
+    double last_ready=seconds();
+    bool received=false;
+    auv_vision::CameraSource camera({source,cfg_.front_width,cfg_.front_height,
+      static_cast<double>(cfg_.front_fps),"MJPG",cfg_.front_source.rfind("file:",0)==0});
+    CameraRectifier preview(cfg_.front_preview_rectify,cfg_.front_calibration_width,
+        cfg_.front_calibration_height,cfg_.front_camera_matrix,cfg_.front_distortion);
     while (running) {
-      if (!camera.is_open() && !camera.open()) {
-        set_front_camera_detail("cannot open front camera");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        continue;
+      try {
+        if (csi && !capture.is_open()) {
+          capture.open(source.back()-'0',cfg_.front_width,cfg_.front_height,cfg_.front_fps);
+          last_ready=seconds();
+          received=false;
+        }
+        if (!csi && !camera.is_open() && !camera.open()) throw std::runtime_error("front camera unavailable");
+        cv::Mat image;
+        std::vector<std::uint8_t> jpeg;
+        const bool ready=csi ? capture.read(image,&jpeg) : camera.read(image);
+        if (!ready) {
+          if (csi && seconds()-last_ready>(received ? 2.0 : 8.0)) throw std::runtime_error("CSI frame timeout");
+          std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue;
+        }
+        const double stamp=seconds(), previous=front_time_.load();
+        last_ready=stamp;
+        received=true;
+        cv::Mat display=preview.apply(image);
+        std::vector<std::uint8_t> raw_jpeg;
+        if(cfg_.recording_enabled && cfg_.front_preview_rectify) {
+          if(csi)raw_jpeg=jpeg;
+          else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+            throw std::runtime_error("raw front JPEG encode failed");
+        }
+        if ((!csi || cfg_.front_preview_rectify) &&
+            !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+          throw std::runtime_error("front JPEG encode failed");
+        { std::lock_guard<std::mutex> lock(front_mutex_);
+          if(cfg_.recording_enabled)front_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
+          front_preview_frame_=display;
+          front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; ++front_sequence_; }
+        { std::lock_guard<std::mutex> lock(state_mutex_);
+          ++front_frames_; front_detail_.clear();
+          if (previous>0 && stamp>previous) front_hz_=front_hz_<=0 ? 1.0/(stamp-previous) :
+            0.9*front_hz_+0.1/(stamp-previous);
+        }
+        /* Live V4L2 read already waits for the next frame. Only pace file replay. */
+        if (!csi && !camera.is_live())
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000/cfg_.front_fps));
+      } catch (const std::exception& e) {
+        capture.close(); camera.close();
+        { std::lock_guard<std::mutex> lock(state_mutex_); front_detail_=e.what(); }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
       }
-      cv::Mat image;
-      if (!camera.read(image)) {
-        camera.close();
-        set_front_camera_detail("front camera read failed; retrying");
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
+    }
+  }
+  void localization_loop() {
+    std::uint64_t seen=0; double last=0;
+    while(running){
+      const double now=seconds();
+      if(now-last < localization_->period()) {std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
+      last=now;cv::Mat image;double stamp=0;bool corrected=false,surface_frame=false;
+      const bool matching=cfg_.camera_matrix==cfg_.localization.intrinsics &&
+          cfg_.distortion==cfg_.localization.distortion && !cfg_.camera_matrix.empty();
+      {std::lock_guard<std::mutex> lock(frame_mutex_);
+       if(seen!=frame_sequence_){seen=frame_sequence_;image=matching?down_rectified_frame_:frame_;
+        corrected=matching;surface_frame=down_surface_frame_;stamp=frame_time_;}}
+      try {
+        if(!image.empty()){
+          bool surface_phase=false;
+          {std::lock_guard<std::mutex> lock(state_mutex_);
+           surface_phase=cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase);}
+          if(surface_frame || surface_phase) {
+            localization_->unavailable("surface_phase_use_grid_pose");continue;
+          }
+          YAML::Node sensor;
+          if(!cfg_.serial.empty()){
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            sensor["stamp"]=status_time_;sensor["valid"]=status_.telemetry_valid;
+            sensor["armed"]=status_.armed;sensor["depth_m"]=status_.depth;
+            const double degrees=180/std::acos(-1);
+            sensor["roll_deg"]=status_.roll*degrees;sensor["pitch_deg"]=status_.pitch*degrees;sensor["yaw_deg"]=status_.yaw*degrees;
+          }
+          localization_->process(image,stamp,now,sensor,corrected);
+          if(cfg_.auto_origin && !localization_->has_origin()) {
+            bool permitted=false;double yaw=0;
+            {std::lock_guard<std::mutex> lock(state_mutex_);
+              permitted=mission_.snapshot().phase==auv_mission::MissionPhase::kInit && safe_status(now) &&
+                !status_.armed && !armed_requested_ && fault_.empty(); yaw=status_.yaw;}
+            if(permitted && localization_->reset(now)) {
+              {std::lock_guard<std::mutex> lock(state_mutex_);origin_absolute_yaw_=yaw;}
+              event("LOCALIZATION_ORIGIN",localization_->json(now));
+            }
+          }
+        }
+        else if(!frame_time_ || now-frame_time_>.3)localization_->unavailable("image_unavailable");
+        else continue;
+        if(localization_->enabled())event("LOCALIZATION",localization_->json(seconds()));
+      }catch(const std::exception&){localization_->unavailable("processing_error");}
+    }
+  }
+  void recording_loop() {
+    if(!recorder_)return;
+    std::ofstream trajectory;
+    if(cfg_.mission.surface_before_visit)trajectory.open(run_dir_+"/trajectory.jsonl");
+    while(running) {
+      try {
+        std::vector<std::uint8_t> down,front;std::uint64_t ds=0,fs=0;double dt=0,ft=0;
+        {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_raw_jpeg_;ds=frame_sequence_;dt=frame_time_;}
+        if(cfg_.front_enabled){std::lock_guard<std::mutex> lock(front_mutex_);front=front_raw_jpeg_;fs=front_sequence_;ft=front_time_;}
+        std::ostringstream telemetry;std::deque<std::string> points;std::string planned;
+        {std::lock_guard<std::mutex> lock(state_mutex_);
+          telemetry.precision(15);
+          points.swap(trajectory_queue_);planned.swap(plan_artifact_pending_);
+          telemetry<<"{\"received_sec\":"<<status_time_<<",\"valid\":"<<(safe_status(seconds())?"true":"false")
+            <<",\"armed\":"<<(status_.armed?"true":"false")
+            <<",\"depth_m\":"<<(std::isfinite(status_.depth)?std::to_string(status_.depth):"null")
+            <<",\"roll_rad\":"<<(std::isfinite(status_.roll)?std::to_string(status_.roll):"null")
+            <<",\"pitch_rad\":"<<(std::isfinite(status_.pitch)?std::to_string(status_.pitch):"null")
+            <<",\"yaw_rad\":"<<(std::isfinite(status_.yaw)?std::to_string(status_.yaw):"null")
+            <<",\"phase\":\""<<auv_mission::mission_phase_name(mission_.snapshot().phase)<<"\"}";
+        }
+        if(cfg_.mission.surface_before_visit) {
+          for(const auto& point:points)trajectory<<point;
+          trajectory.flush();if(!trajectory)throw std::runtime_error("measured trajectory write failed");
+          if(!planned.empty()) {
+            std::ofstream route(run_dir_+"/planned_route.json");route<<planned;route.flush();
+            if(!route)throw std::runtime_error("planned route write failed");
+            std::lock_guard<std::mutex> lock(state_mutex_);plan_evidence_saved_=true;
+          }
+        }
+        if(ds && !down.empty()){recorder_->append("down",down,ds,dt,"\""+json_escape(cfg_.camera)+"\"",telemetry.str());recording_down_time_=dt;}
+        if(fs && !front.empty()){recorder_->append("front",front,fs,ft,"\""+json_escape(cfg_.front_source)+"\"",telemetry.str());recording_front_time_=ft;}
+      }catch(const std::exception& e){
+        {std::lock_guard<std::mutex> lock(state_mutex_);recording_detail_=e.what();}
+        event("RECORDING_FAILED",e.what());
+        if(cfg_.recording_required)fault(std::string("onboard recording: ")+e.what());
+        return;
       }
-      publish_front_frame(std::move(image));
-      set_front_camera_detail("");
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
   void vision_loop() {
@@ -501,38 +499,106 @@ class Runtime {
     auv_mapping::GridMapper mapper(cfg_.grid);
     auv_vision::ConeDetector detector(cfg_.cone);
     auv_vision::ConeTracker tracker(cfg_.tracker);
-    cv::Mat intrinsics, distortion;
-    if (!cfg_.camera_matrix.empty()) {
-      intrinsics=cv::Mat(3,3,CV_64F,cfg_.camera_matrix.data()).clone();
-      distortion=cv::Mat(cfg_.distortion).clone().reshape(1,1);
-    }
+    CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
+        cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
+    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+        cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
     std::uint64_t seen = 0;
+    std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false;
     while (running) {
-      cv::Mat image; double stamp = 0;
+      cv::Mat image,cached; double stamp = 0;bool cached_surface=false;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
-        if (seen != frame_sequence_) { seen = frame_sequence_; image = frame_; stamp = frame_time_; } }
+        if (seen != frame_sequence_) { seen = frame_sequence_; image = frame_;cached=down_rectified_frame_;
+          cached_surface=down_surface_frame_;stamp = frame_time_; } }
       if (image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
-      if (!intrinsics.empty()) {
-        cv::Mat corrected;
-        cv::undistort(image,corrected,intrinsics,distortion);
-        image=std::move(corrected);
-      }
+      const auto current_epoch=perception_epoch_.load();
+      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;mapper.reset();tracker.reset();}
+      auv_mission::MissionPhase phase;
+      bool triggered=false;
+      {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
+      const bool surface_phase=cfg_.traversal.enabled && surface_grid_phase(phase);
+      if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;}
+      // Reuse capture correction, except when a mission transition changed the model.
+      if(!cached.empty() && cached_surface==surface_phase)image=cached;
+      else image=surface_phase?surface.apply(image):underwater.apply(image);
       const auto found = tags.detect(image);
+      if(phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
+        const auto eligible=std::find_if(found.begin(),found.end(),[this](const auto& tag){
+          return cfg_.apriltag_ids.empty()||std::find(cfg_.apriltag_ids.begin(),cfg_.apriltag_ids.end(),tag.id)!=cfg_.apriltag_ids.end();});
+        if(eligible==found.end()){tag_id=-1;tag_votes=0;}
+        else {if(tag_id==eligible->id)++tag_votes;else{tag_id=eligible->id;tag_votes=1;}}
+        if(tag_votes>=cfg_.tag_stable_frames) {
+          std::filesystem::create_directories(cfg_.debug_dir);
+          const auto filename=cfg_.debug_dir+"/apriltag_"+std::to_string(tag_id)+"_"+
+            std::to_string(static_cast<std::uint64_t>(stamp*1000))+".jpg";
+          if(!cv::imwrite(filename,image))throw std::runtime_error("cannot save AprilTag evidence");
+          {std::lock_guard<std::mutex> lock(state_mutex_);
+            if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kSearchAprilTag) {
+              tag_found_=true;tag_time_=stamp;triggered=true;}}
+          if(triggered)event("APRILTAG_FOUND","id="+std::to_string(tag_id)+" image="+filename);
+          mapper.reset();tracker.reset();
+        }
+      }
       const auto grid = mapper.process(image);
+      auv_mapping::MetricGridPose metric;
+      if(cfg_.traversal.enabled) {
+        double depth=-1;
+        {std::lock_guard<std::mutex> lock(state_mutex_);if(depth_sample_fresh(seconds()))depth=depth_sample_.depth_m;}
+        metric=auv_mapping::metric_grid_pose(grid,surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater,
+          image.size(),depth,stamp,seen);
+        metric.surface_frame=surface_phase;
+      }
       std::vector<auv_vision::ConeObservation> cones;
-      if (grid.stable && !grid.rectified.empty()) cones = tracker.update(detector.process(grid.rectified).observations);
+      cv::Mat cone_debug;
+      if (triggered && phase==auv_mission::MissionPhase::kBuildMap && grid.stable && !grid.rectified.empty()) {
+        const auto detection=detector.process(grid.rectified);
+        cones=tracker.update(detection.observations);cone_debug=detection.debug_image;
+      } else if(phase==auv_mission::MissionPhase::kBuildMap) tracker.reset();
+      if(surface_phase && phase==auv_mission::MissionPhase::kRelocalizeSurface && metric.valid) {
+        const auto observed=detector.process(grid.rectified);
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        unsigned matched=0;bool consistent=map_.complete && observed.observations.size()==4;
+        for(const auto& cone:observed.observations) {
+          const int id=cone.row*3+cone.col;
+          const std::string shape=cone.shape==auv_vision::ConeShape::kCircle?"circle_cone":
+            (cone.shape==auv_vision::ConeShape::kSquare?"square_cone":"unknown");
+          if(id<0||id>=9||static_cast<std::size_t>(id)>=map_.grid.cells.size()||(matched&(1U<<id))||map_.grid.cells[id].cell.object_type!=shape)consistent=false;
+          else matched|=1U<<id;
+        }
+        metric.semantic_match=consistent;
+      }
       std::array<bool,9> visited;
       { std::lock_guard<std::mutex> lock(state_mutex_); visited = visited_; }
-      const auto map = auv_core::fuse_semantic_map(grid, cones, tracker.ready(), visited, cfg_.expected_cones);
+      auto map = auv_core::fuse_semantic_map(grid, cones, tracker.ready(), visited, cfg_.expected_cones);
+      map.complete=map.grid.complete=map.complete && triggered && phase==auv_mission::MissionPhase::kBuildMap;
       if (map.complete && !map_image_saved_.exchange(true)) {
         try {
           std::filesystem::create_directories(cfg_.debug_dir);
           const auto filename=cfg_.debug_dir+"/map_"+std::to_string(static_cast<std::uint64_t>(seconds()*1000))+".jpg";
           if (!cv::imwrite(filename,grid.debug_image.empty() ? image : grid.debug_image))
-            log_degraded_=true;
-          else event("MAP_IMAGE",filename);
-        } catch (...) { log_degraded_=true; }
+            throw std::runtime_error("cannot save grid evidence");
+          if(!cv::imwrite(filename+".rectified.jpg",grid.rectified) ||
+             (!cone_debug.empty() && !cv::imwrite(filename+".cones.jpg",cone_debug)))
+            throw std::runtime_error("cannot save cone evidence");
+          std::ofstream artifact(filename+".json");artifact.precision(15);
+          artifact<<"{\"run_id\":\""<<run_id_<<"\",\"steady_sec\":"<<stamp
+            <<",\"rows\":3,\"cols\":3,\"bottom_edge\":\""<<(cfg_.grid.single_yellow_edge?"yellow":"legacy_yellow_frame")<<"\",\"orientation_valid\":"
+            <<(grid.orientation_valid?"true":"false")<<",\"confidence\":"<<grid.confidence<<",\"corners\":[";
+          for(std::size_t i=0;i<grid.corners.size();++i){if(i)artifact<<',';artifact<<'['<<grid.corners[i].x<<','<<grid.corners[i].y<<']';}
+          artifact<<"],\"cells\":[";
+          for(std::size_t i=0;i<map.grid.cells.size();++i){if(i)artifact<<',';
+            const auto& c=map.grid.cells[i].cell;artifact<<"{\"row\":"<<static_cast<int>(c.row)<<",\"col\":"
+              <<static_cast<int>(c.col)<<",\"object\":\""<<c.object_type<<"\"}";}
+          artifact<<"],\"cones\":[";
+          for(std::size_t i=0;i<cones.size();++i){if(i)artifact<<',';const auto& c=cones[i];
+            artifact<<"{\"row\":"<<c.row<<",\"col\":"<<c.col<<",\"shape\":\""<<auv_vision::cone_shape_name(c.shape)
+              <<"\",\"confidence\":"<<c.confidence<<",\"contour\":[";
+            for(std::size_t j=0;j<c.contour.size();++j){if(j)artifact<<',';artifact<<'['<<c.contour[j].x<<','<<c.contour[j].y<<']';}
+            artifact<<"]}";}
+          artifact<<"]}";artifact.flush();if(!artifact)throw std::runtime_error("cannot save semantic map");
+          event("MAP_IMAGE",filename);event("MAP_COMPLETE",filename+".json");
+        } catch (...) { log_degraded_=true;map_image_saved_=false;throw; }
       }
       {
         std::lock_guard<std::mutex> lock(video_mutex_);
@@ -540,8 +606,8 @@ class Runtime {
         ++video_sequence_;
       }
       std::lock_guard<std::mutex> lock(state_mutex_);
-      tag_found_ = tag_found_ || !found.empty();
-      map_ = map;
+      if(epoch==perception_epoch_)metric_pose_=metric;
+      if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
       row_ = grid.camera_row; col_ = grid.camera_col; pose_time_ = stamp;
@@ -589,9 +655,17 @@ class Runtime {
             if (!auv_core::decode_status(frame.payload,status)) continue;
             std::lock_guard<std::mutex> lock(state_mutex_);
             status_ = std::move(status); status_time_ = seconds(); serial_connected_ = true;
+          } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH && cfg_.traversal.enabled) {
+            const auto sample=auv_stm32_bridge::decode_depth_sample(frame.payload);
+            std::lock_guard<std::mutex> lock(state_mutex_);depth_sample_=sample;depth_sample_received_=seconds();
           } else if (frame.message_type == AUV_PROTOCOL_MSG_ACK && frame.payload.size() == 6) {
             std::lock_guard<std::mutex> lock(state_mutex_);
             const auto acknowledged_sequence=auv_protocol_read_u32_le(frame.payload.data()+2);
+            if(cfg_.search.enabled && frame.payload[0]==AUV_PROTOCOL_MSG_MOTION_TARGET &&
+               frame.payload[1]!=0 && frame.payload[1]!=2) {
+              set_fault_locked("STM32 rejected autonomous motion target");
+              armed_requested_=false;disarm_pending_=true;
+            }
             if (acknowledged_sequence == arm_sequence_ && frame.payload[0] == AUV_PROTOCOL_MSG_SET_ARMED) {
               arm_ack_ = frame.payload[1] == 0;
               if (!arm_ack_) { armed_requested_ = false; disarm_pending_ = true; set_fault_locked("STM32 rejected ARM"); }
@@ -647,7 +721,7 @@ class Runtime {
           if (gripper_command_time_ > 0 && !gripper_ack_ && now-gripper_command_time_ > 0.5)
             set_fault_locked("gripper command acknowledgement timeout");
           send_motion = cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed &&
-            safe_status(now) && propulsion_phase(mission_.snapshot().phase) && fault_.empty();
+            safe_status(now) && propulsion_phase(mission_.snapshot().phase,cfg_.traversal.enabled) && fault_.empty();
           motion = send_motion ? motion_ : auv_stm32_bridge::MotionTarget{};
         }
         if (control_healthy) {
@@ -666,7 +740,13 @@ class Runtime {
         }
         if (send_arm_request) {
           std::lock_guard<std::mutex> lock(state_mutex_);
-          if (armed_requested_ && fault_.empty()) { arm_sequence_ = sequence_ + 1; arm_time_=seconds(); send_arm(true); }
+          if (armed_requested_ && fault_.empty()) {
+            // Establish a fresh Pi control source before MCU processes ARM.
+            auv_stm32_bridge::MotionTarget prime;prime.depth=status_.depth;prime.yaw=status_.yaw;
+            const auto payload=auv_stm32_bridge::encode_motion_target_payload(++sequence_,prime);
+            send_frame(AUV_PROTOCOL_MSG_MOTION_TARGET,payload.data(),payload.size());
+            arm_sequence_ = sequence_ + 1; arm_time_=seconds(); send_arm(true);
+          }
         }
         if (gripper_command) {
           const auto payload=auv_stm32_bridge::encode_gripper_command(gripper_sequence,*gripper_command);
@@ -720,8 +800,9 @@ class Runtime {
         if (cfg_.auto_start && !autonomous_start_attempted_ && phase == auv_mission::MissionPhase::kInit) {
           const bool gripper_ready = !cfg_.mission.full_mission ||
             (gripper_status_fresh(now) && gripper_.calibrated && gripper_.error_flags == 0);
-          const bool startup_ready = safe_status(now) && gripper_ready && front_camera_fresh(now) &&
-            frame_time_ > 0 &&
+          const bool startup_ready = safe_status(now) && !status_.armed && gripper_ready && recording_ready(now) &&
+            (!cfg_.traversal.enabled||depth_sample_fresh(now)) &&
+            (!cfg_.auto_origin || localization_->snapshot(now).valid) && frame_time_ > 0 &&
             now-frame_time_ <= cfg_.frame_timeout && processed_time_ > 0 &&
             now-processed_time_ <= cfg_.frame_timeout;
           if (startup_ready) {
@@ -747,31 +828,70 @@ class Runtime {
             set_fault_locked("STM32 unsafe or STATUS timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
           if (!fault_.empty()) { armed_requested_ = false; disarm_pending_ = true; }
+          if(!recording_ready(now)) {
+            set_fault_locked("onboard recording unavailable");armed_requested_=false;disarm_pending_=true;
+          }
           if (frame_time_ <= 0 || now - frame_time_ > cfg_.frame_timeout) {
             set_fault_locked("camera frame timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
-          if (!front_camera_fresh(now)) {
-            set_fault_locked("required front camera frame timeout");
-            armed_requested_ = false; disarm_pending_ = true;
-          }
-          if (phase == auv_mission::MissionPhase::kVisitCones && (!pose_valid_ || now - pose_time_ > cfg_.pose_timeout)) {
+          if (phase == auv_mission::MissionPhase::kVisitCones && !cfg_.traversal.enabled && (!pose_valid_ || now - pose_time_ > cfg_.pose_timeout)) {
             set_fault_locked("grid pose timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
+          if(cfg_.traversal.enabled && (!depth_sample_fresh(now) ||
+             ((phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kPlanCones) &&
+              (!surface_grid_fresh(now)||std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)>cfg_.traversal.depth_tolerance_m)))) {
+            set_fault_locked("A2 depth telemetry, surface height or absolute grid pose invalid");
+            armed_requested_=false;disarm_pending_=true;
+          }
         }
-        if (status_fresh(now)) mission_.update_status(serial_connected_,status_.armed,status_.leak_detected,status_.error_flags,now);
+        if(cfg_.traversal.enabled && fault_.empty()) {
+          if(phase==auv_mission::MissionPhase::kRelocalizeSurface) {
+            const bool ready=surface_grid_fresh(now) && metric_pose_.semantic_match &&
+              std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)<=cfg_.traversal.depth_tolerance_m;
+            if(!ready)surface_pose_votes_=0;
+            else if(metric_pose_.sequence!=surface_vote_sequence_) {
+              surface_vote_sequence_=metric_pose_.sequence;++surface_pose_votes_;
+            }
+            surface_ready_=ready && surface_pose_votes_>=cfg_.traversal.reacquire_frames;
+            mission_.update_surface_pose(surface_ready_,now);
+          }
+          if(metric_pose_.sequence!=trajectory_sequence_ || now-last_trajectory_time_>=0.1) {
+            trajectory_sequence_=metric_pose_.sequence;last_trajectory_time_=now;
+            queue_trajectory_locked(now,phase==auv_mission::MissionPhase::kVisitCones?"surface_grid":"phase_observation");
+          }
+          if(metric_pose_.valid && now>=metric_pose_.stamp && now-metric_pose_.stamp<=cfg_.traversal.pose_timeout_sec) {
+            const int cell=static_cast<int>(metric_pose_.row)*3+static_cast<int>(metric_pose_.col);
+            if(cell!=observed_cell_) {
+              event("CELL_OBSERVED","phase="+auv_mission::mission_phase_name(phase)+" from="+std::to_string(observed_cell_)+" to="+std::to_string(cell)+" frame="+std::to_string(metric_pose_.sequence));
+              observed_cell_=cell;
+            }
+          }
+        }
+        if (status_fresh(now)) mission_.update_status(serial_connected_,status_.armed,status_.error_flags,now);
         mission_.update_apriltag(tag_found_,now);
         mission_.update_map(map_.complete, all_visited_,now);
         if (phase == auv_mission::MissionPhase::kPlanCones && !route_ready_ && map_.complete &&
-            (!pose_valid_ || now-pose_time_ > cfg_.pose_timeout)) {
+            (cfg_.traversal.enabled ? !surface_grid_fresh(now) : (!pose_valid_ || now-pose_time_ > cfg_.pose_timeout))) {
           set_fault_locked("grid pose unavailable for planning");
           armed_requested_=false; disarm_pending_=true;
         }
         if (phase == auv_mission::MissionPhase::kPlanCones && !route_ready_ && map_.complete && fault_.empty()) {
-          auv_planning::GridCell start{static_cast<std::int8_t>(std::clamp(static_cast<int>(row_),0,2)),
-            static_cast<std::int8_t>(std::clamp(static_cast<int>(col_),0,2)),"unknown"};
+          const double measured_row=cfg_.traversal.enabled?metric_pose_.row:row_;
+          const double measured_col=cfg_.traversal.enabled?metric_pose_.col:col_;
+          auv_planning::GridCell start{static_cast<std::int8_t>(std::clamp(static_cast<int>(measured_row),0,2)),
+            static_cast<std::int8_t>(std::clamp(static_cast<int>(measured_col),0,2)),"unknown"};
           plan_ = planner_.plan(map_.grid,start);
           route_ready_ = plan_.valid && !plan_.targets.empty();
-          if (route_ready_) route_.set_route(plan_,++map_revision_);
+          if (route_ready_) {
+            if(cfg_.traversal.enabled) {
+              route_ready_=surface_route_.set_route(plan_);
+              if(!route_ready_)set_fault_locked("A2 rejected repeated or nonadjacent planned route");
+              std::ostringstream artifact;artifact<<"{\"run_id\":\""<<run_id_<<"\",\"kind\":\"planned_only\",\"steady_sec\":"<<now<<",\"path\":[";
+              for(std::size_t i=0;i<plan_.path.size();++i){if(i)artifact<<',';artifact<<'['<<static_cast<int>(plan_.path[i].row)<<','<<static_cast<int>(plan_.path[i].col)<<']';}
+              artifact<<"],\"cost\":"<<plan_.total_cost<<",\"forbid_target_reentry\":true}";
+              plan_artifact_pending_=artifact.str();
+            }else route_.set_route(plan_,++map_revision_);
+          }
           else { set_fault_locked("empty or invalid cone route: " + plan_.reason); disarm_pending_ = true; }
           std::ostringstream route_detail;
           route_detail << plan_.reason << " path=";
@@ -779,13 +899,17 @@ class Runtime {
             route_detail << '(' << static_cast<int>(cell.row) << ',' << static_cast<int>(cell.col) << ')';
           event("PLAN",route_detail.str());
         }
-        mission_.update_route(route_ready_,route_ready_,now);
+        mission_.update_route(route_ready_&&(!cfg_.traversal.enabled||plan_evidence_saved_),route_ready_,now);
         if (gripper_status_fresh(now)) {
           mission_.update_gripper(gripper_.state == 3U,gripper_.state == 5U,now);
         }
         if (fault_.empty()) mission_.tick(now);
         else mission_.force_fault(fault_,now);
         phase = mission_.snapshot().phase;
+        if(cfg_.mission.surface_before_visit && !cfg_.traversal.enabled && phase==auv_mission::MissionPhase::kSurfaceForCones) {
+          set_fault_locked("A2 surface traversal is disabled pending commissioning");
+          mission_.force_fault(fault_,now);phase=mission_.snapshot().phase;
+        }
         if (phase == auv_mission::MissionPhase::kGrab && !gripper_close_requested_) {
           if (!armed_requested_ || !status_.armed || !gripper_status_fresh(now) ||
               !gripper_.calibrated || gripper_.error_flags != 0) {
@@ -807,7 +931,8 @@ class Runtime {
           }
         }
         if (cfg_.auto_arm && !autonomous_arm_attempted_ &&
-            phase == auv_mission::MissionPhase::kVisitCones) {
+            (phase == auv_mission::MissionPhase::kVisitCones ||
+             (cfg_.search.enabled && phase==auv_mission::MissionPhase::kSearchAprilTag))) {
           autonomous_arm_attempted_ = true;
           if (arm_gate_ready(now)) request_arm_locked("autonomous");
           else {
@@ -824,24 +949,80 @@ class Runtime {
             gripper_stop_requested_=true;
           }
         } else {
-          route_.set_mission_active(phase == auv_mission::MissionPhase::kVisitCones);
+          route_.set_mission_active(!cfg_.traversal.enabled && phase == auv_mission::MissionPhase::kVisitCones);
           route_.set_vehicle_ready(cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed && safe_status(now));
           route_.set_pose(pose_valid_ && now-pose_time_ <= cfg_.pose_timeout,row_,col_);
           const auto step = route_.step();
           waypoint_index_ = step.waypoint_index;
-          if (phase == auv_mission::MissionPhase::kVisitCones && step.state == auv_control::RouteStep::State::kFault)
+          if (!cfg_.traversal.enabled && phase == auv_mission::MissionPhase::kVisitCones && step.state == auv_control::RouteStep::State::kFault)
             { set_fault_locked(step.detail); armed_requested_ = false; disarm_pending_ = true; }
           if (step.visited_cell) {
             auto i = static_cast<std::size_t>(step.visited_cell->row*3+step.visited_cell->col);
             visited_[i] = true; event("CONE_VISITED",std::to_string(i));
           }
-          all_visited_ = !plan_.targets.empty();
-          for (const auto& t : plan_.targets) all_visited_ &= visited_[static_cast<std::size_t>(t.row*3+t.col)];
+          if(!cfg_.traversal.enabled) {
+            all_visited_ = !plan_.targets.empty();
+            for (const auto& t : plan_.targets) all_visited_ &= visited_[static_cast<std::size_t>(t.row*3+t.col)];
+          }
           motion_ = {};
           if (armed_requested_) { motion_.depth=hold_depth_; motion_.yaw=hold_yaw_; }
           if (step.state == auv_control::RouteStep::State::kRunning && armed_requested_ && fault_.empty()) {
             motion_.vx = static_cast<float>(step.surge); motion_.vy = static_cast<float>(step.sway);
             motion_.depth = hold_depth_; motion_.yaw = hold_yaw_;
+          }
+          if(cfg_.search.enabled && (phase==auv_mission::MissionPhase::kSearchAprilTag ||
+                                    phase==auv_mission::MissionPhase::kBuildMap)) {
+            if(armed_requested_) {
+              const auto pose=localization_->snapshot(now);
+              const auto observation=search_.step(pose,now,tag_found_);
+              search_detail_=observation.reason;search_waypoint_=observation.waypoint;
+              if(observation.fault||observation.exhausted) {
+                set_fault_locked(observation.reason);armed_requested_=false;disarm_pending_=true;motion_={};
+                mission_.force_fault(fault_,now);
+              }else if(arm_ack_ && status_.armed){
+                motion_.vx=static_cast<float>(observation.surge);motion_.vy=static_cast<float>(observation.sway);
+              }
+            }
+          }
+          if(cfg_.traversal.enabled && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
+             phase==auv_mission::MissionPhase::kRelocalizeSurface ||phase==auv_mission::MissionPhase::kPlanCones ||
+             phase==auv_mission::MissionPhase::kVisitCones)) {
+            if(!armed_requested_||!arm_ack_||!status_.armed) {
+              set_fault_locked("A2 armed control continuity lost");
+            }else if(phase==auv_mission::MissionPhase::kSurfaceForCones) {
+              if(!ascent_started_) {
+                const auto approach=center_approach_.step(metric_pose_,now);a2_detail_=approach.detail;
+                motion_.vx=static_cast<float>(approach.surge);motion_.vy=static_cast<float>(approach.sway);
+                if(approach.fault)set_fault_locked(approach.detail);
+                else if(approach.complete) {
+                  if(!ascent_.begin(metric_pose_,depth_sample_.depth_m,now))set_fault_locked("measured ascent column unavailable");
+                  else {ascent_started_=true;event("ASCENT_STARTED","center alignment confirmed; zero lateral thrust");}
+                }
+              }else {
+              const auto rise=ascent_.step(depth_sample_.depth_m,safe_status(now)&&depth_sample_fresh(now),now,depth_sample_.sensor_sequence);
+              a2_detail_=rise.detail;hold_depth_=static_cast<float>(rise.target_depth);
+              motion_.depth=hold_depth_;motion_.vx=motion_.vy=0;
+              if(rise.fault)set_fault_locked(rise.detail);
+              if(rise.complete && !surface_confirmed_) {
+                surface_confirmed_=true;surface_reacquire_start_=now;surface_vote_sequence_=0;surface_pose_votes_=0;
+                mission_.update_surface(true,now);event("SURFACE_CONFIRMED","independent pressure samples; underwater integration discarded for traversal");
+              }
+              }
+            }else {
+              motion_.depth=hold_depth_=static_cast<float>(cfg_.traversal.surface_depth_m);
+              motion_.vx=motion_.vy=0;
+              if(phase==auv_mission::MissionPhase::kVisitCones) {
+                const auto actual=surface_route_.step(metric_pose_,now);a2_detail_=actual.detail;waypoint_index_=actual.waypoint;
+                if(actual.entered)event("CELL_ENTERED","row="+std::to_string(actual.entered->row)+" col="+std::to_string(actual.entered->col)+" frame="+std::to_string(metric_pose_.sequence));
+                if(actual.visited) {
+                  const int id=actual.visited->row*3+actual.visited->col;visited_[id]=true;
+                  event("CONE_VISITED","measured row="+std::to_string(actual.visited->row)+" col="+std::to_string(actual.visited->col)+" frame="+std::to_string(metric_pose_.sequence));
+                }
+                if(actual.fault)set_fault_locked(actual.detail);
+                else {motion_.vx=static_cast<float>(actual.surge);motion_.vy=static_cast<float>(actual.sway);all_visited_=actual.complete;}
+              }else a2_detail_="holding surface depth; fresh grid reacquisition / evidence gate";
+            }
+            if(!fault_.empty()){armed_requested_=false;disarm_pending_=true;motion_={};mission_.force_fault(fault_,now);}
           }
         }
         const auto snapshot = mission_.snapshot();
@@ -856,11 +1037,46 @@ class Runtime {
                  << " waypoint=" << waypoint_index_;
           event("STATE",detail.str());
         }
-        if (snapshot.phase == auv_mission::MissionPhase::kComplete) { armed_requested_ = false; disarm_pending_ = true; }
+        if (snapshot.phase == auv_mission::MissionPhase::kComplete) {
+          if(cfg_.traversal.enabled&&!a2_completion_logged_) {
+            a2_completion_logged_=true;queue_trajectory_locked(now,"a2_complete");
+            event("A2_COMPLETE","four measured cone visits; stage end; full competition mission remains incomplete");
+          }
+          armed_requested_ = false; disarm_pending_ = true;motion_={};
+        }
         last_control_time_=seconds();
       }
       std::this_thread::sleep_until(next);
     }
+  }
+  std::string camera_calibration_json() {
+    bool surface_frame=false;
+    {std::lock_guard<std::mutex> lock(frame_mutex_);surface_frame=down_surface_frame_;}
+    std::ostringstream out;
+    auto camera=[&](bool rectify,int width,int height,const std::string& id,
+        const std::string& quality,const std::vector<double>& k,const std::vector<double>& d) {
+      out << "{\"preview_rectified\":" << (rectify?"true":"false")
+          << ",\"calibration_id\":\"" << json_escape(id) << "\",\"quality\":\"" << json_escape(quality)
+          << "\",\"width\":" << width << ",\"height\":" << height << ",\"camera_matrix\":[";
+      for(std::size_t i=0;i<k.size();++i){if(i)out<<',';out<<k[i];}
+      out << "],\"raw_distortion_coefficients\":[";
+      for(std::size_t i=0;i<d.size();++i){if(i)out<<',';out<<d[i];}
+      out << "],\"preview_distortion_coefficients\":[";
+      for(std::size_t i=0;i<d.size();++i){if(i)out<<',';out<<(rectify?0:d[i]);}
+      out << "]}";
+    };
+    out.precision(17);
+    out << "{\"down\":";
+    if(surface_frame) {
+      const auto& model=cfg_.traversal.surface;
+      camera(cfg_.down_preview_rectify,model.width,model.height,"surface-traversal",
+          "independently_verified",model.camera_matrix,model.distortion);
+    } else camera(cfg_.down_preview_rectify,cfg_.down_calibration_width,cfg_.down_calibration_height,
+        cfg_.down_calibration_id,cfg_.down_calibration_quality,cfg_.camera_matrix,cfg_.distortion);
+    out << ",\"front\":";
+    camera(cfg_.front_enabled && cfg_.front_preview_rectify,cfg_.front_calibration_width,cfg_.front_calibration_height,
+        cfg_.front_calibration_id,cfg_.front_calibration_quality,cfg_.front_camera_matrix,cfg_.front_distortion);
+    out << '}';return out.str();
   }
   std::string command(const std::string& cmd) {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -871,22 +1087,60 @@ class Runtime {
       std::sort(latency.begin(),latency.end());
       double p99=latency.empty() ? -1.0 : latency[static_cast<std::size_t>(0.99*(latency.size()-1))];
       s << "{\"phase\":\"" << auv_mission::mission_phase_name(mission_.snapshot().phase)
-        << "\",\"operation_mode\":\"" << cfg_.operation_mode
+        << "\",\"run_id\":\""<<run_id_<<"\",\"recording_directory\":\""<<json_escape(run_dir_)
+        << "\",\"recording_enabled\":"<<(cfg_.recording_enabled?"true":"false")
+        << ",\"recording_ready\":"<<(recording_ready(now)?"true":"false")
+        << ",\"recording_detail\":\""<<json_escape(recording_detail_)
+        << "\",\"search_detail\":\""<<json_escape(search_detail_)<<"\",\"search_waypoint\":"<<search_waypoint_
+        << ",\"origin_ready\":"<<(localization_->snapshot(now).valid?"true":"false")
+        << ",\"operation_mode\":\"" << cfg_.operation_mode
         << "\",\"mission_profile\":\"" << cfg_.mission_profile
         << "\",\"auto_start\":" << (cfg_.auto_start ? "true":"false")
         << ",\"auto_arm\":" << (cfg_.auto_arm ? "true":"false")
         << ",\"serial\":" << (serial_connected_ ? "true":"false")
         << ",\"armed\":" << (status_.armed ? "true":"false")
         << ",\"motion_enabled\":" << (cfg_.motion_enabled ? "true":"false")
-        << ",\"leak\":" << (status_.leak_detected ? "true":"false")
+        << ",\"a2_enabled\":"<<(cfg_.traversal.enabled?"true":"false")
+        << ",\"a2_detail\":\""<<json_escape(a2_detail_)<<"\",\"surface_confirmed\":"<<(surface_confirmed_?"true":"false")
+        << ",\"surface_pose_ready\":"<<(surface_ready_?"true":"false")
+        << ",\"surface_grid_valid\":"<<(surface_grid_fresh(now)?"true":"false")
+        << ",\"surface_grid_row\":"<<json_number(metric_pose_.row)<<",\"surface_grid_col\":"<<json_number(metric_pose_.col)
+        << ",\"depth_sensor_sequence\":"<<depth_sample_.sensor_sequence
+        << ",\"grid_pose_fresh\":"<<(pose_valid_ && pose_time_>0 && now-pose_time_<=cfg_.pose_timeout?"true":"false")
+        << ",\"status_fresh\":"<<(status_fresh(now)?"true":"false")
+        << ",\"status_age_sec\":"<<json_number(status_time_?now-status_time_:-1)
+        << ",\"safe_status\":"<<(safe_status(now)?"true":"false")
+        << ",\"arm_gate_ready\":"<<(arm_gate_ready(now)?"true":"false")
+        << ",\"depth_m\":"<<json_number(status_.depth)
+        << ",\"roll_rad\":"<<json_number(status_.roll)<<",\"pitch_rad\":"<<json_number(status_.pitch)
+        << ",\"yaw_rad\":"<<json_number(status_.yaw)<<",\"voltage_v\":"<<json_number(status_.voltage)
+        << ",\"depth_sample_fresh\":"<<(depth_sample_fresh(now)?"true":"false")
+        << ",\"depth_sample_age_sec\":"<<json_number(depth_sample_received_?now-depth_sample_received_+depth_sample_.age_sec:-1)
+        << ",\"metric_pose_reason\":\""<<json_escape(metric_pose_.reason)<<"\""
+        << ",\"metric_reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
+        << ",\"frame_timeout_sec\":"<<cfg_.frame_timeout<<",\"status_timeout_sec\":"<<cfg_.status_timeout
+        << ",\"cmd_vx\":"<<json_number(motion_.vx)<<",\"cmd_vy\":"<<json_number(motion_.vy)
+        << ",\"cmd_depth\":"<<json_number(motion_.depth)<<",\"cmd_yaw\":"<<json_number(motion_.yaw)
+        << ",\"planned_path\":[";
+      for(std::size_t i=0;i<plan_.path.size();++i){if(i)s<<',';s<<'['<<static_cast<int>(plan_.path[i].row)<<','<<static_cast<int>(plan_.path[i].col)<<']';}
+      s << "]"
         << ",\"telemetry_valid\":" << (status_.telemetry_valid ? "true":"false")
         << ",\"voltage_valid\":" << (status_.voltage_valid ? "true":"false")
         << ",\"camera_age_sec\":" << (frame_time_ ? now-frame_time_ : -1)
-        << ",\"front_camera_enabled\":" << (cfg_.front_camera_enabled ? "true":"false")
-        << ",\"front_camera_required\":" << (cfg_.front_camera_required ? "true":"false")
-        << ",\"front_camera_age_sec\":" << (front_frame_time_ ? now-front_frame_time_ : -1)
-        << ",\"front_camera_frames\":" << front_frame_sequence_.load()
-        << ",\"front_camera_hz\":" << front_camera_hz_.load()
+        << ",\"down_source\":\"" << json_escape(cfg_.camera) << "\""
+        << ",\"front_source\":\"" << json_escape(cfg_.front_source) << "\""
+        << ",\"camera_calibration\":" << camera_calibration_json()
+        << ",\"vision_image_space\":\"" << (cfg_.camera_matrix.empty()?"raw":"rectified") << "\""
+        << ",\"down_capture_frames\":" << down_capture_frames_.load()
+        << ",\"down_hz\":" << down_hz_.load()
+        << ",\"video_enabled\":" << (cfg_.video_enabled ? "true":"false")
+        << ",\"front_enabled\":" << (cfg_.front_enabled ? "true":"false")
+        << ",\"front_camera_age_sec\":" << (front_time_ ? now-front_time_ : -1)
+        << ",\"front_frames\":" << front_frames_
+        << ",\"front_hz\":" << front_hz_
+        << ",\"front_degraded\":" << (cfg_.front_enabled &&
+            (!front_time_ || now-front_time_>cfg_.frame_timeout || !front_detail_.empty()) ? "true":"false")
+        << ",\"front_detail\":\"" << json_escape(front_detail_) << "\""
         << ",\"vision_frames\":" << processed_frames_
         << ",\"vision_hz\":" << vision_hz_
         << ",\"vision_latency_p99_ms\":" << p99
@@ -921,7 +1175,6 @@ class Runtime {
         << ",\"video_degraded\":" << (video_detail_.empty() ? "false":"true")
         << ",\"log_degraded\":" << (log_degraded_ ? "true":"false")
         << ",\"video_detail\":\"" << json_escape(video_detail_)
-        << "\",\"front_camera_detail\":\"" << json_escape(front_camera_detail_)
         << "\",\"web_detail\":\"" << json_escape(web_detail_)
         << "\",\"fault\":\"" << json_escape(fault_) << "\"}\n";
       return s.str();
@@ -959,6 +1212,11 @@ class Runtime {
     if (cmd == "abort") c = auv_mission::MissionCommand::kAbort;
     if (cmd == "reset") c = auv_mission::MissionCommand::kReset;
     if (!c) return "ERR unknown command\n";
+    if((cmd=="resume"||cmd=="reset") && cfg_.mission.surface_before_visit)
+      return "ERR A2 requires process restart and a new run_id after pause or termination\n";
+    if(cmd=="start" && cfg_.auto_origin && !localization_->snapshot(now).valid)
+      return "ERR calibrated stationary localization origin required\n";
+    if(cmd=="start" && !recording_ready(now)) return "ERR onboard recording required\n";
     auto r = mission_.command(*c,now);
     if (cmd == "reset" && r.accepted) {
       fault_.clear(); route_.reset(); route_ready_=false; plan_={}; map_={};
@@ -968,6 +1226,10 @@ class Runtime {
       gripper_stop_requested_=false;
       gripper_pending_.reset(); gripper_ack_=false; gripper_command_time_=0;
       map_image_saved_=false;
+      ++perception_epoch_;search_.reset();
+      ascent_.reset();surface_route_.reset();center_approach_.reset();ascent_started_=surface_confirmed_=surface_ready_=false;
+      surface_pose_votes_=0;surface_vote_sequence_=0;surface_reacquire_start_=0;metric_pose_={};
+      plan_evidence_saved_=a2_completion_logged_=false;plan_artifact_pending_.clear();
     }
     event("COMMAND",cmd+": "+r.message);
     return std::string(r.accepted ? "OK ":"ERR ")+r.message+"\n";
@@ -978,21 +1240,26 @@ class Runtime {
     std::uint64_t seen = 0;
     int pipefd[2];
     if (::pipe2(pipefd,O_CLOEXEC) != 0) { std::lock_guard<std::mutex> lock(state_mutex_); video_detail_="pipe failed"; return; }
+    const std::string output=cfg_.video_dir+"/index.m3u8";
+    const std::string size=std::to_string(cfg_.video_width)+"x"+std::to_string(cfg_.video_height);
+    const std::string fps=std::to_string(cfg_.video_fps);
+    const std::string bitrate=std::to_string(cfg_.video_bitrate_kbps)+"k";
+    const std::string gop=std::to_string(std::max(1,static_cast<int>(cfg_.video_fps*cfg_.segment_time)));
+    const std::string segment=std::to_string(cfg_.segment_time);
+    std::vector<std::string> args={"ffmpeg","-hide_banner","-loglevel","error","-nostdin","-y",
+      "-filter_threads","1","-f","rawvideo","-pixel_format","bgr24","-video_size",size,"-framerate",fps,
+      "-i","pipe:0","-an","-c:v",cfg_.video_encoder,"-b:v",bitrate,"-g",gop,"-keyint_min",gop,"-sc_threshold","0"};
+    if (cfg_.video_encoder=="libx264")
+      args.insert(args.end(),{"-preset","ultrafast","-tune","zerolatency","-threads","1"});
+    args.insert(args.end(),{"-bsf:v","extract_extradata,dump_extra=freq=keyframe","-f","hls",
+      "-hls_time",segment,"-hls_list_size","6","-hls_flags","delete_segments+independent_segments",output});
+    std::vector<char*> argv;
+    for (auto& arg:args) argv.push_back(arg.data());
+    argv.push_back(nullptr);
     pid_t child = ::fork();
     if (child == 0) {
       ::dup2(pipefd[0],STDIN_FILENO); ::close(pipefd[0]); ::close(pipefd[1]);
-      std::string output=cfg_.video_dir+"/index.m3u8";
-      const std::string size=std::to_string(cfg_.video_width)+"x"+std::to_string(cfg_.video_height);
-      const std::string fps=std::to_string(cfg_.video_fps);
-      const std::string bitrate=std::to_string(cfg_.video_bitrate_kbps)+"k";
-      const std::string gop=std::to_string(std::max(1,static_cast<int>(cfg_.video_fps*cfg_.segment_time)));
-      const std::string segment=std::to_string(cfg_.segment_time);
-      ::execlp("ffmpeg","ffmpeg","-hide_banner","-loglevel","error","-nostdin","-y",
-        "-f","rawvideo","-pixel_format","bgr24","-video_size",size.c_str(),"-framerate",fps.c_str(),
-        "-i","pipe:0","-an","-c:v",cfg_.video_encoder.c_str(),"-b:v",bitrate.c_str(),
-        "-g",gop.c_str(),"-keyint_min",gop.c_str(),"-sc_threshold","0","-f","hls",
-        "-hls_time",segment.c_str(),"-hls_list_size","6","-hls_flags","delete_segments+independent_segments",
-        output.c_str(),static_cast<char*>(nullptr));
+      ::execvp(argv[0],argv.data());
       _exit(127);
     }
     ::close(pipefd[0]);
@@ -1008,8 +1275,23 @@ class Runtime {
         break;
       }
       cv::Mat image;
-      { std::lock_guard<std::mutex> lock(video_mutex_);
-        if (seen != video_sequence_) { seen=video_sequence_; image=video_frame_; } }
+      /* Preview consumes capture directly; perception rate must not cap video FPS. */
+      { std::lock_guard<std::mutex> lock(frame_mutex_);
+        if (cfg_.front_enabled || seen != frame_sequence_) { seen=frame_sequence_; image=down_preview_frame_; } }
+      if (cfg_.front_enabled) {
+        cv::Mat front;
+        { std::lock_guard<std::mutex> lock(front_mutex_); front=front_preview_frame_; }
+        cv::Mat composite(cfg_.video_height,cfg_.video_width,CV_8UC3,cv::Scalar(0,0,0));
+        const int half=cfg_.video_width/2;
+        if (!image.empty() && frame_time_>0 && seconds()-frame_time_<=cfg_.frame_timeout)
+          cv::resize(image,composite(cv::Rect(0,0,half,cfg_.video_height)),{half,cfg_.video_height});
+        if (!front.empty() && front_time_>0 && seconds()-front_time_<=cfg_.frame_timeout)
+          cv::resize(front,composite(cv::Rect(half,0,cfg_.video_width-half,cfg_.video_height)),
+            {cfg_.video_width-half,cfg_.video_height});
+        cv::putText(composite,"DOWN / CSI",{8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
+        cv::putText(composite,"FRONT / USB",{half+8,20},cv::FONT_HERSHEY_SIMPLEX,.45,{0,255,255},1);
+        image=std::move(composite);
+      }
       if (image.empty() && (frame_time_ <= 0 || seconds()-frame_time_ > cfg_.frame_timeout)) {
         std::lock_guard<std::mutex> lock(state_mutex_);
         video_detail_="waiting for down camera frames";
@@ -1031,6 +1313,7 @@ class Runtime {
         { std::lock_guard<std::mutex> lock(state_mutex_);
           if (video_detail_ == "waiting for down camera frames") video_detail_.clear(); }
       }
+      if (next < Clock::now()) next=Clock::now(); /* No catch-up frame bursts. */
       std::this_thread::sleep_until(next);
     }
     ::close(pipefd[1]);
@@ -1046,13 +1329,73 @@ class Runtime {
   }
 #ifdef AUV_HAVE_HTTPLIB
   void web_loop() {
+    if(!cfg_.web_enabled)return;
     if (!running) return;
     httplib::Server server;
     web_server_=&server;
+    server.Get("/api/localization",[this](const httplib::Request&,httplib::Response& res){
+      res.set_header("Cache-Control","no-store");res.set_content(localization_->json(seconds()),"application/json");
+    });
+    server.Post("/api/localization/reset",[this](const httplib::Request&,httplib::Response& res){
+      if(cfg_.operation_mode=="autonomous"){res.status=403;res.set_content("{\"error\":\"origin reset disabled in autonomous mode\"}","application/json");return;}
+      if(!localization_->reset(seconds())){res.status=409;res.set_content("{\"error\":\"Require calibrated fresh input, DISARM and 2 seconds stable attitude/depth\"}","application/json");return;}
+      event("LOCALIZATION_RESET",localization_->json(seconds()));
+      res.set_content(localization_->json(seconds()),"application/json");
+    });
     server.Get("/api/status",[this](const httplib::Request&,httplib::Response& res){
       res.set_content(command("status"),"application/json");
       res.set_header("Cache-Control","no-store");
     });
+    auto cached=[this](bool front,std::vector<std::uint8_t>& jpeg,double& stamp) {
+      if(front) { std::lock_guard<std::mutex> lock(front_mutex_); jpeg=front_jpeg_; stamp=front_time_.load(); }
+      else { std::lock_guard<std::mutex> lock(frame_mutex_); jpeg=down_jpeg_; stamp=frame_time_.load(); }
+      return !jpeg.empty() && stamp>0 && seconds()-stamp<=cfg_.frame_timeout;
+    };
+    auto snapshot=[this,cached](bool front,httplib::Response& res) {
+      std::vector<std::uint8_t> jpeg;
+      double stamp;
+      if(!cached(front,jpeg,stamp)) { res.status=503; return; }
+      res.set_content(reinterpret_cast<const char*>(jpeg.data()),jpeg.size(),"image/jpeg");
+      res.set_header("Cache-Control","no-store");
+      res.set_header("X-Frame-Time-Monotonic",std::to_string(stamp));
+      res.set_header("X-Camera-Source",front ? cfg_.front_source : cfg_.camera);
+    };
+    server.Get("/api/camera/down.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(false,res);});
+    server.Get("/api/camera/front.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(true,res);});
+    server.new_task_queue=[] { return new httplib::ThreadPool(8); };
+    server.set_write_timeout(2,0);
+    server.set_tcp_nodelay(true);
+    auto stream=[this,cached](bool front,httplib::Response& res) {
+      /* Reserve worker capacity for status and control requests. */
+      if (mjpeg_clients_.fetch_add(1)>=4) {
+        --mjpeg_clients_; res.status=429; return;
+      }
+      res.set_header("Cache-Control","no-store");
+      res.set_chunked_content_provider("multipart/x-mixed-replace; boundary=auvframe",
+        [this,cached,front,last=-1.0,delivered=seconds()](size_t,httplib::DataSink& sink) mutable {
+          while (running && sink.is_writable()) {
+            std::vector<std::uint8_t> jpeg;
+            double stamp;
+            if (cached(front,jpeg,stamp) && stamp!=last) {
+              last=stamp; delivered=seconds();
+              const auto header=std::string("--auvframe\r\nContent-Type: image/jpeg\r\nContent-Length: ")+
+                std::to_string(jpeg.size())+"\r\nX-Frame-Time-Monotonic: "+std::to_string(stamp)+
+                "\r\nX-Camera-Source: "+(front ? cfg_.front_source : cfg_.camera)+"\r\n\r\n";
+              std::string part;
+              part.reserve(header.size()+jpeg.size()+2);
+              part.append(header);
+              part.append(reinterpret_cast<const char*>(jpeg.data()),jpeg.size());
+              part.append("\r\n");
+              return sink.write(part.data(),part.size());
+            }
+            if (seconds()-delivered>2.0) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+          }
+          return false;
+        },[this](bool) { --mjpeg_clients_; });
+    };
+    server.Get("/api/camera/down.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(false,res);});
+    server.Get("/api/camera/front.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(true,res);});
     server.Get("/",[this](const httplib::Request&,httplib::Response& res){
       std::ifstream in(cfg_.web_assets+"/index.html");
       if (!in) { res.status=503; return; }
@@ -1062,24 +1405,6 @@ class Runtime {
       std::ifstream in(cfg_.web_assets+"/hls.min.js",std::ios::binary);
       if (!in) { res.status=503; return; }
       res.set_content(std::string(std::istreambuf_iterator<char>(in),{}),"application/javascript");
-    });
-    server.Get("/camera/down.jpg",[this](const httplib::Request&,httplib::Response& res){
-      cv::Mat image;
-      { std::lock_guard<std::mutex> lock(frame_mutex_); image=frame_.clone(); }
-      if (image.empty()) { res.status=503; return; }
-      std::vector<std::uint8_t> jpeg;
-      if (!cv::imencode(".jpg",image,jpeg)) { res.status=500; return; }
-      res.set_content(std::string(reinterpret_cast<const char*>(jpeg.data()),jpeg.size()),"image/jpeg");
-      res.set_header("Cache-Control","no-store");
-    });
-    server.Get("/camera/front.jpg",[this](const httplib::Request&,httplib::Response& res){
-      cv::Mat image;
-      { std::lock_guard<std::mutex> lock(front_frame_mutex_); image=front_frame_.clone(); }
-      if (image.empty()) { res.status=503; return; }
-      std::vector<std::uint8_t> jpeg;
-      if (!cv::imencode(".jpg",image,jpeg)) { res.status=500; return; }
-      res.set_content(std::string(reinterpret_cast<const char*>(jpeg.data()),jpeg.size()),"image/jpeg");
-      res.set_header("Cache-Control","no-store");
     });
     server.set_mount_point("/hls",cfg_.video_dir);
     if (!server.listen(cfg_.web_bind, cfg_.web_port) && running) {
@@ -1118,16 +1443,44 @@ class Runtime {
     ::close(fd); ::unlink(cfg_.socket.c_str());
   }
   Config cfg_;
-  std::mutex frame_mutex_,front_frame_mutex_,video_mutex_,state_mutex_,log_mutex_;
+  auv_control::ObservationSearch search_;
+  auv_control::ControlledAscent ascent_;
+  auv_control::SurfaceRouteExecutor surface_route_;
+  auv_control::CenterApproach center_approach_;
+  auv_mapping::MetricGridPose metric_pose_;
+  auv_stm32_bridge::DepthSampleTelemetry depth_sample_;
+  double depth_sample_received_{0},surface_reacquire_start_{0},last_trajectory_time_{0};
+  std::uint64_t surface_vote_sequence_{0},trajectory_sequence_{0};
+  int surface_pose_votes_{0};
+  int observed_cell_{-1};
+  bool ascent_started_{false},surface_confirmed_{false},surface_ready_{false},plan_evidence_saved_{false},a2_completion_logged_{false};
+  std::deque<std::string> trajectory_queue_;
+  std::string plan_artifact_pending_,a2_detail_;
+  std::unique_ptr<MissionRecorder> recorder_;
+  std::string run_id_,run_dir_,recording_detail_,search_detail_;
+  std::size_t search_waypoint_{0};
+  std::atomic<double> recording_down_time_{0},recording_front_time_{0};
+  std::atomic<std::uint64_t> perception_epoch_{0};
+  std::uint64_t front_sequence_{0},log_segment_{0};
+  double origin_absolute_yaw_{0},tag_time_{0};
+  std::atomic<double> down_hz_{0};
+  std::atomic<int> mjpeg_clients_{0};
+  std::vector<std::uint8_t> down_jpeg_,front_jpeg_,down_raw_jpeg_,front_raw_jpeg_;
+  std::mutex front_mutex_;
+  cv::Mat front_frame_,down_preview_frame_,front_preview_frame_,down_rectified_frame_;
+  bool down_surface_frame_{}; // guarded by frame_mutex_
+  std::atomic<double> front_time_{0};
+  std::atomic<std::uint64_t> down_capture_frames_{0};
+  std::uint64_t front_frames_{};
+  double front_hz_{};
+  std::string front_detail_;
+  std::mutex frame_mutex_,video_mutex_,state_mutex_,log_mutex_;
   std::condition_variable log_cv_;
   std::deque<std::string> log_queue_;
   std::atomic<bool> log_degraded_{false};
   std::atomic<bool> log_stop_{false};
   double log_started_{seconds()};
   cv::Mat frame_; std::atomic<double> frame_time_{0}; double pose_time_{},processed_time_{},status_time_{},gripper_time_{};
-  cv::Mat front_frame_;
-  std::atomic<double> front_frame_time_{0},front_camera_hz_{0};
-  std::atomic<std::uint64_t> front_frame_sequence_{0};
   cv::Mat video_frame_;
   std::uint64_t video_sequence_{};
   double vision_hz_{};
@@ -1156,12 +1509,13 @@ class Runtime {
   std::atomic<double> last_control_time_{seconds()};
   float hold_depth_{},hold_yaw_{};
   std::size_t waypoint_index_{};
+  std::unique_ptr<Localization> localization_;
   bool tag_found_{},pose_valid_{},route_ready_{},all_visited_{},serial_connected_{},armed_requested_{},arm_ack_{},arm_pending_{},disarm_pending_{true};
   bool autonomous_start_attempted_{},autonomous_arm_attempted_{};
   bool gripper_ack_{},gripper_close_requested_{},gripper_open_requested_{},gripper_stop_requested_{};
   std::optional<auv_stm32_bridge::GripperAction> gripper_pending_;
   float row_{},col_{};
-  std::string fault_,video_detail_,front_camera_detail_,web_detail_;
+  std::string fault_,video_detail_,web_detail_;
   bool running_video_{true};
 #ifdef AUV_HAVE_HTTPLIB
   std::atomic<httplib::Server*> web_server_{nullptr};
@@ -1171,12 +1525,15 @@ class Runtime {
 };
 int main(int argc,char** argv) {
   try {
-    if (argc == 3 && std::string(argv[1]) == "--check-config") {
-      (void)load_config(argv[2]);
-      std::cout << "configuration valid\n";
-      return 0;
+    if(argc==3 && std::string(argv[1])=="--check-config") {
+      const auto c=load_config(argv[2]);
+      std::cout<<"configuration valid; mode="<<c.operation_mode<<" profile="<<c.mission_profile
+        <<" motion="<<c.motion_enabled<<" auto_arm="<<c.auto_arm<<" search="<<c.search.enabled<<'\n';return 0;
     }
     if (argc != 2) { std::cerr << "usage: auv_runtime [--check-config] CONFIG.yaml\n"; return 2; }
+    // This process already has dedicated capture, vision and control threads.
+    // Avoid OpenCV worker-pool oversubscription on the Raspberry Pi.
+    cv::setNumThreads(1);
     Runtime(load_config(argv[1])).run(); return 0;
   } catch (const std::exception& e) { std::cerr << "auv_runtime: " << e.what() << '\n'; return 1; }
 }

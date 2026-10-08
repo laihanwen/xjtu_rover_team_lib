@@ -17,7 +17,7 @@
 #include <stdexcept>
 
 #include "auv_vision/apriltag_detector.hpp"
-#include "opencv2/aruco.hpp"
+#include "opencv2/objdetect/aruco_detector.hpp"
 #include "opencv2/core.hpp"
 
 TEST(AprilTagDetector, DetectsGeneratedTag36h11)
