@@ -15,6 +15,7 @@
 #include "auv_mission/mission_fsm.hpp"
 
 #include <stdexcept>
+#include <cmath>
 #include <utility>
 
 namespace auv_mission
@@ -55,6 +56,10 @@ std::string mission_phase_name(MissionPhase phase)
       return "RETURN_HOME";
     case MissionPhase::kSurface:
       return "SURFACE";
+    case MissionPhase::kSurfaceForCones:
+      return "SURFACE_FOR_CONES";
+    case MissionPhase::kRelocalizeSurface:
+      return "RELOCALIZE_SURFACE";
     case MissionPhase::kPaused:
       return "PAUSED";
     case MissionPhase::kComplete:
@@ -77,7 +82,9 @@ MissionFsm::MissionFsm(MissionFsmConfig config)
     config_.transport_timeout_sec <= 0.0 || config_.valve_search_timeout_sec <= 0.0 ||
     config_.valve_align_timeout_sec <= 0.0 || config_.valve_rotate_timeout_sec <= 0.0 ||
     config_.return_home_timeout_sec <= 0.0 || config_.surface_timeout_sec <= 0.0 ||
-    config_.status_timeout_sec <= 0.0)
+    config_.status_timeout_sec <= 0.0 || !std::isfinite(config_.surface_relocalize_timeout_sec) ||
+    config_.surface_relocalize_timeout_sec <= 0.0 ||
+    (config_.surface_before_visit && (config_.stop_after_map || config_.full_mission)))
   {
     throw std::invalid_argument("mission timeouts must be positive");
   }
@@ -122,7 +129,9 @@ bool MissionFsm::is_active() const
          snapshot_.phase == MissionPhase::kAlignValve ||
          snapshot_.phase == MissionPhase::kRotateValve ||
          snapshot_.phase == MissionPhase::kReturnHome ||
-         snapshot_.phase == MissionPhase::kSurface;
+         snapshot_.phase == MissionPhase::kSurface ||
+         snapshot_.phase == MissionPhase::kSurfaceForCones ||
+         snapshot_.phase == MissionPhase::kRelocalizeSurface;
 }
 
 double MissionFsm::phase_timeout() const
@@ -156,7 +165,10 @@ double MissionFsm::phase_timeout() const
     case MissionPhase::kReturnHome:
       return config_.return_home_timeout_sec;
     case MissionPhase::kSurface:
+    case MissionPhase::kSurfaceForCones:
       return config_.surface_timeout_sec;
+    case MissionPhase::kRelocalizeSurface:
+      return config_.surface_relocalize_timeout_sec;
     default:
       return 0.0;
   }
@@ -214,6 +226,7 @@ CommandResult MissionFsm::command(MissionCommand command_value, double now_sec)
       cucumber_found_ = cucumber_aligned_ = grabbed_ = released_ = false;
       transport_complete_ = valve_found_ = valve_aligned_ = valve_rotated_ = false;
       home_reached_ = surfaced_ = false;
+      surface_pose_ready_=false;surface_pose_received_sec_=-1;
       transition(MissionPhase::kInit, "mission reset; waiting for START", now_sec);
       return {true, "mission reset"};
   }
@@ -290,6 +303,10 @@ void MissionFsm::update_surface(bool surfaced, double now_sec)
   surface_received_sec_ = now_sec;
 }
 
+void MissionFsm::update_surface_pose(bool ready,double now_sec) {
+  surface_pose_ready_=ready;surface_pose_received_sec_=now_sec;
+}
+
 void MissionFsm::tick(double now_sec)
 {
   const bool running_or_paused = is_active() || snapshot_.phase == MissionPhase::kPaused;
@@ -301,9 +318,14 @@ void MissionFsm::tick(double now_sec)
     const bool after_route = snapshot_.phase >= MissionPhase::kVisitCones &&
       snapshot_.phase <= MissionPhase::kSurface;
     const bool allowed_visit_arm = config_.allow_armed_during_visit && after_route;
+    const bool allowed_observation_arm = config_.allow_armed_during_observation &&
+      (snapshot_.phase == MissionPhase::kSearchAprilTag || snapshot_.phase == MissionPhase::kBuildMap);
+    const bool allowed_surface_arm = config_.surface_before_visit && config_.allow_armed_during_visit &&
+      (snapshot_.phase==MissionPhase::kSurfaceForCones || snapshot_.phase==MissionPhase::kRelocalizeSurface ||
+       snapshot_.phase==MissionPhase::kPlanCones);
     const bool pause_disarm_grace = snapshot_.phase == MissionPhase::kPaused &&
       now_sec - phase_entered_sec_ <= 0.5;
-    if (armed_ && !allowed_visit_arm && !pause_disarm_grace) {
+    if (armed_ && !allowed_visit_arm && !allowed_observation_arm && !allowed_surface_arm && !pause_disarm_grace) {
       fault("propulsion armed outside the permitted visit phase", now_sec);
       return;
     }
@@ -341,8 +363,21 @@ void MissionFsm::tick(double now_sec)
       break;
     case MissionPhase::kBuildMap:
       if (map_received_sec_ >= 0.0 && map_complete_) {
-        transition(MissionPhase::kPlanCones, "semantic map complete", now_sec);
+        surfaced_=false;surface_pose_ready_=false;surface_pose_received_sec_=-1;
+        transition(config_.stop_after_map ? MissionPhase::kComplete :
+          (config_.surface_before_visit ? MissionPhase::kSurfaceForCones : MissionPhase::kPlanCones),
+          config_.stop_after_map ? "A1 observation complete; propulsion stop" : "semantic map complete", now_sec);
       }
+      break;
+    case MissionPhase::kSurfaceForCones:
+      if(surface_received_sec_>=phase_entered_sec_ && surfaced_) {
+        surface_pose_ready_=false;surface_pose_received_sec_=-1;
+        transition(MissionPhase::kRelocalizeSurface,"ascent confirmed; require new surface grid observations",now_sec);
+      }
+      break;
+    case MissionPhase::kRelocalizeSurface:
+      if(surface_pose_received_sec_>=phase_entered_sec_ && surface_pose_ready_)
+        transition(MissionPhase::kPlanCones,"absolute surface grid reacquired",now_sec);
       break;
     case MissionPhase::kPlanCones:
       if (route_received_sec_ >= 0.0 && route_valid_) {

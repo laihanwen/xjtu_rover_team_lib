@@ -1,0 +1,186 @@
+# A2 task-one commissioning template: DISARM, no motion, no network dependence.
+camera:
+  # Down camera is CSI; calibrate intrinsics for this camera.
+  source: csi:0
+  width: 640
+  height: 480
+  fps: 30
+  pixel_format: MJPG
+  camera_matrix: []
+  distortion_coefficients: []
+camera_front:
+  enabled: false
+  source: /dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA
+  width: 320
+  height: 240
+  fps: 30
+serial:
+  device: ""
+  baud: 115200
+control:
+  socket: /run/auv-runtime/control.sock
+operation:
+  # debug requires explicit auvctl commands. autonomous starts without an operator.
+  mode: debug
+  auto_origin: true
+  auto_start: false
+  auto_arm: false
+  startup_delay_sec: 5.0
+  startup_timeout_sec: 30.0
+  startup_stable_sec: 1.0
+vision:
+  expected_cones: 4
+  single_yellow_edge: true
+  grid_dark_value_max: 95
+  yellow_edge_minimum_support: 0.45
+  yellow_edge_margin: 0.20
+  apriltag_ids: [] # TODO: official allowed ID(s); empty means any family member
+  apriltag_stable_frames: 3
+  apriltag_family: tag36h11
+  grid_stable_frames: 3
+  cone_minimum_confidence: 0.72
+  cone_history_size: 5
+  cone_required_votes: 3
+  cone_clear_votes: 3
+planning:
+  maximum_targets: 8
+  target_object_types: [circle_cone, square_cone]
+  blocked_object_types: [obstacle, forbidden]
+mission:
+  profile: a2_task_one
+  self_check_timeout_sec: 10.0
+  apriltag_timeout_sec: 30.0
+  map_timeout_sec: 30.0
+  planning_timeout_sec: 10.0
+  cone_visit_timeout_sec: 120.0
+  cucumber_search_timeout_sec: 60.0
+  cucumber_align_timeout_sec: 30.0
+  gripper_timeout_sec: 15.0
+  transport_timeout_sec: 120.0
+  valve_search_timeout_sec: 60.0
+  valve_align_timeout_sec: 30.0
+  valve_rotate_timeout_sec: 30.0
+  return_home_timeout_sec: 120.0
+  surface_timeout_sec: 60.0
+safety:
+  status_timeout_sec: 0.5
+  frame_timeout_sec: 0.5
+  pose_timeout_sec: 0.5
+  control_watchdog_timeout_sec: 0.25
+  actuator_status_timeout_sec: 0.5
+motion:
+  motion_commands_enabled: false
+  directions_calibrated: false
+  limits_calibrated: false
+  surge_from_row: 0.0
+  surge_from_col: 0.0
+  sway_from_row: 0.0
+  sway_from_col: 0.0
+  maximum_speed: 0.1
+  arrival_tolerance: 0.15
+  arrival_stable_ticks: 5
+logging:
+  events: /var/log/auv-runtime/events.ndjson
+  debug_dir: /var/log/auv-runtime/debug
+  max_event_bytes: 10485760
+video:
+  enabled: false
+  directory: /run/auv-runtime/hls
+  encoder: h264_v4l2m2m
+  software_fallback_enabled: false
+  width: 640
+  height: 480
+  fps: 30
+  bitrate_kbps: 2000
+  segment_time_sec: 0.5
+web:
+  enabled: false
+  bind: 192.168.137.201
+  port: 8080
+  assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: true
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 640
+  height: 480
+  camera_matrix: []
+  distortion: []
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false
+
+# Onboard recording starts at process launch; no PC streaming client is needed.
+recording:
+  enabled: true
+  required_for_motion: true
+  directory: /var/log/auv-runtime/runs
+  segment_sec: 60
+  minimum_free_bytes: 268435456
+
+# Fill safe relative-origin corridors from real pool measurements. No default patrol.
+observation_search:
+  enabled: false
+  corridor_calibrated: false
+  maximum_radius_m: 0
+  waypoints_m: []
+  maximum_speed: 0.1
+  position_gain: 0.4
+  arrival_tolerance_m: 0.1
+  arrival_stable_sec: 0.5
+  pose_timeout_sec: 0.3
+  waypoint_timeout_sec: 20
+  depth_target_m: 0
+  yaw_relative_rad: 0
+
+release:
+  git_commit: UNVERIFIED
+  firmware_hex_sha256: UNVERIFIED
+  calibration_id: UNVERIFIED
+  model_sha256: not_used_a1
+
+# A2 remains disabled until ascent column and surface imaging have been measured.
+# Firmware must publish the 17-byte depth frame with true sensor sequence/age.
+surface_traversal:
+  enabled: false
+  ascent_clearance_verified: false
+  center_approach_verified: false
+  center_approach_radius_cells: 0 # measured clear region inside central cell
+  center_stable_sec: 0.3
+  center_timeout_sec: 10
+  surface_localization_verified: false
+  ascent_cell: [-1, -1] # measured row,col; yellow edge is map bottom
+  ascent_tolerance_cells: 0.15
+  cell_size_m: 0 # measured; no rule dimension guessed
+  depth_target_m: 0 # TODO: confirmed surface/shallow-water rule and measured datum
+  depth_tolerance_m: 0.05
+  ascent_rate_mps: 0.03
+  surface_stable_sec: 1.0
+  surface_depth_samples: 3
+  depth_sample_timeout_sec: 2.5
+  reacquire_frames: 5
+  reacquire_timeout_sec: 15
+  pose_timeout_sec: 0.3
+  maximum_speed: 0.1
+  position_gain: 0.4
+  arrival_tolerance_cells: 0.12
+  arrival_stable_sec: 0.3
+  entry_margin_cells: 0.05
+  boundary_clearance_m: 0 # measured body radius + safety clearance
+  corridor_tolerance_cells: 0.2
+  pose_jump_tolerance_m: 0.05
+  waypoint_timeout_sec: 20
+  height_tolerance_m: 0.15
+  maximum_reprojection_px: 3
+  minimum_grid_confidence: 0.8
+  width: 640
+  height: 480
+  camera_matrix: [] # independently verified surface intrinsics
+  distortion_coefficients: []

@@ -6,6 +6,7 @@
 #include "Move.h"
 #include "AuvGripper.h"
 #include "AuvCameraServo.h"
+#include "AuvCameraServoRemote.h"
 #include "RC.h"
 
 float RCStep;
@@ -106,17 +107,17 @@ void RCWrench_Calc(VectorWrenchCommand *command, const uint8_t *RC)
     float lateral_gain;
     float yaw_gain;
 
-    /* Preserve the original SC behavior and per-axis mode weights. */
-    if (RC[SC] == 0U)
+    /* Preserve the existing speed-selector behavior and per-axis mode weights. */
+    if (RC[SPEED_SELECTOR] == 0U)
         RCStep = RC_SLOW_PWM_SPAN / RC_COMMAND_FULL_SCALE;
     else
         RCStep = RC_NORMAL_PWM_SPAN / RC_COMMAND_FULL_SCALE;
 
-    if (RC[SC] == 1U) {
+    if (RC[SPEED_SELECTOR] == 1U) {
         forward_gain = 1.00f;
         lateral_gain = 0.30f;
         yaw_gain = 0.20f;
-    } else if (RC[SC] == 0U) {
+    } else if (RC[SPEED_SELECTOR] == 0U) {
         forward_gain = 1.00f;
         lateral_gain = 1.00f;
         yaw_gain = 0.60f;
@@ -141,8 +142,8 @@ void RCWrench_Calc(VectorWrenchCommand *command, const uint8_t *RC)
 
 void RCServo_Calc(uint8_t *RC)
 {
-    AuvGripper_CommandRemote(RC[SA], (RC[SB] == 1U) ? 1U : 0U, 1U);
-    AuvCameraServo_CommandRemote(RC[SA], (RC[SB] == 0U) ? 1U : 0U, 1U);
+    /* SC upper is deliberately a no-output placeholder for the removed gripper. */
+    AuvCameraServo_SelectRemote(RC[SC], RC[SI], RC[CAMERA_DIAL_VALID], 1U);
 }
 
 int Servo_Limit(int a)

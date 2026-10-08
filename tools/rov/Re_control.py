@@ -54,12 +54,25 @@ def load_mapping(path):
         raise ValueError("invalid dial_axis")
     if not isinstance(mapping.get("guid"), str) or not mapping["guid"]:
         raise ValueError("mapping requires device guid")
+    deadman = mapping.get("deadman_axis", mapping["servo_select_axis"])
+    if type(deadman) is not int or not 0 <= deadman < 64:
+        raise ValueError("invalid deadman_axis")
+    if dial is not None and deadman == mapping["servo_select_axis"]:
+        raise ValueError("camera SC selector must be independent of deadman_axis")
+    if dial is not None:
+        low, high = mapping.get('dial_min'), mapping.get('dial_max')
+        if (type(low) not in (int,float) or type(high) not in (int,float) or
+                not math.isfinite(low) or not math.isfinite(high) or high <= low):
+            raise ValueError('verified dial requires measured dial_min/dial_max')
     return mapping
 
 
-def encode_mapped_frame(axes, buttons, mapping, dial_min=-0.5, dial_max=-0.1):
+def encode_mapped_frame(axes, buttons, mapping, dial_min=None, dial_max=None):
     if mapping is None:
-        return encode_frame(axes, buttons, dial_min, dial_max)
+        return encode_frame(axes, buttons, -.5 if dial_min is None else dial_min,
+                            -.1 if dial_max is None else dial_max)
+    dial_min = mapping.get('dial_min', -.5) if dial_min is None else dial_min
+    dial_max = mapping.get('dial_max', -.1) if dial_max is None else dial_max
     try:
         canonical = [axes[i] * sign for i, sign in zip(mapping["motion_axes"], mapping["motion_signs"])]
         canonical += [axes[mapping["dial_axis"]] if mapping["dial_axis"] is not None else dial_min,
@@ -68,8 +81,10 @@ def encode_mapped_frame(axes, buttons, mapping, dial_min=-0.5, dial_max=-0.1):
     except IndexError as error:
         raise ValueError("controller does not provide configured inputs") from error
     frame = encode_frame(canonical, switches, dial_min, dial_max)
-    # Unverified dial must not command an endpoint. Byte 10 stays reserved/zero.
-    return frame if mapping["dial_axis"] is not None else frame[:5] + bytes([127]) + frame[6:]
+    # Byte10 is a verified-camera-dial marker, never the removed main servo.
+    if mapping["dial_axis"] is None:
+        return frame[:5] + bytes([127]) + frame[6:10] + bytes([0])
+    return frame[:10] + bytes([1])
 
 
 class RemoteControl:
