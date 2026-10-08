@@ -50,6 +50,10 @@ struct Config {
   double segment_time{0.5};
   std::uint64_t max_event_bytes{10*1024*1024};
   std::vector<double> camera_matrix, distortion;
+  std::vector<double> front_camera_matrix, front_distortion;
+  bool down_preview_rectify{}, front_preview_rectify{};
+  int down_calibration_width{},down_calibration_height{},front_calibration_width{},front_calibration_height{};
+  std::string down_calibration_id,front_calibration_id,down_calibration_quality{"unconfigured"},front_calibration_quality{"unconfigured"};
 };
 static Config load_config(const std::string& path) {
   const auto y = YAML::LoadFile(path);
@@ -234,6 +238,39 @@ static Config load_config(const std::string& path) {
   c.max_event_bytes = y["logging"]["max_event_bytes"].as<std::uint64_t>();
   if (y["camera"]["camera_matrix"]) c.camera_matrix = y["camera"]["camera_matrix"].as<std::vector<double>>();
   if (y["camera"]["distortion_coefficients"]) c.distortion = y["camera"]["distortion_coefficients"].as<std::vector<double>>();
+  const auto down=y["camera"], front=y["camera_front"];
+  c.down_preview_rectify=down["preview_rectify"].as<bool>(false);
+  c.down_calibration_width=down["calibration_width"].as<int>(0);
+  c.down_calibration_height=down["calibration_height"].as<int>(0);
+  c.down_calibration_id=down["calibration_id"].as<std::string>("");
+  c.down_calibration_quality=down["calibration_quality"].as<std::string>("unconfigured");
+  if(front) {
+    c.front_camera_matrix=front["camera_matrix"].as<std::vector<double>>(std::vector<double>{});
+    c.front_distortion=front["distortion_coefficients"].as<std::vector<double>>(std::vector<double>{});
+    c.front_preview_rectify=front["preview_rectify"].as<bool>(false);
+    c.front_calibration_width=front["calibration_width"].as<int>(0);
+    c.front_calibration_height=front["calibration_height"].as<int>(0);
+    c.front_calibration_id=front["calibration_id"].as<std::string>("");
+    c.front_calibration_quality=front["calibration_quality"].as<std::string>("unconfigured");
+  }
+  auto validate_calibration=[](const std::vector<double>& k,const std::vector<double>& d,
+      bool rectify,int w,int h,int actual_w,int actual_h) {
+    if(k.empty() && d.empty() && !rectify)return;
+    if(k.size()!=9 || (d.size()!=4 && d.size()!=5 && d.size()!=8 && d.size()!=12 && d.size()!=14))
+      throw std::runtime_error("camera calibration requires complete K/D");
+    for(double v:k)if(!std::isfinite(v))throw std::runtime_error("nonfinite camera matrix");
+    for(double v:d)if(!std::isfinite(v))throw std::runtime_error("nonfinite camera distortion");
+    if(k[0]<=0 || k[4]<=0 || std::abs(k[6])+std::abs(k[7])+std::abs(k[8]-1)>1e-9)
+      throw std::runtime_error("invalid camera matrix");
+    if((rectify || w || h) && (w!=actual_w || h!=actual_h || w<=0 || h<=0))
+      throw std::runtime_error("camera calibration resolution mismatch");
+  };
+  validate_calibration(c.camera_matrix,c.distortion,c.down_preview_rectify,c.down_calibration_width,
+      c.down_calibration_height,c.camera_width,c.camera_height);
+  validate_calibration(c.front_camera_matrix,c.front_distortion,c.front_preview_rectify,c.front_calibration_width,
+      c.front_calibration_height,c.front_width,c.front_height);
+  if(c.operation_mode=="autonomous" && c.camera_matrix.empty())
+    throw std::runtime_error("autonomous perception requires down camera calibration");
   if (c.camera != "csi:0" && c.camera != "csi:1" &&
       c.camera.rfind("/dev/v4l/by-id/", 0) != 0 && c.camera.rfind("file:", 0) != 0)
     throw std::runtime_error("camera source must be csi:0/1, /dev/v4l/by-id/... or file:...");

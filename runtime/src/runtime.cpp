@@ -1,4 +1,5 @@
 #include "csi_capture.hpp"
+#include "camera_rectifier.hpp"
 #include "localization.hpp"
 #include "mission_recorder.hpp"
 #include "runtime_config.hpp"
@@ -60,6 +61,10 @@ static std::string json_escape(const std::string& s) {
   return out;
 }
 static std::string json_number(double value) {return std::isfinite(value)?std::to_string(value):"null";}
+static bool surface_grid_phase(auv_mission::MissionPhase phase) {
+  return phase==auv_mission::MissionPhase::kRelocalizeSurface ||
+      phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones;
+}
 static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traversal=false) {
   if(surface_traversal && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
     phase==auv_mission::MissionPhase::kRelocalizeSurface || phase==auv_mission::MissionPhase::kPlanCones))return true;
@@ -287,6 +292,10 @@ class Runtime {
     CsiCapture capture;
     auv_vision::CameraSource camera({source_name,cfg_.camera_width,cfg_.camera_height,
       cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0)==0});
+    CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
+        cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
+    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+        cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
     double last_ready=seconds();
     bool received=false;
     while (running) {
@@ -313,10 +322,25 @@ class Runtime {
         const double previous=frame_time_.load();
         if (previous>0 && last_ready>previous)
           down_hz_=down_hz_<=0 ? 1.0/(last_ready-previous) : .9*down_hz_.load()+.1/(last_ready-previous);
-        if (!csi && !cv::imencode(".jpg",image,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+        bool surface_frame=false;
+        {std::lock_guard<std::mutex> lock(state_mutex_);
+         surface_frame=cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase);}
+        cv::Mat corrected=surface_frame?surface.apply(image):underwater.apply(image);
+        cv::Mat display=cfg_.down_preview_rectify?corrected:image;
+        std::vector<std::uint8_t> raw_jpeg;
+        if(cfg_.recording_enabled && cfg_.down_preview_rectify) {
+          if(csi)raw_jpeg=jpeg;
+          else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+            throw std::runtime_error("raw down JPEG encode failed");
+        }
+        if ((!csi || cfg_.down_preview_rectify) &&
+            !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
           throw std::runtime_error("down JPEG encode failed");
         { std::lock_guard<std::mutex> lock(frame_mutex_);
+          if(cfg_.recording_enabled)down_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
           down_jpeg_=std::move(jpeg);
+          down_preview_frame_=display;
+          down_rectified_frame_=corrected;down_surface_frame_=surface_frame;
           frame_=image; frame_time_=last_ready; ++frame_sequence_; ++down_capture_frames_;
         }
       } catch(const std::exception& e) {
@@ -335,6 +359,8 @@ class Runtime {
     bool received=false;
     auv_vision::CameraSource camera({source,cfg_.front_width,cfg_.front_height,
       static_cast<double>(cfg_.front_fps),"MJPG",cfg_.front_source.rfind("file:",0)==0});
+    CameraRectifier preview(cfg_.front_preview_rectify,cfg_.front_calibration_width,
+        cfg_.front_calibration_height,cfg_.front_camera_matrix,cfg_.front_distortion);
     while (running) {
       try {
         if (csi && !capture.is_open()) {
@@ -353,9 +379,19 @@ class Runtime {
         const double stamp=seconds(), previous=front_time_.load();
         last_ready=stamp;
         received=true;
-        if (!csi && !cv::imencode(".jpg",image,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+        cv::Mat display=preview.apply(image);
+        std::vector<std::uint8_t> raw_jpeg;
+        if(cfg_.recording_enabled && cfg_.front_preview_rectify) {
+          if(csi)raw_jpeg=jpeg;
+          else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
+            throw std::runtime_error("raw front JPEG encode failed");
+        }
+        if ((!csi || cfg_.front_preview_rectify) &&
+            !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
           throw std::runtime_error("front JPEG encode failed");
         { std::lock_guard<std::mutex> lock(front_mutex_);
+          if(cfg_.recording_enabled)front_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
+          front_preview_frame_=display;
           front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; ++front_sequence_; }
         { std::lock_guard<std::mutex> lock(state_mutex_);
           ++front_frames_; front_detail_.clear();
@@ -377,11 +413,20 @@ class Runtime {
     while(running){
       const double now=seconds();
       if(now-last < localization_->period()) {std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
-      last=now;cv::Mat image;double stamp=0;
+      last=now;cv::Mat image;double stamp=0;bool corrected=false,surface_frame=false;
+      const bool matching=cfg_.camera_matrix==cfg_.localization.intrinsics &&
+          cfg_.distortion==cfg_.localization.distortion && !cfg_.camera_matrix.empty();
       {std::lock_guard<std::mutex> lock(frame_mutex_);
-       if(seen!=frame_sequence_){seen=frame_sequence_;image=frame_;stamp=frame_time_;}}
+       if(seen!=frame_sequence_){seen=frame_sequence_;image=matching?down_rectified_frame_:frame_;
+        corrected=matching;surface_frame=down_surface_frame_;stamp=frame_time_;}}
       try {
         if(!image.empty()){
+          bool surface_phase=false;
+          {std::lock_guard<std::mutex> lock(state_mutex_);
+           surface_phase=cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase);}
+          if(surface_frame || surface_phase) {
+            localization_->unavailable("surface_phase_use_grid_pose");continue;
+          }
           YAML::Node sensor;
           if(!cfg_.serial.empty()){
             std::lock_guard<std::mutex> lock(state_mutex_);
@@ -390,7 +435,7 @@ class Runtime {
             const double degrees=180/std::acos(-1);
             sensor["roll_deg"]=status_.roll*degrees;sensor["pitch_deg"]=status_.pitch*degrees;sensor["yaw_deg"]=status_.yaw*degrees;
           }
-          localization_->process(image,stamp,now,sensor);
+          localization_->process(image,stamp,now,sensor,corrected);
           if(cfg_.auto_origin && !localization_->has_origin()) {
             bool permitted=false;double yaw=0;
             {std::lock_guard<std::mutex> lock(state_mutex_);
@@ -415,8 +460,8 @@ class Runtime {
     while(running) {
       try {
         std::vector<std::uint8_t> down,front;std::uint64_t ds=0,fs=0;double dt=0,ft=0;
-        {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_jpeg_;ds=frame_sequence_;dt=frame_time_;}
-        if(cfg_.front_enabled){std::lock_guard<std::mutex> lock(front_mutex_);front=front_jpeg_;fs=front_sequence_;ft=front_time_;}
+        {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_raw_jpeg_;ds=frame_sequence_;dt=frame_time_;}
+        if(cfg_.front_enabled){std::lock_guard<std::mutex> lock(front_mutex_);front=front_raw_jpeg_;fs=front_sequence_;ft=front_time_;}
         std::ostringstream telemetry;std::deque<std::string> points;std::string planned;
         {std::lock_guard<std::mutex> lock(state_mutex_);
           telemetry.precision(15);
@@ -454,17 +499,17 @@ class Runtime {
     auv_mapping::GridMapper mapper(cfg_.grid);
     auv_vision::ConeDetector detector(cfg_.cone);
     auv_vision::ConeTracker tracker(cfg_.tracker);
-    cv::Mat intrinsics, distortion;
-    if (!cfg_.camera_matrix.empty()) {
-      intrinsics=cv::Mat(3,3,CV_64F,cfg_.camera_matrix.data()).clone();
-      distortion=cv::Mat(cfg_.distortion).clone().reshape(1,1);
-    }
+    CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
+        cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
+    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+        cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
     std::uint64_t seen = 0;
     std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false;
     while (running) {
-      cv::Mat image; double stamp = 0;
+      cv::Mat image,cached; double stamp = 0;bool cached_surface=false;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
-        if (seen != frame_sequence_) { seen = frame_sequence_; image = frame_; stamp = frame_time_; } }
+        if (seen != frame_sequence_) { seen = frame_sequence_; image = frame_;cached=down_rectified_frame_;
+          cached_surface=down_surface_frame_;stamp = frame_time_; } }
       if (image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
@@ -472,19 +517,11 @@ class Runtime {
       auv_mission::MissionPhase phase;
       bool triggered=false;
       {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
-      const bool surface_phase=cfg_.traversal.enabled && (phase==auv_mission::MissionPhase::kRelocalizeSurface ||
-        phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones);
+      const bool surface_phase=cfg_.traversal.enabled && surface_grid_phase(phase);
       if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;}
-      cv::Mat used_intrinsics=intrinsics,used_distortion=distortion;
-      if(surface_phase) {
-        used_intrinsics=cv::Mat(3,3,CV_64F,cfg_.traversal.surface.camera_matrix.data());
-        used_distortion=cv::Mat(cfg_.traversal.surface.distortion).reshape(1,1);
-      }
-      if (!used_intrinsics.empty()) {
-        cv::Mat corrected;
-        cv::undistort(image,corrected,used_intrinsics,used_distortion);
-        image=std::move(corrected);
-      }
+      // Reuse capture correction, except when a mission transition changed the model.
+      if(!cached.empty() && cached_surface==surface_phase)image=cached;
+      else image=surface_phase?surface.apply(image):underwater.apply(image);
       const auto found = tags.detect(image);
       if(phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
         const auto eligible=std::find_if(found.begin(),found.end(),[this](const auto& tag){
@@ -1012,6 +1049,35 @@ class Runtime {
       std::this_thread::sleep_until(next);
     }
   }
+  std::string camera_calibration_json() {
+    bool surface_frame=false;
+    {std::lock_guard<std::mutex> lock(frame_mutex_);surface_frame=down_surface_frame_;}
+    std::ostringstream out;
+    auto camera=[&](bool rectify,int width,int height,const std::string& id,
+        const std::string& quality,const std::vector<double>& k,const std::vector<double>& d) {
+      out << "{\"preview_rectified\":" << (rectify?"true":"false")
+          << ",\"calibration_id\":\"" << json_escape(id) << "\",\"quality\":\"" << json_escape(quality)
+          << "\",\"width\":" << width << ",\"height\":" << height << ",\"camera_matrix\":[";
+      for(std::size_t i=0;i<k.size();++i){if(i)out<<',';out<<k[i];}
+      out << "],\"raw_distortion_coefficients\":[";
+      for(std::size_t i=0;i<d.size();++i){if(i)out<<',';out<<d[i];}
+      out << "],\"preview_distortion_coefficients\":[";
+      for(std::size_t i=0;i<d.size();++i){if(i)out<<',';out<<(rectify?0:d[i]);}
+      out << "]}";
+    };
+    out.precision(17);
+    out << "{\"down\":";
+    if(surface_frame) {
+      const auto& model=cfg_.traversal.surface;
+      camera(cfg_.down_preview_rectify,model.width,model.height,"surface-traversal",
+          "independently_verified",model.camera_matrix,model.distortion);
+    } else camera(cfg_.down_preview_rectify,cfg_.down_calibration_width,cfg_.down_calibration_height,
+        cfg_.down_calibration_id,cfg_.down_calibration_quality,cfg_.camera_matrix,cfg_.distortion);
+    out << ",\"front\":";
+    camera(cfg_.front_enabled && cfg_.front_preview_rectify,cfg_.front_calibration_width,cfg_.front_calibration_height,
+        cfg_.front_calibration_id,cfg_.front_calibration_quality,cfg_.front_camera_matrix,cfg_.front_distortion);
+    out << '}';return out.str();
+  }
   std::string command(const std::string& cmd) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto now = seconds();
@@ -1063,6 +1129,8 @@ class Runtime {
         << ",\"camera_age_sec\":" << (frame_time_ ? now-frame_time_ : -1)
         << ",\"down_source\":\"" << json_escape(cfg_.camera) << "\""
         << ",\"front_source\":\"" << json_escape(cfg_.front_source) << "\""
+        << ",\"camera_calibration\":" << camera_calibration_json()
+        << ",\"vision_image_space\":\"" << (cfg_.camera_matrix.empty()?"raw":"rectified") << "\""
         << ",\"down_capture_frames\":" << down_capture_frames_.load()
         << ",\"down_hz\":" << down_hz_.load()
         << ",\"video_enabled\":" << (cfg_.video_enabled ? "true":"false")
@@ -1209,10 +1277,10 @@ class Runtime {
       cv::Mat image;
       /* Preview consumes capture directly; perception rate must not cap video FPS. */
       { std::lock_guard<std::mutex> lock(frame_mutex_);
-        if (cfg_.front_enabled || seen != frame_sequence_) { seen=frame_sequence_; image=frame_; } }
+        if (cfg_.front_enabled || seen != frame_sequence_) { seen=frame_sequence_; image=down_preview_frame_; } }
       if (cfg_.front_enabled) {
         cv::Mat front;
-        { std::lock_guard<std::mutex> lock(front_mutex_); front=front_frame_; }
+        { std::lock_guard<std::mutex> lock(front_mutex_); front=front_preview_frame_; }
         cv::Mat composite(cfg_.video_height,cfg_.video_width,CV_8UC3,cv::Scalar(0,0,0));
         const int half=cfg_.video_width/2;
         if (!image.empty() && frame_time_>0 && seconds()-frame_time_<=cfg_.frame_timeout)
@@ -1397,9 +1465,10 @@ class Runtime {
   double origin_absolute_yaw_{0},tag_time_{0};
   std::atomic<double> down_hz_{0};
   std::atomic<int> mjpeg_clients_{0};
-  std::vector<std::uint8_t> down_jpeg_,front_jpeg_;
+  std::vector<std::uint8_t> down_jpeg_,front_jpeg_,down_raw_jpeg_,front_raw_jpeg_;
   std::mutex front_mutex_;
-  cv::Mat front_frame_;
+  cv::Mat front_frame_,down_preview_frame_,front_preview_frame_,down_rectified_frame_;
+  bool down_surface_frame_{}; // guarded by frame_mutex_
   std::atomic<double> front_time_{0};
   std::atomic<std::uint64_t> down_capture_frames_{0};
   std::uint64_t front_frames_{};

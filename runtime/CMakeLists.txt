@@ -44,6 +44,12 @@ if(BUILD_TESTING)
   execute_process(COMMAND ${Python3_EXECUTABLE} -c "import cv2, numpy"
     RESULT_VARIABLE AUV_REPLAY_DEPS OUTPUT_QUIET ERROR_QUIET)
   if(AUV_REPLAY_DEPS EQUAL 0)
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
+      RESULT_VARIABLE AUV_CALIBRATION_YAML OUTPUT_QUIET ERROR_QUIET)
+    if(AUV_CALIBRATION_YAML EQUAL 0)
+      add_test(NAME calibration_profiles
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_calibration_profiles.py)
+    endif()
     add_test(NAME dual_camera
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/dual_camera.py $<TARGET_FILE:auv_runtime>)
     set_tests_properties(dual_camera PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)

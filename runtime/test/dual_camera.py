@@ -33,7 +33,7 @@ else:
         time.sleep(0.067)
 ''')
         fake.chmod(0o755)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
         replacements = {
             'csi:0': f'file:{root / "down.avi"}',
             'enabled: true': 'enabled: false',

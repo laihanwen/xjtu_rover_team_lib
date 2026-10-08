@@ -1,4 +1,5 @@
 #pragma once
+#include "camera_rectifier.hpp"
 #include "auv_mapping/plane_odometry.hpp"
 #include "auv_control/observation_search.hpp"
 #include <opencv2/core.hpp>
@@ -13,6 +14,7 @@
 #include <utility>
 #include <cstdint>
 #include <chrono>
+#include <memory>
 
 // Adapter owns image tracking and status. Geometry core has no ROS, UART or HTTP dependencies.
 class Localization {
@@ -45,7 +47,7 @@ class Localization {
  bool has_origin()const {std::lock_guard<std::mutex> lock(mutex_);return session_!=0;}
  void unavailable(const std::string& reason){std::lock_guard<std::mutex> lock(mutex_);fail(reason);}
  // Called by a dedicated worker with shared capture image (never opens another camera).
- void process(const cv::Mat& image,double stamp,double now,const YAML::Node& supplied=YAML::Node()){
+ void process(const cv::Mat& image,double stamp,double now,const YAML::Node& supplied=YAML::Node(),bool image_rectified=false){
   std::lock_guard<std::mutex> lock(mutex_);
   if(!std::isfinite(stamp)||!std::isfinite(now)){stamp_=0;fail("invalid_timestamp");return;}stamp_=stamp;
   if(!cfg_.enabled){fail("disabled");return;}
@@ -73,8 +75,13 @@ class Localization {
     input_json_=input.str();
   }
   if(std::abs(sample.roll)>.6||std::abs(sample.pitch)>.6){fail("tilt_out_of_range");return;}
-  cv::Mat gray;if(image.channels()==1)gray=image;else cv::cvtColor(image,gray,cv::COLOR_BGR2GRAY);
-  std::vector<cv::Point2f> points;cv::goodFeaturesToTrack(gray,points,200,.02,7);
+  cv::Mat corrected=image;
+  if(!rectifier_)rectifier_=std::make_unique<CameraRectifier>(true,cfg_.width,cfg_.height,cfg_.intrinsics,cfg_.distortion);
+  if(!image_rectified) {
+   corrected=rectifier_->apply(image);
+  }
+  cv::Mat gray;if(corrected.channels()==1)gray=corrected;else cv::cvtColor(corrected,gray,cv::COLOR_BGR2GRAY);
+  std::vector<cv::Point2f> points;cv::goodFeaturesToTrack(gray,points,200,.02,7,rectifier_->valid_mask());
   if(points.size()<30){fail("insufficient_texture");return;}
   ready_=true;ready_time_=now;
   history_.push_back(sample);while(!history_.empty()&&stamp-history_.front().stamp>2.5)history_.pop_front();
@@ -84,11 +91,12 @@ class Localization {
   cv::calcOpticalFlowPyrLK(gray_,gray,points_,next,status,error,cv::Size(21,21),3);
   cv::calcOpticalFlowPyrLK(gray,gray_,next,back,back_status,back_error,cv::Size(21,21),3);
   std::vector<cv::Point2f> a,b;
-  for(std::size_t i=0;i<points_.size();++i)if(status[i]&&back_status[i]&&cv::norm(points_[i]-back[i])<1&&next[i].x>=0&&next[i].y>=0&&next[i].x<gray.cols&&next[i].y<gray.rows){a.push_back(points_[i]);b.push_back(next[i]);}
+  for(std::size_t i=0;i<points_.size();++i)if(status[i]&&back_status[i]&&cv::norm(points_[i]-back[i])<1&&next[i].x>=0&&next[i].y>=0&&next[i].x<gray.cols&&next[i].y<gray.rows&&rectifier_->valid_mask().at<unsigned char>(static_cast<int>(next[i].y),static_cast<int>(next[i].x))){a.push_back(points_[i]);b.push_back(next[i]);}
   if(a.size()<30){fail("tracking_lost");return;}
   cv::Mat mask;auto homography=cv::findHomography(a,b,cv::RANSAC,2,mask);if(homography.empty()){fail("plane_fit_failed");return;}
-  cv::Mat k(3,3,CV_64F,cfg_.intrinsics.data()),d(cfg_.distortion);std::vector<cv::Point2f> na,nb;
-  cv::undistortPoints(a,na,k,d);cv::undistortPoints(b,nb,k,d);
+  cv::Mat k(3,3,CV_64F,cfg_.intrinsics.data());std::vector<cv::Point2f> na,nb;
+  // Tracking coordinates are already corrected with the same K. Normalize only.
+  cv::undistortPoints(a,na,k,cv::noArray());cv::undistortPoints(b,nb,k,cv::noArray());
   std::vector<std::array<double,4>> matches;
   for(std::size_t i=0;i<a.size();++i)if(mask.at<unsigned char>(static_cast<int>(i)))matches.push_back({na[i].x,na[i].y,nb[i].x,nb[i].y});
   const auto estimate=auv_mapping::estimate_translation(cfg_.plane,previous_,sample,matches);
@@ -110,7 +118,7 @@ class Localization {
  std::string json(double now)const{
   std::lock_guard<std::mutex> lock(mutex_);std::ostringstream s;s<<std::setprecision(15);
   const bool fresh=now>=stamp_&&now-stamp_<=.5;
-  s<<"{\"input\":"<<input_json_<<",\"frame_id\":\"odom\",\"source\":\"down_plane_imu\",\"session\":"<<session_<<",\"session_id\":\""<<boot_<<"-"<<session_<<"\""
+  s<<"{\"input\":"<<input_json_<<",\"image_space\":\"rectified\",\"frame_id\":\"odom\",\"source\":\"down_plane_imu\",\"session\":"<<session_<<",\"session_id\":\""<<boot_<<"-"<<session_<<"\""
    <<",\"stamp\":"<<stamp_<<",\"age_s\":"<<(stamp_?now-stamp_:-1)
    <<",\"valid\":"<<(valid_&&fresh?"true":"false")<<",\"continuous\":"<<(continuous_?"true":"false")
    <<",\"ready\":"<<(ready_&&now-ready_time_<=.3?"true":"false")<<",\"armed\":"<<(armed_?"true":"false")
@@ -127,6 +135,7 @@ class Localization {
  }
  void fail(const std::string& why){valid_=ready_=false;input_json_="null";stationary_since_=0;reason_=why;history_.clear();gray_.release();points_.clear();if(session_)continuous_=false;}
  Settings cfg_;mutable std::mutex mutex_;cv::Mat gray_;std::vector<cv::Point2f> points_;
+ std::unique_ptr<CameraRectifier> rectifier_;
  auv_mapping::PlaneSample previous_;std::deque<auv_mapping::PlaneSample> history_;
  bool valid_=false,ready_=false,continuous_=false,armed_=true;double stationary_since_=0,stamp_=0,ready_time_=0,x_=0,y_=0,yaw_=0,origin_yaw_=0,residual_=0;
  std::size_t inliers_=0;const std::uint64_t boot_=static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());

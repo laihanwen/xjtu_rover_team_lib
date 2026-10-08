@@ -26,7 +26,7 @@ def main(binary, autonomous=False):
         root = pathlib.Path(temp)
         video = root / 'scene.avi'
         make_video(video)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
         replacements = {
             'csi:0': f'file:{video}',
             'device: ""': f'device: "{os.ttyname(slave)}"',

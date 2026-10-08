@@ -70,7 +70,7 @@ def main(binary):
         root = pathlib.Path(temp)
         video = root / 'scene.avi'
         make_video(video)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
         config = config.replace('csi:0', f'file:{video}')
         config = config.replace('device: ""', f'device: "{os.ttyname(slave)}"')
         config = config.replace('/run/auv-runtime/control.sock', str(root / 'control.sock'))

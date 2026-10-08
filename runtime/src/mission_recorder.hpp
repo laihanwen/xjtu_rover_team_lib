@@ -42,7 +42,7 @@ class MissionRecorder {
     if(!s.video)throw std::runtime_error("onboard video write failed");
     s.index.precision(15);
     s.index<<"{\"sequence\":"<<sequence<<",\"steady_sec\":"<<stamp
-      <<",\"source\":"<<source_json<<",\"offset\":"<<offset<<",\"bytes\":"<<jpeg.size()
+      <<",\"source\":"<<source_json<<",\"image_space\":\"raw\",\"offset\":"<<offset<<",\"bytes\":"<<jpeg.size()
       <<",\"dropped_since_previous\":"<<(s.sequence?sequence-s.sequence-1:0)
       <<",\"telemetry\":"<<telemetry_json<<"}\n";
     s.index.flush();

@@ -40,7 +40,7 @@ def main(binary):
     device = os.ttyname(slave)
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
-        config = pathlib.Path('runtime/config/runtime.yaml').read_text()
+        config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
         config = config.replace('csi:0', '/dev/v4l/by-id/NO_CAMERA')
         config = config.replace('device: ""', f'device: "{device}"')
         config = config.replace('/run/auv-runtime/control.sock', str(root / 'control.sock'))

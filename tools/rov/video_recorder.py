@@ -118,6 +118,9 @@ class DatasetRecorder:
         session=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
         self.root=self.directory/session;self.root.mkdir()
         manifest={'session':session,'started_utc':datetime.now(timezone.utc).isoformat(),'sources':sources,'format':'MJPEG AVI','timestamp_clock':'Pi monotonic seconds; PC UTC receive time','nominal_fps':self.fps,'segment_seconds':self.segment_seconds,'overlay':False}
+        # The MJPEG endpoints may now be corrected; preserve their K/zero D to
+        # prevent offline consumers from correcting the recorded pixels twice.
+        manifest['camera_calibration']=state.get('camera_calibration',{})
         (self.root/'session.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
         self.stop_event.clear()
         with self.lock:self.info.update(active=True,session=session,error='',directory=str(self.root),cameras={k:{'frames':0,'error':''} for k in sources})

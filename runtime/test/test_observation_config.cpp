@@ -13,11 +13,22 @@ int main(int argc,char** argv){
   auto y=YAML::LoadFile(base.string());
   auto write=[&](){std::ofstream out(temp);out<<y;};
   auto rejects=[&](){write();try{load_config(temp.string());return false;}catch(const std::exception&){return true;}};
+  require(c.down_preview_rectify && c.front_preview_rectify && c.camera_width==320 &&
+      c.camera_matrix==c.localization.intrinsics && c.distortion==c.localization.distortion);
+  require(c.front_calibration_quality=="provisional_unstable_intrinsics");
+  y["camera"]["width"]=640;require(rejects());
+  y=YAML::LoadFile(base.string());y["camera_front"]["camera_matrix"]=YAML::Load("[1,2]");require(rejects());
+  y=YAML::LoadFile(base.string());y["camera_front"]["distortion_coefficients"]=YAML::Load("[.nan,0,0,0,0]");require(rejects());
+  y=YAML::LoadFile(base.string());
   y["observation_search"]["enabled"]=true;require(rejects());
   y=YAML::LoadFile(base.string());y["operation"]["auto_arm"]=true;require(rejects());
   y=YAML::LoadFile(base.string());y["recording"]["enabled"]=false;require(rejects());
   y=YAML::LoadFile(base.string());y["safety"]["frame_timeout_sec"]=".nan";require(rejects());
   y=YAML::LoadFile(base.string());
+  // Synthetic 640x480 geometry below is independent of the real 320x240 calibration.
+  y["camera"]["width"]=640;y["camera"]["height"]=480;
+  y["camera"]["calibration_width"]=640;y["camera"]["calibration_height"]=480;
+  y["localization"]["width"]=640;y["localization"]["height"]=480;
   y["observation_search"]["enabled"]=true;y["observation_search"]["corridor_calibrated"]=true;
   y["observation_search"]["maximum_radius_m"]=2;y["observation_search"]["depth_target_m"]=.3;
   y["observation_search"]["waypoints_m"]=YAML::Load("[[1,0]]");

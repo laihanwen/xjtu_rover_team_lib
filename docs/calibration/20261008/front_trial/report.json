@@ -1,0 +1,401 @@
+{
+  "image_size": [
+    320,
+    240
+  ],
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "model": "plumb_bob",
+  "sampled_frames": 301,
+  "detections": 47,
+  "diverse_views": 40,
+  "training_views": 30,
+  "rejected_training_views": 2,
+  "holdout_views": 8,
+  "rms_px": 0.4513590578395757,
+  "holdout_rms_px": 0.4488751639039725,
+  "holdout_errors_px": [
+    0.5106590986251831,
+    0.4467446208000183,
+    0.3316837251186371,
+    0.4583023488521576,
+    0.4246899485588074,
+    0.5017485022544861,
+    0.5152230262756348,
+    0.36597105860710144
+  ],
+  "camera_matrix": [
+    [
+      330.922779006695,
+      0.0,
+      148.05861974792015
+    ],
+    [
+      0.0,
+      351.869456969992,
+      141.7192514430644
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion_coefficients": [
+    -0.2574423751465809,
+    -1.258184396225997,
+    -0.07397539006050448,
+    0.0024943819270529946,
+    5.38508326862477
+  ],
+  "intrinsic_std_deviations": [
+    7.283735025951481,
+    11.624691730484946,
+    6.514056190030805,
+    14.054382020579812,
+    0.054944670997672106,
+    0.6912924493627441,
+    0.014556057297131894,
+    0.0031702511887295474,
+    3.3474883528778503,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_view_errors_px": [
+    0.45893175696585625,
+    0.46281696166536185,
+    0.5269489107669376,
+    0.5191274139638011,
+    0.48073341893199023,
+    0.4636226232305642,
+    0.4878038500838451,
+    0.2868895622700691,
+    0.3778117359175867,
+    0.32734668930641214,
+    0.4293096444648827,
+    0.4025666489488025,
+    0.43159204998658723,
+    0.4711305763788235,
+    0.45037068008683967,
+    0.4538156785464349,
+    0.4422439888950683,
+    0.42666862008179435,
+    0.38918666339158536,
+    0.4363251447010719,
+    0.5174115000193957,
+    0.47011062906740575,
+    0.473774908779244,
+    0.5079090576567226,
+    0.55724418733205,
+    0.5109627633429243,
+    0.4497571722337403,
+    0.3516110955284678,
+    0.43231339419769615,
+    0.4302755316768155
+  ],
+  "training_sources": [
+    {
+      "video": "前视4.avi",
+      "frame": 152,
+      "seconds": 3.0628488524391964,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 156,
+      "seconds": 3.1434501380297015,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 162,
+      "seconds": 3.264352066415459,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 166,
+      "seconds": 3.344953352005964,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 178,
+      "seconds": 3.5867572087774797,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 194,
+      "seconds": 3.9091623511395004,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 198,
+      "seconds": 3.9897636367300056,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 216,
+      "seconds": 4.352469421887279,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 222,
+      "seconds": 4.473371350273037,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 224,
+      "seconds": 4.513671993068289,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 228,
+      "seconds": 4.594273278658794,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 236,
+      "seconds": 4.755475849839804,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 242,
+      "seconds": 4.876377778225563,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 244,
+      "seconds": 4.916678421020815,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 246,
+      "seconds": 4.956979063816068,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 248,
+      "seconds": 4.99727970661132,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 252,
+      "seconds": 5.077880992201825,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 254,
+      "seconds": 5.118181634997078,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 256,
+      "seconds": 5.158482277792331,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 258,
+      "seconds": 5.1987829205875835,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 262,
+      "seconds": 5.279384206178088,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 264,
+      "seconds": 5.319684848973341,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 266,
+      "seconds": 5.359985491768594,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 268,
+      "seconds": 5.400286134563846,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 272,
+      "seconds": 5.480887420154351,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 274,
+      "seconds": 5.521188062949604,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 388,
+      "seconds": 7.818324702279001,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 394,
+      "seconds": 7.939226630664758,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 396,
+      "seconds": 7.979527273460011,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 398,
+      "seconds": 8.019827916255263,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "holdout_sources": [
+    {
+      "video": "前视4.avi",
+      "frame": 114,
+      "seconds": 2.297136639329397,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 170,
+      "seconds": 3.4255546375964694,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 220,
+      "seconds": 4.433070707477784,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 240,
+      "seconds": 4.83607713543031,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 250,
+      "seconds": 5.037580349406573,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 260,
+      "seconds": 5.239083563382835,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 270,
+      "seconds": 5.440586777359099,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "前视4.avi",
+      "frame": 390,
+      "seconds": 7.858625345074254,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "rectified_camera_matrix": [
+    [
+      353.5140072536241,
+      0.0,
+      154.1470059539375
+    ],
+    [
+      0.0,
+      371.00688928113294,
+      125.06895997188556
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "rectified_roi": [
+    0,
+    0,
+    319,
+    239
+  ],
+  "quality_status": "provisional_unstable_intrinsics",
+  "quality_note": "Usable poses concentrated in front4 around 3-8 seconds and lower image; similar reprojection errors with markedly different principal points across models. Not approved for metric pose estimation."
+}

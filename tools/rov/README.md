@@ -1,5 +1,10 @@
 # ROV 操作与开发手册
 
+双摄矫正参数已接入共享 Runtime 的 `pi-rov.yaml`（320×240）。驾驶台预览和
+电脑端录制接收矫正画面，录制会话保存 `camera_calibration` 元数据；离线处理
+使用其中的 K 与零畸变。前视参数为试验标定。详见
+[标定接入说明](../../docs/calibration/20261008/runtime-integration.md)。
+
 当前说明基于 2026-10-07 源码。设备实际版本需检查服务与部署报告，不能根据此文件推断已烧录。历史合并说明保存在 [LEGACY_NOTES.md](LEGACY_NOTES.md)，其中旧参数不作为操作依据。
 
 ## 运行组成

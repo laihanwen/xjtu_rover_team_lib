@@ -25,7 +25,7 @@ class RecorderTests(unittest.TestCase):
    def do_GET(self):
     visits.append(self.path)
     if self.path=='/api/status':
-     b=json.dumps({'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
+     b=json.dumps({'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True,'camera_calibration':{'down':{'preview_rectified':True,'preview_distortion_coefficients':[0,0,0,0,0]}}}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
     elif self.path in ('/api/camera/down.jpg','/api/camera/front.jpg'):
      self.send_response(200);self.send_header('X-Camera-Source','csi:0' if '/down.' in self.path else '/dev/v4l/by-id/usb');self.send_header('X-Frame-Time-Monotonic',str(1 if duplicate else time.monotonic()));self.end_headers();self.wfile.write(JPEG)
     elif stream and self.path in ('/api/camera/down.mjpeg','/api/camera/front.mjpeg'):
@@ -55,6 +55,9 @@ class RecorderTests(unittest.TestCase):
    self.assertGreater(state['cameras']['down']['frames'],3);self.assertGreater(state['cameras']['front']['frames'],3)
    files=list(Path(state['directory']).glob('*.avi'));self.assertGreaterEqual(len(files),4)
    self.assertTrue((Path(state['directory'])/'result.json').exists())
+   metadata=json.loads((Path(state['directory'])/'session.json').read_text())
+   self.assertTrue(metadata['camera_calibration']['down']['preview_rectified'])
+   self.assertEqual(metadata['camera_calibration']['down']['preview_distortion_coefficients'],[0,0,0,0,0])
    self.assertTrue(all(p in ('/api/status','/api/camera/down.jpg','/api/camera/front.jpg','/api/camera/down.mjpeg','/api/camera/front.mjpeg') for p in visits))
    for p in files:self.assertIn(b'idx1',p.read_bytes())
  def test_stream_uses_one_connection_per_camera_and_measures_fps(self):
