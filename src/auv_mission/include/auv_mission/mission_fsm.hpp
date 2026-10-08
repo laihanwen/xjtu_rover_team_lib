@@ -39,6 +39,8 @@ enum class MissionPhase
   kRotateValve,
   kReturnHome,
   kSurface,
+  kSurfaceForCones,
+  kRelocalizeSurface,
   kPaused,
   kComplete,
   kFault,
@@ -75,6 +77,8 @@ struct MissionFsmConfig
   bool full_mission{false};
   bool allow_armed_during_observation{false};
   bool stop_after_map{false};
+  bool surface_before_visit{false};
+  double surface_relocalize_timeout_sec{15.0};
 };
 
 struct CommandResult
@@ -112,6 +116,7 @@ public:
   void update_valve(bool found, bool aligned, bool rotated, double now_sec);
   void update_home(bool reached, double now_sec);
   void update_surface(bool surfaced, double now_sec);
+  void update_surface_pose(bool ready, double now_sec);
 
   MissionSnapshot snapshot() const;
 
@@ -153,6 +158,8 @@ private:
   bool valve_rotated_{false};
   bool home_reached_{false};
   bool surfaced_{false};
+  bool surface_pose_ready_{false};
+  double surface_pose_received_sec_{-1.0};
 };
 
 std::string mission_phase_name(MissionPhase phase);

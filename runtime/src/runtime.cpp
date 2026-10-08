@@ -9,6 +9,7 @@
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
+#include "auv_stm32_bridge/depth_sample.hpp"
 #include "auv_stm32_bridge/gripper_protocol.hpp"
 #include "auv_stm32_bridge/protocol.h"
 #include "auv_stm32_bridge/serial_port.hpp"
@@ -58,7 +59,10 @@ static std::string json_escape(const std::string& s) {
   for (char c : s) { if (c == '"' || c == '\\') out += '\\'; if (c >= 32) out += c; }
   return out;
 }
-static bool propulsion_phase(auv_mission::MissionPhase phase) {
+static std::string json_number(double value) {return std::isfinite(value)?std::to_string(value):"null";}
+static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traversal=false) {
+  if(surface_traversal && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
+    phase==auv_mission::MissionPhase::kRelocalizeSurface || phase==auv_mission::MissionPhase::kPlanCones))return true;
   switch (phase) {
     case auv_mission::MissionPhase::kSearchAprilTag:
     case auv_mission::MissionPhase::kBuildMap:
@@ -81,7 +85,8 @@ static bool propulsion_phase(auv_mission::MissionPhase phase) {
 class Runtime {
  public:
   explicit Runtime(Config cfg) : cfg_(std::move(cfg)), mission_(cfg_.mission),
-    route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search) {
+    route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search),
+    ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal) {
     (void)auv_vision::AprilTagDetector(cfg_.apriltag_family);
     (void)auv_mapping::GridMapper(cfg_.grid);
     (void)auv_vision::ConeDetector(cfg_.cone);
@@ -221,12 +226,38 @@ class Runtime {
     const bool observation_ready=cfg_.search.enabled &&
       (phase==auv_mission::MissionPhase::kSearchAprilTag || phase==auv_mission::MissionPhase::kBuildMap) &&
       localization_->snapshot(now).valid;
-    const bool route_ready=pose_valid_ && now-pose_time_<=cfg_.pose_timeout && map_.complete && route_ready_ &&
+    const bool route_ready=!cfg_.mission.surface_before_visit && pose_valid_ && now-pose_time_<=cfg_.pose_timeout && map_.complete && route_ready_ &&
       phase==auv_mission::MissionPhase::kVisitCones;
     return cfg_.motion_enabled && cfg_.directions_calibrated && cfg_.limits_calibrated &&
       !cfg_.serial.empty() && fault_.empty() && safe_status(now) && !status_.armed &&
       recording_ready(now) && frame_time_>0 && now-frame_time_<=cfg_.frame_timeout &&
-      (observation_ready||route_ready);
+      (!cfg_.traversal.enabled||depth_sample_fresh(now)) && (observation_ready||route_ready);
+  }
+  bool depth_sample_fresh(double now) const {
+    return depth_sample_.valid && depth_sample_received_>0 && now>=depth_sample_received_ &&
+      now-depth_sample_received_+depth_sample_.age_sec<=cfg_.traversal.depth_sample_timeout_sec;
+  }
+  bool surface_grid_fresh(double now) const {
+    return metric_pose_.valid && metric_pose_.surface_frame && metric_pose_.stamp>surface_reacquire_start_ && now>=metric_pose_.stamp &&
+      now-metric_pose_.stamp<=cfg_.traversal.pose_timeout_sec;
+  }
+  void queue_trajectory_locked(double now,const std::string& source) {
+    if(!cfg_.mission.surface_before_visit)return;
+    if(trajectory_queue_.size()>=256){set_fault_locked("trajectory recording queue overflow");return;}
+    const auto local=localization_->snapshot(now);
+    std::ostringstream out;out.precision(15);
+    out<<"{\"run_id\":\""<<run_id_<<"\",\"control_steady_sec\":"<<now
+      <<",\"phase\":\""<<auv_mission::mission_phase_name(mission_.snapshot().phase)<<"\",\"source\":\""<<source
+      <<"\",\"frame_sequence\":"<<metric_pose_.sequence<<",\"frame_steady_sec\":"<<metric_pose_.stamp
+      <<",\"grid_valid\":"<<(metric_pose_.valid?"true":"false")<<",\"grid_row\":"<<json_number(metric_pose_.row)
+      <<",\"grid_col\":"<<json_number(metric_pose_.col)<<",\"reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
+      <<",\"grid_reason\":\""<<json_escape(metric_pose_.reason)<<"\",\"underwater_valid\":"<<(local.valid?"true":"false")
+      <<",\"underwater_session\":"<<local.session<<",\"underwater_steady_sec\":"<<local.stamp
+      <<",\"underwater_x_m\":"<<json_number(local.x)<<",\"underwater_y_m\":"<<json_number(local.y)
+      <<",\"depth_m\":"<<json_number(status_.depth)<<",\"depth_sensor_sequence\":"<<depth_sample_.sensor_sequence
+      <<",\"depth_sample_age_sec\":"<<depth_sample_.age_sec+std::max(0.0,now-depth_sample_received_)
+      <<",\"yaw_rad\":"<<json_number(status_.yaw)<<",\"waypoint\":"<<waypoint_index_<<"}\n";
+    trajectory_queue_.push_back(out.str());
   }
   void request_arm_locked(const std::string& source) {
     hold_depth_=cfg_.search.enabled ? static_cast<float>(cfg_.search.depth_m) : status_.depth;
@@ -379,14 +410,17 @@ class Runtime {
   }
   void recording_loop() {
     if(!recorder_)return;
+    std::ofstream trajectory;
+    if(cfg_.mission.surface_before_visit)trajectory.open(run_dir_+"/trajectory.jsonl");
     while(running) {
       try {
         std::vector<std::uint8_t> down,front;std::uint64_t ds=0,fs=0;double dt=0,ft=0;
         {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_jpeg_;ds=frame_sequence_;dt=frame_time_;}
         if(cfg_.front_enabled){std::lock_guard<std::mutex> lock(front_mutex_);front=front_jpeg_;fs=front_sequence_;ft=front_time_;}
-        std::ostringstream telemetry;
+        std::ostringstream telemetry;std::deque<std::string> points;std::string planned;
         {std::lock_guard<std::mutex> lock(state_mutex_);
           telemetry.precision(15);
+          points.swap(trajectory_queue_);planned.swap(plan_artifact_pending_);
           telemetry<<"{\"received_sec\":"<<status_time_<<",\"valid\":"<<(safe_status(seconds())?"true":"false")
             <<",\"armed\":"<<(status_.armed?"true":"false")
             <<",\"depth_m\":"<<(std::isfinite(status_.depth)?std::to_string(status_.depth):"null")
@@ -394,6 +428,15 @@ class Runtime {
             <<",\"pitch_rad\":"<<(std::isfinite(status_.pitch)?std::to_string(status_.pitch):"null")
             <<",\"yaw_rad\":"<<(std::isfinite(status_.yaw)?std::to_string(status_.yaw):"null")
             <<",\"phase\":\""<<auv_mission::mission_phase_name(mission_.snapshot().phase)<<"\"}";
+        }
+        if(cfg_.mission.surface_before_visit) {
+          for(const auto& point:points)trajectory<<point;
+          trajectory.flush();if(!trajectory)throw std::runtime_error("measured trajectory write failed");
+          if(!planned.empty()) {
+            std::ofstream route(run_dir_+"/planned_route.json");route<<planned;route.flush();
+            if(!route)throw std::runtime_error("planned route write failed");
+            std::lock_guard<std::mutex> lock(state_mutex_);plan_evidence_saved_=true;
+          }
         }
         if(ds && !down.empty()){recorder_->append("down",down,ds,dt,"\""+json_escape(cfg_.camera)+"\"",telemetry.str());recording_down_time_=dt;}
         if(fs && !front.empty()){recorder_->append("front",front,fs,ft,"\""+json_escape(cfg_.front_source)+"\"",telemetry.str());recording_front_time_=ft;}
@@ -417,7 +460,7 @@ class Runtime {
       distortion=cv::Mat(cfg_.distortion).clone().reshape(1,1);
     }
     std::uint64_t seen = 0;
-    std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;
+    std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false;
     while (running) {
       cv::Mat image; double stamp = 0;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -429,9 +472,17 @@ class Runtime {
       auv_mission::MissionPhase phase;
       bool triggered=false;
       {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
-      if (!intrinsics.empty()) {
+      const bool surface_phase=cfg_.traversal.enabled && (phase==auv_mission::MissionPhase::kRelocalizeSurface ||
+        phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones);
+      if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;}
+      cv::Mat used_intrinsics=intrinsics,used_distortion=distortion;
+      if(surface_phase) {
+        used_intrinsics=cv::Mat(3,3,CV_64F,cfg_.traversal.surface.camera_matrix.data());
+        used_distortion=cv::Mat(cfg_.traversal.surface.distortion).reshape(1,1);
+      }
+      if (!used_intrinsics.empty()) {
         cv::Mat corrected;
-        cv::undistort(image,corrected,intrinsics,distortion);
+        cv::undistort(image,corrected,used_intrinsics,used_distortion);
         image=std::move(corrected);
       }
       const auto found = tags.detect(image);
@@ -453,12 +504,33 @@ class Runtime {
         }
       }
       const auto grid = mapper.process(image);
+      auv_mapping::MetricGridPose metric;
+      if(cfg_.traversal.enabled) {
+        double depth=-1;
+        {std::lock_guard<std::mutex> lock(state_mutex_);if(depth_sample_fresh(seconds()))depth=depth_sample_.depth_m;}
+        metric=auv_mapping::metric_grid_pose(grid,surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater,
+          image.size(),depth,stamp,seen);
+        metric.surface_frame=surface_phase;
+      }
       std::vector<auv_vision::ConeObservation> cones;
       cv::Mat cone_debug;
       if (triggered && phase==auv_mission::MissionPhase::kBuildMap && grid.stable && !grid.rectified.empty()) {
         const auto detection=detector.process(grid.rectified);
         cones=tracker.update(detection.observations);cone_debug=detection.debug_image;
       } else if(phase==auv_mission::MissionPhase::kBuildMap) tracker.reset();
+      if(surface_phase && phase==auv_mission::MissionPhase::kRelocalizeSurface && metric.valid) {
+        const auto observed=detector.process(grid.rectified);
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        unsigned matched=0;bool consistent=map_.complete && observed.observations.size()==4;
+        for(const auto& cone:observed.observations) {
+          const int id=cone.row*3+cone.col;
+          const std::string shape=cone.shape==auv_vision::ConeShape::kCircle?"circle_cone":
+            (cone.shape==auv_vision::ConeShape::kSquare?"square_cone":"unknown");
+          if(id<0||id>=9||static_cast<std::size_t>(id)>=map_.grid.cells.size()||(matched&(1U<<id))||map_.grid.cells[id].cell.object_type!=shape)consistent=false;
+          else matched|=1U<<id;
+        }
+        metric.semantic_match=consistent;
+      }
       std::array<bool,9> visited;
       { std::lock_guard<std::mutex> lock(state_mutex_); visited = visited_; }
       auto map = auv_core::fuse_semantic_map(grid, cones, tracker.ready(), visited, cfg_.expected_cones);
@@ -497,6 +569,7 @@ class Runtime {
         ++video_sequence_;
       }
       std::lock_guard<std::mutex> lock(state_mutex_);
+      if(epoch==perception_epoch_)metric_pose_=metric;
       if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
@@ -545,6 +618,9 @@ class Runtime {
             if (!auv_core::decode_status(frame.payload,status)) continue;
             std::lock_guard<std::mutex> lock(state_mutex_);
             status_ = std::move(status); status_time_ = seconds(); serial_connected_ = true;
+          } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH && cfg_.traversal.enabled) {
+            const auto sample=auv_stm32_bridge::decode_depth_sample(frame.payload);
+            std::lock_guard<std::mutex> lock(state_mutex_);depth_sample_=sample;depth_sample_received_=seconds();
           } else if (frame.message_type == AUV_PROTOCOL_MSG_ACK && frame.payload.size() == 6) {
             std::lock_guard<std::mutex> lock(state_mutex_);
             const auto acknowledged_sequence=auv_protocol_read_u32_le(frame.payload.data()+2);
@@ -608,7 +684,7 @@ class Runtime {
           if (gripper_command_time_ > 0 && !gripper_ack_ && now-gripper_command_time_ > 0.5)
             set_fault_locked("gripper command acknowledgement timeout");
           send_motion = cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed &&
-            safe_status(now) && propulsion_phase(mission_.snapshot().phase) && fault_.empty();
+            safe_status(now) && propulsion_phase(mission_.snapshot().phase,cfg_.traversal.enabled) && fault_.empty();
           motion = send_motion ? motion_ : auv_stm32_bridge::MotionTarget{};
         }
         if (control_healthy) {
@@ -688,6 +764,7 @@ class Runtime {
           const bool gripper_ready = !cfg_.mission.full_mission ||
             (gripper_status_fresh(now) && gripper_.calibrated && gripper_.error_flags == 0);
           const bool startup_ready = safe_status(now) && !status_.armed && gripper_ready && recording_ready(now) &&
+            (!cfg_.traversal.enabled||depth_sample_fresh(now)) &&
             (!cfg_.auto_origin || localization_->snapshot(now).valid) && frame_time_ > 0 &&
             now-frame_time_ <= cfg_.frame_timeout && processed_time_ > 0 &&
             now-processed_time_ <= cfg_.frame_timeout;
@@ -720,24 +797,64 @@ class Runtime {
           if (frame_time_ <= 0 || now - frame_time_ > cfg_.frame_timeout) {
             set_fault_locked("camera frame timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
-          if (phase == auv_mission::MissionPhase::kVisitCones && (!pose_valid_ || now - pose_time_ > cfg_.pose_timeout)) {
+          if (phase == auv_mission::MissionPhase::kVisitCones && !cfg_.traversal.enabled && (!pose_valid_ || now - pose_time_ > cfg_.pose_timeout)) {
             set_fault_locked("grid pose timeout"); armed_requested_ = false; disarm_pending_ = true;
+          }
+          if(cfg_.traversal.enabled && (!depth_sample_fresh(now) ||
+             ((phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kPlanCones) &&
+              (!surface_grid_fresh(now)||std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)>cfg_.traversal.depth_tolerance_m)))) {
+            set_fault_locked("A2 depth telemetry, surface height or absolute grid pose invalid");
+            armed_requested_=false;disarm_pending_=true;
+          }
+        }
+        if(cfg_.traversal.enabled && fault_.empty()) {
+          if(phase==auv_mission::MissionPhase::kRelocalizeSurface) {
+            const bool ready=surface_grid_fresh(now) && metric_pose_.semantic_match &&
+              std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)<=cfg_.traversal.depth_tolerance_m;
+            if(!ready)surface_pose_votes_=0;
+            else if(metric_pose_.sequence!=surface_vote_sequence_) {
+              surface_vote_sequence_=metric_pose_.sequence;++surface_pose_votes_;
+            }
+            surface_ready_=ready && surface_pose_votes_>=cfg_.traversal.reacquire_frames;
+            mission_.update_surface_pose(surface_ready_,now);
+          }
+          if(metric_pose_.sequence!=trajectory_sequence_ || now-last_trajectory_time_>=0.1) {
+            trajectory_sequence_=metric_pose_.sequence;last_trajectory_time_=now;
+            queue_trajectory_locked(now,phase==auv_mission::MissionPhase::kVisitCones?"surface_grid":"phase_observation");
+          }
+          if(metric_pose_.valid && now>=metric_pose_.stamp && now-metric_pose_.stamp<=cfg_.traversal.pose_timeout_sec) {
+            const int cell=static_cast<int>(metric_pose_.row)*3+static_cast<int>(metric_pose_.col);
+            if(cell!=observed_cell_) {
+              event("CELL_OBSERVED","phase="+auv_mission::mission_phase_name(phase)+" from="+std::to_string(observed_cell_)+" to="+std::to_string(cell)+" frame="+std::to_string(metric_pose_.sequence));
+              observed_cell_=cell;
+            }
           }
         }
         if (status_fresh(now)) mission_.update_status(serial_connected_,status_.armed,status_.error_flags,now);
         mission_.update_apriltag(tag_found_,now);
         mission_.update_map(map_.complete, all_visited_,now);
         if (phase == auv_mission::MissionPhase::kPlanCones && !route_ready_ && map_.complete &&
-            (!pose_valid_ || now-pose_time_ > cfg_.pose_timeout)) {
+            (cfg_.traversal.enabled ? !surface_grid_fresh(now) : (!pose_valid_ || now-pose_time_ > cfg_.pose_timeout))) {
           set_fault_locked("grid pose unavailable for planning");
           armed_requested_=false; disarm_pending_=true;
         }
         if (phase == auv_mission::MissionPhase::kPlanCones && !route_ready_ && map_.complete && fault_.empty()) {
-          auv_planning::GridCell start{static_cast<std::int8_t>(std::clamp(static_cast<int>(row_),0,2)),
-            static_cast<std::int8_t>(std::clamp(static_cast<int>(col_),0,2)),"unknown"};
+          const double measured_row=cfg_.traversal.enabled?metric_pose_.row:row_;
+          const double measured_col=cfg_.traversal.enabled?metric_pose_.col:col_;
+          auv_planning::GridCell start{static_cast<std::int8_t>(std::clamp(static_cast<int>(measured_row),0,2)),
+            static_cast<std::int8_t>(std::clamp(static_cast<int>(measured_col),0,2)),"unknown"};
           plan_ = planner_.plan(map_.grid,start);
           route_ready_ = plan_.valid && !plan_.targets.empty();
-          if (route_ready_) route_.set_route(plan_,++map_revision_);
+          if (route_ready_) {
+            if(cfg_.traversal.enabled) {
+              route_ready_=surface_route_.set_route(plan_);
+              if(!route_ready_)set_fault_locked("A2 rejected repeated or nonadjacent planned route");
+              std::ostringstream artifact;artifact<<"{\"run_id\":\""<<run_id_<<"\",\"kind\":\"planned_only\",\"steady_sec\":"<<now<<",\"path\":[";
+              for(std::size_t i=0;i<plan_.path.size();++i){if(i)artifact<<',';artifact<<'['<<static_cast<int>(plan_.path[i].row)<<','<<static_cast<int>(plan_.path[i].col)<<']';}
+              artifact<<"],\"cost\":"<<plan_.total_cost<<",\"forbid_target_reentry\":true}";
+              plan_artifact_pending_=artifact.str();
+            }else route_.set_route(plan_,++map_revision_);
+          }
           else { set_fault_locked("empty or invalid cone route: " + plan_.reason); disarm_pending_ = true; }
           std::ostringstream route_detail;
           route_detail << plan_.reason << " path=";
@@ -745,13 +862,17 @@ class Runtime {
             route_detail << '(' << static_cast<int>(cell.row) << ',' << static_cast<int>(cell.col) << ')';
           event("PLAN",route_detail.str());
         }
-        mission_.update_route(route_ready_,route_ready_,now);
+        mission_.update_route(route_ready_&&(!cfg_.traversal.enabled||plan_evidence_saved_),route_ready_,now);
         if (gripper_status_fresh(now)) {
           mission_.update_gripper(gripper_.state == 3U,gripper_.state == 5U,now);
         }
         if (fault_.empty()) mission_.tick(now);
         else mission_.force_fault(fault_,now);
         phase = mission_.snapshot().phase;
+        if(cfg_.mission.surface_before_visit && !cfg_.traversal.enabled && phase==auv_mission::MissionPhase::kSurfaceForCones) {
+          set_fault_locked("A2 surface traversal is disabled pending commissioning");
+          mission_.force_fault(fault_,now);phase=mission_.snapshot().phase;
+        }
         if (phase == auv_mission::MissionPhase::kGrab && !gripper_close_requested_) {
           if (!armed_requested_ || !status_.armed || !gripper_status_fresh(now) ||
               !gripper_.calibrated || gripper_.error_flags != 0) {
@@ -791,19 +912,21 @@ class Runtime {
             gripper_stop_requested_=true;
           }
         } else {
-          route_.set_mission_active(phase == auv_mission::MissionPhase::kVisitCones);
+          route_.set_mission_active(!cfg_.traversal.enabled && phase == auv_mission::MissionPhase::kVisitCones);
           route_.set_vehicle_ready(cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed && safe_status(now));
           route_.set_pose(pose_valid_ && now-pose_time_ <= cfg_.pose_timeout,row_,col_);
           const auto step = route_.step();
           waypoint_index_ = step.waypoint_index;
-          if (phase == auv_mission::MissionPhase::kVisitCones && step.state == auv_control::RouteStep::State::kFault)
+          if (!cfg_.traversal.enabled && phase == auv_mission::MissionPhase::kVisitCones && step.state == auv_control::RouteStep::State::kFault)
             { set_fault_locked(step.detail); armed_requested_ = false; disarm_pending_ = true; }
           if (step.visited_cell) {
             auto i = static_cast<std::size_t>(step.visited_cell->row*3+step.visited_cell->col);
             visited_[i] = true; event("CONE_VISITED",std::to_string(i));
           }
-          all_visited_ = !plan_.targets.empty();
-          for (const auto& t : plan_.targets) all_visited_ &= visited_[static_cast<std::size_t>(t.row*3+t.col)];
+          if(!cfg_.traversal.enabled) {
+            all_visited_ = !plan_.targets.empty();
+            for (const auto& t : plan_.targets) all_visited_ &= visited_[static_cast<std::size_t>(t.row*3+t.col)];
+          }
           motion_ = {};
           if (armed_requested_) { motion_.depth=hold_depth_; motion_.yaw=hold_yaw_; }
           if (step.state == auv_control::RouteStep::State::kRunning && armed_requested_ && fault_.empty()) {
@@ -824,6 +947,46 @@ class Runtime {
               }
             }
           }
+          if(cfg_.traversal.enabled && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
+             phase==auv_mission::MissionPhase::kRelocalizeSurface ||phase==auv_mission::MissionPhase::kPlanCones ||
+             phase==auv_mission::MissionPhase::kVisitCones)) {
+            if(!armed_requested_||!arm_ack_||!status_.armed) {
+              set_fault_locked("A2 armed control continuity lost");
+            }else if(phase==auv_mission::MissionPhase::kSurfaceForCones) {
+              if(!ascent_started_) {
+                const auto approach=center_approach_.step(metric_pose_,now);a2_detail_=approach.detail;
+                motion_.vx=static_cast<float>(approach.surge);motion_.vy=static_cast<float>(approach.sway);
+                if(approach.fault)set_fault_locked(approach.detail);
+                else if(approach.complete) {
+                  if(!ascent_.begin(metric_pose_,depth_sample_.depth_m,now))set_fault_locked("measured ascent column unavailable");
+                  else {ascent_started_=true;event("ASCENT_STARTED","center alignment confirmed; zero lateral thrust");}
+                }
+              }else {
+              const auto rise=ascent_.step(depth_sample_.depth_m,safe_status(now)&&depth_sample_fresh(now),now,depth_sample_.sensor_sequence);
+              a2_detail_=rise.detail;hold_depth_=static_cast<float>(rise.target_depth);
+              motion_.depth=hold_depth_;motion_.vx=motion_.vy=0;
+              if(rise.fault)set_fault_locked(rise.detail);
+              if(rise.complete && !surface_confirmed_) {
+                surface_confirmed_=true;surface_reacquire_start_=now;surface_vote_sequence_=0;surface_pose_votes_=0;
+                mission_.update_surface(true,now);event("SURFACE_CONFIRMED","independent pressure samples; underwater integration discarded for traversal");
+              }
+              }
+            }else {
+              motion_.depth=hold_depth_=static_cast<float>(cfg_.traversal.surface_depth_m);
+              motion_.vx=motion_.vy=0;
+              if(phase==auv_mission::MissionPhase::kVisitCones) {
+                const auto actual=surface_route_.step(metric_pose_,now);a2_detail_=actual.detail;waypoint_index_=actual.waypoint;
+                if(actual.entered)event("CELL_ENTERED","row="+std::to_string(actual.entered->row)+" col="+std::to_string(actual.entered->col)+" frame="+std::to_string(metric_pose_.sequence));
+                if(actual.visited) {
+                  const int id=actual.visited->row*3+actual.visited->col;visited_[id]=true;
+                  event("CONE_VISITED","measured row="+std::to_string(actual.visited->row)+" col="+std::to_string(actual.visited->col)+" frame="+std::to_string(metric_pose_.sequence));
+                }
+                if(actual.fault)set_fault_locked(actual.detail);
+                else {motion_.vx=static_cast<float>(actual.surge);motion_.vy=static_cast<float>(actual.sway);all_visited_=actual.complete;}
+              }else a2_detail_="holding surface depth; fresh grid reacquisition / evidence gate";
+            }
+            if(!fault_.empty()){armed_requested_=false;disarm_pending_=true;motion_={};mission_.force_fault(fault_,now);}
+          }
         }
         const auto snapshot = mission_.snapshot();
         ++control_ticks_;
@@ -837,7 +1000,13 @@ class Runtime {
                  << " waypoint=" << waypoint_index_;
           event("STATE",detail.str());
         }
-        if (snapshot.phase == auv_mission::MissionPhase::kComplete) { armed_requested_ = false; disarm_pending_ = true; }
+        if (snapshot.phase == auv_mission::MissionPhase::kComplete) {
+          if(cfg_.traversal.enabled&&!a2_completion_logged_) {
+            a2_completion_logged_=true;queue_trajectory_locked(now,"a2_complete");
+            event("A2_COMPLETE","four measured cone visits; stage end; full competition mission remains incomplete");
+          }
+          armed_requested_ = false; disarm_pending_ = true;motion_={};
+        }
         last_control_time_=seconds();
       }
       std::this_thread::sleep_until(next);
@@ -865,6 +1034,30 @@ class Runtime {
         << ",\"serial\":" << (serial_connected_ ? "true":"false")
         << ",\"armed\":" << (status_.armed ? "true":"false")
         << ",\"motion_enabled\":" << (cfg_.motion_enabled ? "true":"false")
+        << ",\"a2_enabled\":"<<(cfg_.traversal.enabled?"true":"false")
+        << ",\"a2_detail\":\""<<json_escape(a2_detail_)<<"\",\"surface_confirmed\":"<<(surface_confirmed_?"true":"false")
+        << ",\"surface_pose_ready\":"<<(surface_ready_?"true":"false")
+        << ",\"surface_grid_valid\":"<<(surface_grid_fresh(now)?"true":"false")
+        << ",\"surface_grid_row\":"<<json_number(metric_pose_.row)<<",\"surface_grid_col\":"<<json_number(metric_pose_.col)
+        << ",\"depth_sensor_sequence\":"<<depth_sample_.sensor_sequence
+        << ",\"grid_pose_fresh\":"<<(pose_valid_ && pose_time_>0 && now-pose_time_<=cfg_.pose_timeout?"true":"false")
+        << ",\"status_fresh\":"<<(status_fresh(now)?"true":"false")
+        << ",\"status_age_sec\":"<<json_number(status_time_?now-status_time_:-1)
+        << ",\"safe_status\":"<<(safe_status(now)?"true":"false")
+        << ",\"arm_gate_ready\":"<<(arm_gate_ready(now)?"true":"false")
+        << ",\"depth_m\":"<<json_number(status_.depth)
+        << ",\"roll_rad\":"<<json_number(status_.roll)<<",\"pitch_rad\":"<<json_number(status_.pitch)
+        << ",\"yaw_rad\":"<<json_number(status_.yaw)<<",\"voltage_v\":"<<json_number(status_.voltage)
+        << ",\"depth_sample_fresh\":"<<(depth_sample_fresh(now)?"true":"false")
+        << ",\"depth_sample_age_sec\":"<<json_number(depth_sample_received_?now-depth_sample_received_+depth_sample_.age_sec:-1)
+        << ",\"metric_pose_reason\":\""<<json_escape(metric_pose_.reason)<<"\""
+        << ",\"metric_reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
+        << ",\"frame_timeout_sec\":"<<cfg_.frame_timeout<<",\"status_timeout_sec\":"<<cfg_.status_timeout
+        << ",\"cmd_vx\":"<<json_number(motion_.vx)<<",\"cmd_vy\":"<<json_number(motion_.vy)
+        << ",\"cmd_depth\":"<<json_number(motion_.depth)<<",\"cmd_yaw\":"<<json_number(motion_.yaw)
+        << ",\"planned_path\":[";
+      for(std::size_t i=0;i<plan_.path.size();++i){if(i)s<<',';s<<'['<<static_cast<int>(plan_.path[i].row)<<','<<static_cast<int>(plan_.path[i].col)<<']';}
+      s << "]"
         << ",\"telemetry_valid\":" << (status_.telemetry_valid ? "true":"false")
         << ",\"voltage_valid\":" << (status_.voltage_valid ? "true":"false")
         << ",\"camera_age_sec\":" << (frame_time_ ? now-frame_time_ : -1)
@@ -951,6 +1144,8 @@ class Runtime {
     if (cmd == "abort") c = auv_mission::MissionCommand::kAbort;
     if (cmd == "reset") c = auv_mission::MissionCommand::kReset;
     if (!c) return "ERR unknown command\n";
+    if((cmd=="resume"||cmd=="reset") && cfg_.mission.surface_before_visit)
+      return "ERR A2 requires process restart and a new run_id after pause or termination\n";
     if(cmd=="start" && cfg_.auto_origin && !localization_->snapshot(now).valid)
       return "ERR calibrated stationary localization origin required\n";
     if(cmd=="start" && !recording_ready(now)) return "ERR onboard recording required\n";
@@ -964,6 +1159,9 @@ class Runtime {
       gripper_pending_.reset(); gripper_ack_=false; gripper_command_time_=0;
       map_image_saved_=false;
       ++perception_epoch_;search_.reset();
+      ascent_.reset();surface_route_.reset();center_approach_.reset();ascent_started_=surface_confirmed_=surface_ready_=false;
+      surface_pose_votes_=0;surface_vote_sequence_=0;surface_reacquire_start_=0;metric_pose_={};
+      plan_evidence_saved_=a2_completion_logged_=false;plan_artifact_pending_.clear();
     }
     event("COMMAND",cmd+": "+r.message);
     return std::string(r.accepted ? "OK ":"ERR ")+r.message+"\n";
@@ -1178,6 +1376,18 @@ class Runtime {
   }
   Config cfg_;
   auv_control::ObservationSearch search_;
+  auv_control::ControlledAscent ascent_;
+  auv_control::SurfaceRouteExecutor surface_route_;
+  auv_control::CenterApproach center_approach_;
+  auv_mapping::MetricGridPose metric_pose_;
+  auv_stm32_bridge::DepthSampleTelemetry depth_sample_;
+  double depth_sample_received_{0},surface_reacquire_start_{0},last_trajectory_time_{0};
+  std::uint64_t surface_vote_sequence_{0},trajectory_sequence_{0};
+  int surface_pose_votes_{0};
+  int observed_cell_{-1};
+  bool ascent_started_{false},surface_confirmed_{false},surface_ready_{false},plan_evidence_saved_{false},a2_completion_logged_{false};
+  std::deque<std::string> trajectory_queue_;
+  std::string plan_artifact_pending_,a2_detail_;
   std::unique_ptr<MissionRecorder> recorder_;
   std::string run_id_,run_dir_,recording_detail_,search_detail_;
   std::size_t search_waypoint_{0};

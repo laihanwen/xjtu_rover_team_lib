@@ -191,7 +191,7 @@ def run(uart, server, localization=None):
                                  'pid': pid, 'pid_age': now-pid_ms if pid else None,
                                  'level_pending': bool(level_check or level_ack),
                                  'uart_crc_errors': protocol.errors, 'pwm_limit': 125 if frame[6]==2 else 100,
-                                 'servos_enabled': False, 'attitude_hold': True, 'heading_hold_enabled': True, 'pitch_pd': [7.5, 1.5], 'calibration_mode': False, 'start_offset_us': 48,
+                                 'servos_enabled': bool(telemetry.get('armed',False) and deadman and frame[7]==1 and frame[10]==1), 'camera_servo_selected': frame[7]==1, 'camera_dial_verified': frame[10]==1, 'main_servo_placeholder': True, 'attitude_hold': True, 'heading_hold_enabled': True, 'pitch_pd': [7.5, 1.5], 'calibration_mode': False, 'start_offset_us': 48,
                                  'depth_hold': bool(pid.get('depth_hold_active')),
                                  'heading_hold': bool(pid.get('heading_hold_active')),
                                  'heading_requested': bool(pid.get('heading_requested')),

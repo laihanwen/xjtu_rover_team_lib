@@ -88,11 +88,20 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(parser.push(broken+packet), [(5,packet[5:-2])])
         self.assertEqual(parser.errors, 1)
 
-    def test_manual_excludes_actuators_preserves_hold_switches(self):
+    def test_manual_camera_only_preserves_hold_switches(self):
         frame = manual_frame(bytes([0xa5,0,255,127,130,255,2,1,1,1,1]))
         self.assertEqual(frame[1:5], bytes([0,255,127,130]))
-        self.assertEqual(frame[5:], bytes([127,2,2,1,1,0]))
+        self.assertEqual(frame[5:], bytes([255,2,1,1,1,1]))
         self.assertFalse(centered(frame))
+
+    def test_camera_requires_middle_and_verified_dial(self):
+        for selector in (0, 1, 2):
+            for verified in (0, 1):
+                frame = manual_frame(bytes([0xa5,127,127,127,127,255,0,selector,0,0,verified]))
+                camera = selector == 1 and verified == 1
+                self.assertEqual(frame[5], 255 if camera else 127)
+                self.assertEqual(frame[7], selector)
+                self.assertEqual(frame[10], int(camera))
 
     def test_network_lease_rejects_stale_replay(self):
         gate = LeaseGate();lease = gate.issue(10)
