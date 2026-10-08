@@ -1,3 +1,7 @@
+# 提交说明语言
+
+所有后续 Git 提交的标题和正文使用中文。保留 `feat`、`fix`、`docs`、`refactor`、`test`、`chore`、`ci` 等类型标签及作用域；代码标识符、路径、协议名称、版本号和标准作者署名按原样保留。合并提交说明也使用中文。
+
 # 当前开发路线（2026-10-08，优先于下方历史规划）
 
 用户已决定因当前性能不足和 ROS 方案设计问题暂时弃用 ROS 相关功能。自动控制开发中心为 `core/` 原生算法 + `runtime/` 轻量系统，根 CMake/CTest 为默认构建与验证入口。ROS 文件归档到 `legacy/ros2/`，暂停 ROS 节点、msg/srv、launch、colcon 和 rosbag2 开发与部署；下方 ROS workspace、topic、TF 和优先级内容仅为历史规划。当前使用 YAML/C++ 显式坐标标定、UART、任务记录器、HTTP 监视台及离线回放。详见 [迁移说明](docs/lightweight-transition.md)。
