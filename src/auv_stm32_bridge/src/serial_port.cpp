@@ -15,6 +15,7 @@
 #include "auv_stm32_bridge/serial_port.hpp"
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -67,6 +68,12 @@ void SerialPort::open(const std::string & device, const int baud_rate)
   const int fd = ::open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
   if (fd < 0) {
     throw system_error("open " + device);
+  }
+  // Cooperates with pyserial exclusive=True used by the ROV trial server.
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    const auto error = system_error("serial already owned " + device);
+    ::close(fd);
+    throw error;
   }
 
   termios options{};

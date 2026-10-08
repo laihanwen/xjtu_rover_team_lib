@@ -48,10 +48,12 @@ void RC_Translate(uint8_t *RcData)
 
     // 按键通道
     MyRCKey[9]  = RcData[5];   // 舵机角度
-    MyRCKey[10] = RcData[6];   // 速度档位(SC)
-    MyRCKey[11] = RcData[7];   // 舵机档
+    MyRCKey[10] = RcData[6];   // 独立速度档位
+    MyRCKey[11] = RcData[7];   // SC: 0=不选，1=摄像头，2=主舵机占位
     MyRCKey[YAW_PID_SWITCH] = (RcData[8] != 0U) ? 1U : 0U;
     MyRCKey[DEPTH_HOLD_SWITCH] = (RcData[9] != 0U) ? 1U : 0U;
+
+    MyRCKey[CAMERA_DIAL_VALID] = (RcData[10] == 1U) ? 1U : 0U;
 
     RcData[0] = 0;  // 帧头清零，防止重复解析
 }

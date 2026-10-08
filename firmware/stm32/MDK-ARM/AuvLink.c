@@ -18,9 +18,10 @@
 #include "usart.h"
 #include "AuvRovConfig.h"
 #include "AuvRcInput.h"
+#include <math.h>
 
 #ifndef AUV_LINK_UART_HANDLE
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_CURRENT_UART_LAYOUT
 #define AUV_LINK_UART_HANDLE huart2
 #else
 #define AUV_LINK_UART_HANDLE huart3
@@ -107,6 +108,12 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
 #if AUV_ROV_MANUAL_TRIAL
             if (frame->payload[4] == 1U &&
                 (!AuvRcInput_CanArm(now_ms) || !imu_level_calibrated))
+                result = AUV_ARM_UNSAFE;
+            else
+#endif
+#if AUV_AUTONOMOUS_PROFILE
+            if (frame->payload[4] == 1U &&
+                (!AUV_AUTONOMY_READY || !imu_level_calibrated))
                 result = AUV_ARM_UNSAFE;
             else
 #endif
@@ -336,7 +343,11 @@ static void SendImu(void)
 
 static void SendDepth(uint32_t now_ms)
 {
+#if AUV_AUTONOMOUS_PROFILE
+    uint8_t payload[17] = {0}; /* AUV adds real sensor sequence and sample age. */
+#else
     uint8_t payload[9] = {0};
+#endif
     AuvDepthSample sample;
     uint32_t mask = __get_PRIMASK();
     uint8_t fresh;
@@ -350,6 +361,10 @@ static void SendDepth(uint32_t now_ms)
     else
         AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
     payload[8] = fresh;
+#if AUV_AUTONOMOUS_PROFILE
+    AuvProtocol_WriteU32Le(&payload[9], fresh ? sample.sample_sequence : 0U);
+    AuvProtocol_WriteU32Le(&payload[13], fresh ? now_ms-sample.last_update_ms : 0xFFFFFFFFU);
+#endif
     SendFrame(AUV_MSG_DEPTH, payload, sizeof(payload));
 }
 
@@ -498,7 +513,20 @@ void AuvLink_SetSafetyInputs(uint8_t kill_active,
 
 uint8_t AuvLink_UpdateDepth(float depth_m)
 {
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_AUTONOMOUS_PROFILE
+    if (!AUV_DEPTH_ZERO_CALIBRATED || !isfinite(depth_m) || !isfinite(AUV_DEPTH_ZERO_M)) {
+        AuvDepth_Invalidate(HAL_GetTick());
+        return 0U;
+    }
+    depth_m -= AUV_DEPTH_ZERO_M;
+    /* Near-surface pressure noise is not an impossible negative water depth. */
+    if (depth_m >= -0.03f && depth_m < 0.0f) depth_m = 0.0f;
+    if (!AuvDepth_Update(depth_m, HAL_GetTick())) {
+        AuvDepth_Invalidate(HAL_GetTick());
+        return 0U;
+    }
+    return 1U;
+#elif AUV_ROV_MANUAL_TRIAL
     return AuvDepth_UpdateGauge(depth_m, HAL_GetTick());
 #else
     return AuvDepth_Update(depth_m, HAL_GetTick());

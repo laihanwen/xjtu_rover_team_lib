@@ -25,6 +25,11 @@ namespace auv_mapping
 
 struct GridMapperConfig
 {
+  // Legacy fixtures retain the closed yellow frame. Competition uses one yellow edge.
+  bool single_yellow_edge{false};
+  int dark_value_max{95};
+  double yellow_edge_minimum_support{0.45};
+  double yellow_edge_margin{0.20};
   cv::Scalar hsv_lower{15, 60, 60};
   cv::Scalar hsv_upper{40, 255, 255};
   double clahe_clip_limit{2.0};
@@ -43,6 +48,8 @@ struct GridMapperConfig
 
 struct GridResult
 {
+  bool orientation_valid{false};
+  int yellow_edge{-1};
   bool geometry_valid{false};
   bool stable{false};
   float confidence{0.0F};
