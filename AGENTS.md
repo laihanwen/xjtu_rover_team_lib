@@ -1,718 +1,132 @@
-# 提交说明语言
+# AUV / ROV 项目开发约束
 
-所有后续 Git 提交的标题和正文使用中文。保留 `feat`、`fix`、`docs`、`refactor`、`test`、`chore`、`ci` 等类型标签及作用域；代码标识符、路径、协议名称、版本号和标准作者署名按原样保留。合并提交说明也使用中文。
+更新日期：2026-10-08。本文件描述当前开发路线；历史 ROS 规划以归档资料为准。用户当前指令优先，硬件事实以实际工程、实测配置和验收记录为依据。
 
-# 当前开发路线（2026-10-08，优先于下方历史规划）
+## 1. 当前路线与目标
 
-用户已决定因当前性能不足和 ROS 方案设计问题暂时弃用 ROS 相关功能。自动控制开发中心为 `core/` 原生算法 + `runtime/` 轻量系统，根 CMake/CTest 为默认构建与验证入口。ROS 文件归档到 `legacy/ros2/`，暂停 ROS 节点、msg/srv、launch、colcon 和 rosbag2 开发与部署；下方 ROS workspace、topic、TF 和优先级内容仅为历史规划。当前使用 YAML/C++ 显式坐标标定、UART、任务记录器、HTTP 监视台及离线回放。详见 [迁移说明](docs/lightweight-transition.md)。
+项目面向水下机器人竞赛，最终目标为一次启动后自主完成标签识别、九宫格观测建图、交通锥访问、海参抓取运输、转盘操作、返航上浮和全过程记录。
 
-新增能力先检查原生核心与 Runtime；重要接口用明确 C++ 数据结构/协议并离线验证。继续遵守下方硬件、DISARM、显式 ARM、超时、安全、环境隔离和 STM32 实时控制约束。Ubuntu 26.04/fish 保持，系统 ROS 不卸载或升级；禁止把 ROS 归档功能视为轻量系统已实现的功能。
+由于当前平台性能不足和 ROS 方案设计问题，**暂时弃用 ROS 相关功能，自动控制研发中心为 `core/` + `runtime/` 轻量系统**。默认使用原生 C++、OpenCV、YAML、UART 和任务记录器，不以 ROS 节点数量衡量进度。ROS 节点、msg/srv、launch 和旧构建文件在 `legacy/ros2/`，由 `COLCON_IGNORE` 排除；原生实现已迁出，归档不保证直接构建。
 
----
+优先完成稳定可比赛的结构化场景闭环，不默认引入通用 SLAM、复杂 VIO、强化学习或大型推理模型。ROV 保留为稳定遥控基线、标定和数据采集工具。路线与验收依据见 [开发边界](docs/auv-development-boundary.md) 和 [迁移说明](docs/lightweight-transition.md)。
 
-# AUV / 水下具身智能机器人项目上下文
+## 2. 系统职责与仓库入口
 
-## 1. 项目目标
+| 目录 / 层 | 当前职责 |
+|---|---|
+| `core/auv_core` | 状态解码、语义地图数据、原生库汇总与导出 |
+| `core/auv_vision`、`core/auv_mapping` | 相机源、标签、锥检测、网格建图与定位 |
+| `core/auv_planning`、`core/auv_mission`、`core/auv_control` | 路线规划、任务状态机、观测搜索与遍历 |
+| `core/auv_stm32_bridge` | UART、帧协议、解析、运动目标与遥测 |
+| `runtime/` | Pi 原生进程、双摄矫正、任务调度、记录、HTTP、配置与部署 |
+| `tools/rov/` | PC 手柄驾驶台、Pi 遥控串口桥、录像、日志与维护工具 |
+| `firmware/stm32/` | STM32F405 实时姿态/深度控制、混控、PWM、传感器与保护 |
+| `legacy/ros2/` | 暂时弃用的 ROS 历史实现；不加入默认构建或部署 |
+| `vision/`、`annotation/`、`models/`、`datasets/` | 离线标定、训练、标注、模型与数据管理 |
+| `docs/`、`hardware/` | 架构、协议、硬件、状态与验收证据 |
 
-这是一个面向水下机器人竞赛的自主 AUV 项目。
+Pi / PC 负责感知、定位、规划、任务、记录和发送运动目标。STM32 负责实时 PID、推进器混控、输出与安全保护。Linux 不直接承担高速姿态 PID。
 
-机器人需要在无人工遥控的情况下完成：
+自主模式由 Runtime 独占 UART；ROV 模式由 Pi ROV 桥独占 UART，Runtime 摄像头服务的 `serial.device` 留空、运动关闭。不得让两个控制入口同时占用串口。摄像头由对应采集线程独占，预览、录像和算法复用缓存，不能重复打开同一设备。架构见 [系统说明](docs/architecture/system.md)。
 
-- 自主启动
-- AprilTag 识别
-- 水下九宫格场地识别
-- 交通锥检测与圆形/方形分类
-- 语义地图构建
-- 自主路径规划和格子遍历
-- 海参目标识别、抓取和运输
-- 转盘识别并旋转不少于 180°
-- 返回起点并上浮
-- 全过程任务日志、视觉数据和状态记录
+## 3. 当前进度与验证边界
 
-当前开发目标不是做复杂通用 SLAM，而是优先完成一个稳定、可比赛的结构化场景 AUV。
+以下“已实现”只说明源码存在，不能替代部署或下水验收：
 
----
+- 已有轻量 Runtime、双摄采集、只读监视台、UART、安全门控、任务记录、离线定位和表面录像回放入口。
+- A0/A1 已实现独立观测配置、安全启动、相对原点搜索、标签触发单黄色边建图与机载记录；真实水下观测和运动标定仍待验收。
+- A2 已实现上浮、水面重定位、四锥无重复路线、实测轨迹与节点确认；独立表面标定与受控水池闭环仍待验收。
+- 水下标定已接入 ROV/AUV 配置。下视结果有同批素材验证；前视内参不稳定，只作试验显示，禁止视作已验证的测距或导航参数。
+- 用户已报告目录迁移前的代码在 Ubuntu 完成验证。迁移到 `core/` 后，本地标定配置与录像检查通过，但 Windows 缺少 OpenCV C++ 开发包，未完成本次迁移后的 C++ 编译与 CTest。必须在 Ubuntu 重新验收。
+- ROV 姿态调平和基本控制已有用户水下稳定反馈；源码中的后续自动保持、诊断和服务更新不能因此宣称已烧录或已验收。
+- 海参、抓取与转盘有历史实现或基础接口，但轻量前视推理、机构操作和后续任务闭环尚未全部接通。`mission.profile: full` 和完整状态枚举不代表完整比赛任务可用。
 
-# 2. 总体系统架构
+详细证据与状态见 [项目状态](docs/project-status.md)、[A0/A1](docs/auv-a0-a1-implementation.md)、[A2](docs/auv-a2-implementation.md)。旧报告中的设备地址、服务版本和“已部署”须在当前设备重新核对。
 
-系统采用双层控制架构：
+## 4. 开发环境与构建
 
-Raspberry Pi / PC
-负责高层计算：
+Linux 开发平台为 Ubuntu 26.04（resolute），默认 shell 为 fish。树莓派完整 Runtime 需要 Linux/POSIX。Windows 用于 ROV 工具、Keil 固件和具备依赖时的便携核心测试；实际执行命令必须匹配当前 shell。
 
-- ROS 2
-- 计算机视觉
-- AprilTag
-- OpenCV
-- YOLO
-- 语义地图
-- 路径规划
-- Mission FSM
-- 日志记录
-- 与 STM32 通信
+根目录 CMake / CTest 是默认入口，不执行 colcon，不要求 source ROS 环境。保持已安装 ROS 2 Lyrical、Ubuntu 和 CUDA 环境，不自行卸载或升级。只有用户明确要求恢复 ROS 时再评估归档适配；若需要加载 ROS，fish 使用 `setup.fish`。
 
-STM32
-负责实时底层控制：
+从仓库根目录，在具备依赖的 Linux 环境执行：
 
-- IMU 采样
-- 深度传感器采样
-- 姿态估计
-- Roll / Pitch / Yaw 控制
-- Depth 控制
-- PID
-- Thruster Mixer
-- ESC PWM
-- 机械执行器
-- 心跳检测
-- 漏水检测
-- Failsafe
+```fish
+cmake -S . -B build-native -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build-native -j 3
+ctest --test-dir build-native --output-on-failure
+```
 
-基本原则：
+完整 Runtime 需要 C/C++ 工具链、CMake、Ninja、OpenCV C++ 开发库（当前要求至少 4.7）、yaml-cpp、cpp-httplib；视频部署使用 ffmpeg。部分回放测试还需要 Python 的 OpenCV、NumPy、PyYAML。依赖与部署流程见 [Runtime 手册](runtime/README.md)。不要复用旧目录布局或其他操作系统生成的构建缓存。
 
-Linux / ROS 2 不直接承担高速实时姿态 PID。
+Windows 的 `-DAUV_PERCEPTION_ONLY=ON` 只构建便携核心与测试，不代表完整 Runtime 可运行。Python 的 cv2 安装不能替代 OpenCV C++ 开发包。RTX 3060 PC 用于训练，Python / uv 环境与系统依赖保持隔离；不向系统 Python 随意安装训练依赖，不破坏 CUDA / PyTorch / YOLO 环境。
 
-树莓派只发送运动目标：
+## 5. 摄像头、矫正与定位
 
-- vx
-- vy
-- vz / depth
-- yaw
+当前为 CSI 下视、USB 前视，配置采集尺寸为 320×240。实际设备路径和能力以现场配置为准，USB 优先稳定的 `/dev/v4l/by-id/` 路径。
 
-STM32 自己闭环控制推进器。
+- 下视用于 AprilTag、九宫格、黄色方向边、交通锥、地图与定位；前视用于后续目标识别和操作。
+- 建图、遍历定位和光流使用对应阶段的矫正帧，不能重复去畸变。矫正像素的几何计算使用对应 K 和零畸变；原图保留原始 K/D。
+- 共享矫正帧必须与定位配置的 K/D、尺寸和标定版本一致。标定黑边不参与光流定位；不能直接缩放或套用其他分辨率内参。
+- 水下与表面成像使用独立标定，不能把水下参数直接用于水面重定位。
+- AUV 机载录像保存原图；PC 矫正预览录像记录实际图像空间与标定元数据。离线回放按图像空间处理，不能二次矫正。
+- 外参、传感器偏移、场地尺度、绝对深度和运动符号未知时保持未验证标记，不自行设定 `calibration_verified: true`。
+- 坐标系、单位和变换用显式 YAML/C++ 接口管理，不能依赖已停用的 TF 服务或猜测符号。
 
----
+标定来源、结果与限制见 [标定接入说明](docs/calibration/20261008/runtime-integration.md)。
 
-# 3. 当前开发平台
+## 6. 感知、规划与任务规则
 
-主机：
+九宫格使用 OpenCV 规则算法：图像矫正、黄色方向边、网格与四角、透视变换、3×3 分格、锥检测与多帧语义地图。支持真实场地白边及单黄色边，不假定闭合黄色矩形。未知格不能默认空，摆放模板不能替代真实观测；地图冻结保留类别、轮廓和质量证据。
 
-- Ubuntu 26.04
-- codename: resolute
-- fish shell
-- Ghostty terminal
-- VS Code
-- Codex CLI
+交通锥优先用分割、轮廓、圆度和多边形近似区分圆/方。四目标顺序枚举 24 种，格间使用 A*；遵守已访问锥节点不可重复进入的路径约束，无合法路线必须报告原因。
 
-ROS：
+海参阶段优先轻量 YOLO11n，训练与部署分离；经 Pi 实测后选择 ONNX Runtime 或 NCNN，不默认大型模型。海龟、海星及现场其他干扰物按数据清单处理。抓取、运输、落点、转盘稳定角度必须有观测闭环，不能仅按延时或命令发送判断完成。
 
-- ROS 2 Lyrical
-- /opt/ros/lyrical
-- fish 环境通过：
+任务状态改变记录时间戳与原因。正式自主模式应无岸上控制依赖，保留急停；完整状态流、后续阶段超时和能力缺失必须如实报告。以 [开发边界](docs/auv-development-boundary.md) 的 A0–A5 退出条件验收，不把任务一完成当作全赛完成。
 
-  source /opt/ros/lyrical/setup.fish
+## 7. 硬件与协议事实
 
-ROS 2 Desktop 已安装，包括：
+当前 MCU 为 STM32F405RGT6，现有八推全矢量工程在 `firmware/stm32/`，权威 Keil 工程为 `MDK-ARM/Copy_cup.uvprojx`。不能套用历史六推建议或未经验证的混控矩阵。
 
-- rclcpp
-- rclpy
-- colcon
-- rosdep
-- vcstool
-- RViz2
-- rqt
-- rosbag2
-- tf2
-- URDF
-- robot_state_publisher
-- cv_bridge
-- image_transport
-- OpenCV ROS integration
+已确认传感器为 H30 IMU 和 M10 深度计。M10 读数新鲜度、相对定深与绝对水深标定是不同概念。当前实机没有漏水传感器，禁止伪造漏水检测能力；如果以后加装，应按真实接线实现并验收。机械爪与云台是否可动作以当前配置和实物验收为准。
 
-ROS workspace：
+Pi 与 STM32 使用现有 UART 帧协议和 CRC，消息、长度、单位和兼容解码以 [协议文档](docs/protocol/serial-protocol.md) 与实际编码器为准，不能重造协议或把旧示例当完整帧格式。修改协议必须同步 MCU/Pi/PC 和兼容测试。
 
-~/auv_ws
+GPIO、timer、ESC 范围、推进方向、机构限位和传感器参数未知时使用可配置项或 TODO。已实测中位、起转偏移和稳定姿态参数不能在无证据情况下改动。STM32 改动区分 CubeMX 自动生成区和 USER CODE，先核对实际编译源文件，避免修改同名非权威副本。
 
-预期结构：
+## 8. 安全要求
 
-auv_ws/
-├── src/
-│   ├── auv_interfaces
-│   ├── auv_bringup
-│   ├── auv_description
-│   ├── auv_stm32_bridge
-│   ├── auv_control
-│   ├── auv_vision
-│   ├── auv_mapping
-│   ├── auv_planning
-│   └── auv_mission
-├── build/
-├── install/
-└── log/
+- 默认 DISARM，启动保持中立输出；模板保持运动关闭、自动 ARM 关闭，未验证标定继续阻止运动。
+- ARM 必须是受安全门检查的显式请求；正式自主配置的一次性自动请求也需 MCU 接受，故障后不自动重新 ARM。
+- 保留 heartbeat、通信超时、控制循环看门狗、传感器有效性、急停、输出限幅和失效 DISARM。不能让通信线程存活掩盖控制线程卡死。
+- 不删除自主启动锁存来绕过一次启动约束；不因服务重启而重复自动开始任务。
+- 无推进器动力或安全固定环境先验证协议、方向和失效行为，再受控下水；不自动执行可能启动推进器或机械机构的命令。
+- 不将编译、推送或文档更新视作烧录、重启实机服务、ARM 或调整硬件参数的授权。
 
-ROS 开发使用：
+## 9. 记录与资源预算
 
-colcon build --symlink-install
+使用现有任务记录器保存运行标识、提交号、配置/标定/模型版本、视频帧索引、事件、遥测、地图、计划和实测轨迹。事件使用单调时间排序，有墙钟则同时保存。丢帧、断流、写盘失败和磁盘余量须显式记录，不依赖 rosbag2。
 
-fish 下加载 workspace：
+Pi 性能以双摄、矫正、检测、定位和录像并发实测为依据。复用帧和缓存映射表、使用有界队列及最新帧策略，先保障控制新鲜度和任务记录。目标 FPS 不等于实测 FPS；没有测量报告不能宣称性能提升或零碰撞。
 
-source ~/auv_ws/install/setup.fish
+日志、录像、数据集、权重、凭据、虚拟环境和编译产物不进入普通源码提交。
 
-不要建议使用 setup.bash，除非当前 shell 明确是 bash。
+## 10. 近期优先级
 
----
+1. 在 Ubuntu 重新构建目录迁移后的原生系统并执行 CTest，确认部署包包含全部核心源码和测试。
+2. 核验 Pi 当前配置、双摄来源和服务版本；测量矫正、定位、录像并发的帧率、延迟与资源占用。
+3. 完成 A0 的运动方向、外参、深度/航向、启动与失效门控标定，先无动力联调。
+4. 用真实水下素材完成 A1 标签搜索、单黄色边/白边建图及四锥类别位置验证。
+5. 获取独立表面标定，完成 A2 重定位、路线约束、实测节点进入确认与重复水池测试。
+6. A0–A2 稳定后推进 A3 跨区返航、A4 海参抓取运输、A5 转盘与全流程；不通过全局放开运动跳过阶段验收。
 
-# 4. AI / 视觉开发环境
+## 11. 工程与协作要求
 
-主机具有 NVIDIA RTX 3060 Laptop GPU。
+先检查已有实现和构建列表，优先修改现有原生结构。核心算法与硬件生命周期分离，参数放 YAML，重要接口明确数据结构、单位、符号和质量标记。重要视觉与控制流程支持离线回放和有意义的故障测试；按改动运行必要检查，不以新增空模块或镜像测试凑进度。
 
-现有环境包含：
+每次交付说明修改内容、原因、构建/运行方法、验证范围和未完成项，区分“源码实现、编译通过、已部署、实机验收”。不能把先前版本的验证结论套到后续改动，也不能伪造测试通过。
 
-- Python 3.14
-- uv
-- PyTorch
-- CUDA
-- Ultralytics / YOLO 开发环境
+**所有 Git 提交的标题和正文使用中文**。保留 `feat`、`fix`、`docs`、`refactor`、`test`、`chore`、`ci` 等类型标签和作用域；代码标识符、路径、协议名称、版本号及标准作者署名原样保留。合并说明也使用中文。
 
-训练环境和系统 ROS Python 环境应尽量隔离。
-
-原则：
-
-系统 Python：
-主要用于 ROS 2 / rclpy。
-
-uv virtual environment：
-用于 YOLO 训练、数据集、实验代码。
-
-不要随意 pip install 到系统 Python。
-
-视觉技术栈：
-
-- OpenCV
-- AprilTag
-- YOLO11n 优先
-- ONNX Runtime 或 NCNN 部署
-- cv_bridge
-- image_transport
-
----
-
-# 5. 摄像头规划
-
-预计至少两个摄像头。
-
-Down Camera：
-
-- AprilTag
-- 九宫格
-- 黄色基准边
-- 交通锥
-- 地面结构
-- 地图定位
-
-Front Camera：
-
-- 海参
-- 海龟
-- 海星
-- 转盘
-- 抓取视觉
-
-图像坐标和机器人坐标必须通过 TF 清晰管理。
-
----
-
-# 6. 九宫格建图方案
-
-第一版不要使用复杂 SLAM。
-
-使用 OpenCV 建立 Semantic Map。
-
-流程：
-
-camera image
-→ 图像预处理
-→ 黄色边检测
-→ 网格直线检测
-→ 四角点
-→ Homography
-→ 标准俯视图
-→ 3×3 cell segmentation
-→ cone detection
-→ cone classification
-→ semantic map
-
-推荐：
-
-- HSV / LAB
-- Canny
-- HoughLines / HoughLinesP
-- contours
-- morphology
-- cv2.getPerspectiveTransform
-- cv2.warpPerspective
-
-地图格式例如：
-
-{
-  "cells": [
-    {"row": 0, "col": 0, "object": "circle_cone"},
-    {"row": 0, "col": 2, "object": "square_cone"}
-  ]
-}
-
----
-
-# 7. 交通锥识别
-
-第一版优先 OpenCV，而不是 YOLO。
-
-可用：
-
-- threshold / segmentation
-- findContours
-- approxPolyDP
-- circularity
-
-圆度：
-
-C = 4πA / P²
-
-根据形状和轮廓区分：
-
-- circle
-- square
-
-如果真实水下条件导致规则方法鲁棒性不足，再切换到学习模型。
-
----
-
-# 8. 海参目标识别
-
-海参阶段使用 YOLO。
-
-类别预计：
-
-- sea_cucumber
-- turtle
-- starfish
-
-第一选择：
-
-YOLO11n
-
-部署目标：
-
-训练：
-RTX 3060 PC
-
-导出：
-ONNX
-
-机器人部署：
-
-- ONNX Runtime
-或
-- NCNN
-
-树莓派 4B 上优先轻量模型，不默认使用 m/l/x 大模型。
-
----
-
-# 9. 路径规划
-
-地图只有 3×3 网格和少量目标。
-
-不要过度设计。
-
-交通锥只有 4 个时：
-
-排列总数 4! = 24。
-
-直接枚举目标访问顺序即可。
-
-格子之间路径：
-
-A*
-
-高层目标顺序：
-
-Brute-force TSP / permutation enumeration。
-
-不要为了此问题引入：
-
-- reinforcement learning
-- genetic algorithm
-- ant colony algorithm
-
-除非以后明确需要研究实验。
-
----
-
-# 10. Mission 架构
-
-建议 Mission FSM：
-
-INIT
-→ SELF_CHECK
-→ SEARCH_APRILTAG
-→ BUILD_MAP
-→ PLAN_CONES
-→ VISIT_CONES
-→ SEARCH_CUCUMBER
-→ ALIGN_CUCUMBER
-→ GRAB
-→ TRANSPORT
-→ RELEASE
-→ SEARCH_VALVE
-→ ALIGN_VALVE
-→ ROTATE_VALVE
-→ RETURN_HOME
-→ SURFACE
-→ COMPLETE
-
-状态改变必须记录日志。
-
----
-
-# 11. ROS 2 节点规划
-
-建议：
-
-auv_camera_down
-auv_camera_front
-
-auv_apriltag_detector
-
-auv_cone_detector
-auv_cucumber_detector
-auv_valve_detector
-
-auv_semantic_mapper
-
-auv_planner
-
-auv_mission_manager
-
-auv_stm32_bridge
-
-auv_state_estimator
-
-auv_logger
-
-robot_state_publisher
-
-关键 topics：
-
-/camera/down/image_raw
-/camera/front/image_raw
-
-/apriltag/detections
-/cones/detections
-/cucumber/detections
-/valve/detection
-
-/semantic_map
-
-/mission/state
-
-/cmd_vel
-/cmd_depth
-/cmd_yaw
-
-/imu/data
-/depth
-/battery
-/leak
-
-/stm32/status
-/stm32/thrusters
-
-/odom
-
-/tf
-/tf_static
-
----
-
-# 12. STM32 通信
-
-第一版优先 UART。
-
-不要一开始引入 micro-ROS，除非它能明显降低系统复杂度。
-
-协议推荐：
-
-0xAA 0x55
-TYPE
-LEN
-PAYLOAD
-CRC16
-
-Pi → STM32：
-
-- heartbeat
-- arm/disarm
-- vx
-- vy
-- depth_target
-- yaw_target
-- actuator command
-
-STM32 → Pi：
-
-- roll
-- pitch
-- yaw
-- depth
-- voltage
-- leak
-- error_flags
-- thruster outputs
-
-建议：
-
-Pi → STM32：
-20–50 Hz
-
-STM32 控制环：
-100–500 Hz
-
-Heartbeat：
-
-Pi 周期发送。
-
-如果 STM32 超过约 500 ms 未收到心跳：
-
-进入 failsafe。
-
-不要让 Linux 程序卡死导致推进器保持危险输出。
-
----
-
-# 13. STM32 控制
-
-STM32 当前负责：
-
-IMU
-Depth
-PID
-Thruster Mixer
-ESC
-Safety
-
-建议控制变量：
-
-surge
-sway
-heave
-roll
-pitch
-yaw
-
-初期至少保证：
-
-- depth hold
-- yaw hold
-- forward/backward
-- lateral motion
-
-推进器建议最终 6 个：
-
-4 个水平推进器：
-surge / sway / yaw
-
-2 个垂直推进器：
-heave / pitch compensation
-
-实际 mixer 必须根据真实推进器位置和方向建立矩阵，不允许直接复制未经验证的 mixer。
-
----
-
-# 14. 硬件
-
-当前已有：
-
-- Raspberry Pi 4B
-- STM32F405RGT6（现有八推全矢量 CubeMX / Keil 工程位于 `firmware/stm32`）
-- ESC
-- motors
-
-计划/建议：
-
-- IMU: BMI088 或 ICM-42688 等
-- depth sensor: MS5837 系列
-- 2 cameras
-- leak sensor
-- battery
-- DC-DC
-- waterproof enclosure
-- waterproof connectors
-- thruster guards
-- lighting
-- underwater actuator / servo
-- grabbing / funnel mechanism
-
-STM32 型号已由现有工程确认为 STM32F405RGT6。ESC 型号和电机参数以后根据真实硬件更新。
-
-不要自行假定 GPIO、PWM timer、ESC PWM 范围或推进方向。
-
----
-
-# 15. 安全原则
-
-任何涉及推进器、电调、电池、机械执行机构的代码都必须优先考虑安全。
-
-必须支持：
-
-- DISARM 默认状态
-- Heartbeat timeout
-- communication timeout
-- sensor invalid detection
-- leak detection
-- kill / emergency state
-- output saturation
-- startup neutral PWM
-- explicit ARM command
-
-任何测试首次运行时应默认使用：
-
-- 电机断电
-或
-- 拆桨
-或
-- 推进器安全固定
-
-不要自动执行可能让推进器突然启动的命令。
-
----
-
-# 16. Logging
-
-使用 rosbag2。
-
-至少记录：
-
-/camera/down/image_raw
-/camera/front/image_raw
-/imu/data
-/depth
-/odom
-/cmd_vel
-/stm32/status
-/detections
-/semantic_map
-/mission/state
-
-额外保存：
-
-logs/
-videos/
-maps/
-trajectory/
-events/
-
-event log 应包含明确时间戳，例如：
-
-START
-APRILTAG_FOUND
-MAP_COMPLETE
-CONE_VISITED
-CUCUMBER_FOUND
-GRAB_COMPLETE
-VALVE_ROTATED
-HOME_REACHED
-SURFACE
-MISSION_COMPLETE
-
----
-
-# 17. 软件工程原则
-
-代码以可运行、可调试、可逐步测试为优先。
-
-不要过度工程。
-
-新增模块时：
-
-1. 先检查已有代码和 package。
-2. 保持 ROS package 边界清晰。
-3. 为重要接口定义 msg / srv。
-4. 不把硬件驱动和 Mission 逻辑混在一起。
-5. 不把算法写死在 launch file。
-6. 参数使用 ROS parameters 或 YAML。
-7. 节点必须能单独运行和测试。
-8. 重要数据必须能 ros2 topic echo。
-9. 视觉算法最好支持读取录制视频离线复现。
-10. 新增依赖前先检查 Ubuntu 26.04 / ROS 2 Lyrical 是否兼容。
-
----
-
-# 18. Codex 工作方式
-
-当你帮助开发这个项目时：
-
-- 先查看当前 repo 内容，不要假定不存在的文件。
-- 优先修改已有结构，而不是重复创建。
-- 命令必须兼容 fish，除非明确开启 bash。
-- ROS distro 是 lyrical。
-- Ubuntu codename 是 resolute。
-- 不要给 Jazzy/Humble 的包名作为默认命令。
-- 不要随意修改系统 Python。
-- 不要破坏当前 CUDA / PyTorch / YOLO 环境。
-- 不要未经允许升级 ROS distro 或 Ubuntu。
-- 编译 ROS package 后进行最小验证。
-- STM32 代码改动要区分 autogenerated CubeMX 区域和 USER CODE 区域。
-- 不要修改 CubeMX 生成机制会覆盖的代码，除非有明确理由。
-- 硬件参数未知时，用 TODO / configurable parameter，而不是猜数值。
-
-每次实现功能后尽量给出：
-
-- 修改了什么
-- 为什么
-- 如何 build
-- 如何 run
-- 如何验证
-- 可能的硬件风险
-
----
-
-# 19. 当前近期目标
-
-按优先级：
-
-P0
-ROS 2 workspace 正常工作。
-
-P1
-建立 auv_interfaces。
-
-P2
-建立 auv_stm32_bridge。
-
-P3
-定义 Pi ↔ STM32 serial protocol。
-
-P4
-STM32 heartbeat + failsafe。
-
-P5
-IMU / depth ROS topics。
-
-P6
-camera ROS nodes。
-
-P7
-AprilTag。
-
-P8
-九宫格 Semantic Mapping。
-
-P9
-Cone detection。
-
-P10
-Path planning。
-
-P11
-Mission FSM。
-
-P12
-Sea cucumber YOLO。
-
-P13
-Grabbing system。
-
-P14
-Valve system。
-
-先把每一级做稳定，再进入下一层。
+改写历史必须保留代码快照、作者、时间和合并关系并备份原历史。推送使用 `--force-with-lease` 校验远程版本，不使用无条件强推覆盖别人新增提交。其他工作区和协作者同步改写历史前先保护未提交工作，不直接对用户有改动的目录执行破坏性重置。
