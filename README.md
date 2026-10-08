@@ -2,7 +2,7 @@
 
 面向水下机器人竞赛的 ROV 遥控与 AUV 自主任务项目。树莓派承担视频和高层任务，STM32F405 承担实时姿态控制、推力分配和输出保护；PC 提供驾驶台、数据记录和开发工具。
 
-当前研发重点转向 **轻量 AUV 自主任务闭环**；保留八推 ROV 作为稳定控制基线、标定和数据采集工具。开发范围与阶段验收见 [AUV 开发边界](docs/auv-development-boundary.md)。源码可构建、设备已部署和水下测试通过是三个不同状态，详见 [当前状态](docs/project-status.md)。
+由于当前平台性能不足和 ROS 方案设计问题，**ROS 相关功能暂时弃用，自动控制开发中心转为 `core/` + `runtime/` 轻量系统**。迁移范围见 [轻量系统路线](docs/lightweight-transition.md)。当前研发重点为 **轻量 AUV 自主任务闭环**；保留八推 ROV 作为稳定控制基线、标定和数据采集工具。开发范围与阶段验收见 [AUV 开发边界](docs/auv-development-boundary.md)。源码可构建、设备已部署和水下测试通过是三个不同状态，详见 [当前状态](docs/project-status.md)。
 
 ## 从这里开始
 
@@ -16,15 +16,14 @@
 | 查协议、验收和历史证据 | [文档中心](docs/README.md) |
 | 采集、标注与训练视觉模型 | [P12 标注指南](docs/p12-annotation-guide.md) |
 
-## 三种运行入口
+## 当前运行入口
 
 | 模式 | PC / Pi 入口 | STM32 通信归属 | 使用场景 |
 |---|---|---|---|
 | ROV 遥控 | PC `trial_control_web.py` → Pi `trial_server.py` | Pi `auv-rov` 独占 UART | 手柄、水下调试、视频数据采集 |
-| 轻量自主 | Pi `auv_runtime` + `auv_core` | Runtime 独占 UART | 无 ROS 的任务一开发与验证 |
-| ROS 2 开发 | `src/auv_*` + `auv_bringup` | `auv_stm32_bridge` 独占 UART | topic 调试、算法开发和回放 |
+| 轻量自主 | Pi `auv_runtime` + `legacy/ros2/auv_core` | Runtime 独占 UART | 无 ROS 的任务一开发与验证 |
 
-ROV 模式可同时运行 Runtime 摄像头服务，但其 `serial.device` 必须为空、运动命令关闭。三种串口控制入口不能同时占用同一设备。PC 的 `console_view.py` 只是驾驶台代理，不能再启动第二个手柄控制进程。
+ROV 模式可同时运行 Runtime 摄像头服务，但其 `serial.device` 必须为空、运动命令关闭。两种串口控制入口不能同时占用同一设备。PC 的 `console_view.py` 只是驾驶台代理，不能再启动第二个手柄控制进程。
 
 ```mermaid
 flowchart LR
@@ -35,8 +34,7 @@ flowchart LR
   Bridge --> MCU[STM32 实时控制]
   MCU --> Bridge
   MCU --> Motors[八路推进器 PWM]
-  Core[auv_core 共享算法] --> Runtime
-  Core --> ROS[ROS 2 节点]
+  Core[legacy/ros2/auv_core 共享算法] --> Runtime
 ```
 
 ## 当前硬件与控制边界
@@ -75,26 +73,15 @@ ctest --test-dir build-lightweight --output-on-failure
 ./build-lightweight/runtime/auv_runtime runtime/config/runtime.yaml
 ```
 
-### Ubuntu 26.04 / ROS 2 Lyrical：模块开发
-
-```fish
-source /opt/ros/lyrical/setup.fish
-colcon build --symlink-install
-source install/setup.fish
-colcon test
-colcon test-result --verbose
-ros2 launch auv_bringup system.launch.py
-```
-
-默认 launch 不启用硬件；具体节点启用和参数见 `src/auv_bringup`。ROS 系统 Python、视觉训练 uv 环境和 Windows 手柄依赖保持隔离。
+ROS 历史实现见 [归档说明](legacy/ros2/README.md)，当前构建、运行与自动控制开发不需要 ROS 环境。
 
 ## 仓库分层
 
 | 目录 | 职责 |
 |---|---|
 | `firmware/stm32` | 实时控制、传感器、混控、PWM、安全与主机测试 |
-| `src/auv_core` | ROS 与 Runtime 共用算法核心 |
-| `src/auv_*` | ROS 接口、视觉、建图、规划、任务、控制和启动 |
+| `src/legacy/ros2/auv_core` | ROS 与 Runtime 共用算法核心 |
+| `legacy/ros2/` | 暂时弃用的 ROS 节点、接口和启动配置 |
 | `runtime` | Pi 原生运行时、双摄采集、HTTP、服务部署 |
 | `tools/rov` | PC 驾驶台、Pi 手动桥、日志、录像、维护脚本 |
 | `vision` / `annotation` | 离线训练、数据处理与标注 |

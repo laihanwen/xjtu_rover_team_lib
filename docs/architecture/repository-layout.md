@@ -1,49 +1,21 @@
-# 仓库布局与模块边界
+# 仓库布局与构建边界
 
-本项目采用 monorepo。ROS 接口、树莓派运行时代码、STM32 固件、视觉训练配置和硬件文档需要共同演进，集中管理可以让一次协议修改在同一个提交中完成。若未来 STM32 固件需要独立发布，再将 `firmware/stm32` 拆分为独立仓库或 submodule。
+当前自动控制研发中心是 `core/` + `runtime/`。由于性能不足和设计问题，ROS 相关功能暂时弃用并归档；决策与恢复条件见 [路线调整](../lightweight-transition.md)。
 
-架构和资源所有权见 [系统架构](system.md)。本轮保留源码路径，以兼容现有 Keil/CMake、Python import 和服务部署。
-
-## 目录职责
-
-| 目录 | 内容 | 构建方式 |
+| 目录 | 职责 | 构建 / 使用入口 |
 |---|---|---|
-| `runtime/` | 原生C++双摄、HTTP与轻量任务运行时 | 根目录CMake |
-| `tools/rov/` | PC驾驶台、Pi桥、日志/录像、维护脚本 | Python / PowerShell |
-| `src/` | Raspberry Pi / PC 上运行的 ROS 2 packages | `colcon build` |
-| `firmware/stm32/` | STM32F405 八推实时控制、安全和外设代码 | Keil MDK-ARM；CMake/GCC 编译检查 |
-| `vision/` | YOLO 数据准备、训练、评估、导出及离线 OpenCV 实验 | 独立 uv 环境 |
-| `models/` | 模型版本清单、类别定义、部署参数和校验和 | 不参与 colcon |
-| `datasets/` | 数据集结构、来源与标注约定 | 大文件不进 Git |
-| `hardware/` | BOM、接线、推进器布局、坐标系和机械资料 | 文档/CAD 工具 |
-| `docs/` | 架构、串口协议、任务流程和测试计划 | 文档 |
-| `tools/` | 开发环境、构建、部署和数据工具 | fish/Python 工具 |
-| `annotation/` | P12 Label Studio 独立环境与标注配置 | `uv sync --frozen` |
-| `logs/`、`videos/`、`maps/`、`trajectory/`、`events/` | 本地运行产物 | 默认不进入 Git |
+| `core/` | 原生视觉、建图、定位、规划、FSM、控制和 UART | 根 CMake / CTest |
+| `runtime/` | 双摄采集矫正、任务调度、记录、HTTP、配置与部署 | 根 CMake；Linux/POSIX |
+| `tools/rov/` | PC 驾驶台、Pi ROV 桥与维护工具 | Python / PowerShell |
+| `firmware/stm32/` | 传感器、实时 PID、混控、PWM 和保护 | Keil / 固件测试 |
+| `legacy/ros2/` | ROS 节点、msg/srv、launch 和旧构建配置 | 历史查阅；默认不构建、不部署 |
+| `vision/` / `annotation/` | 离线标定、训练、数据处理与标注 | 隔离 Python 环境 |
+| `models/` / `datasets/` | 模型清单与数据约定 | 大文件不进源码 Git |
+| `hardware/` / `docs/` | 接线、坐标、协议、设计与验收 | 文档 |
+| `logs/` / `videos/` / `maps/` / `trajectory/` / `events/` | 本地任务产物 | 默认忽略 |
 
-## 已实现的 ROS packages
+`core/auv_core/CMakeLists.txt` 汇总各 `auv_*` 模块，保留原有 C++ include/namespace 名称。核心无 ROS/ament 依赖，不引用归档目录；ROS 节点包装留在归档，未来功能应先接入 Runtime。目录职责见 [核心手册](../../core/README.md)。
 
-`src/` 当前包含八个可由 `colcon` 构建的 package：
+根目录构建完整 Runtime，`AUV_PERCEPTION_ONLY=ON` 可构建便携核心与测试。部署脚本打包 `core/`、`runtime/` 和需要的工具；默认不包含 ROS。旧布局构建缓存需重新生成，服务与配置路径保持兼容。
 
-1. `auv_interfaces`：公共 msg/srv。
-2. `auv_stm32_bridge`：串口编解码、心跳和 ROS topics。
-3. `auv_vision`：相机、AprilTag、OpenCV 检测和模型推理节点。
-4. `auv_mapping`：九宫格透视矫正与语义地图。
-5. `auv_planning`：A* 与目标访问顺序。
-6. `auv_mission`：任务 FSM。
-7. `auv_control`：默认禁用动力的格子路线执行与安全门控。
-8. `auv_bringup`：系统启动和跨 package 参数。
-
-`src/auv_core` 是共享原生算法库，供根目录CMake和ROS模块使用；不计入上述八个ROS package。
-
-`auv_description` 仍是候选 package。只有形成清晰接口、独立实现和测试需求后再建立，
-避免为了目录完整而产生空 package。
-
-训练代码不放入 `auv_vision`，避免 ROS 系统 Python 与 uv/PyTorch 环境耦合。部署模型只通过明确的模型清单交给运行时节点。
-
-## 版本关系
-
-- ROS 与固件共享的帧格式记录在 `docs/protocol/serial-protocol.md`。
-- 串口协议发生不兼容变更时递增协议主版本。
-- 模型清单记录权重 SHA-256、类别、输入尺寸、导出格式和训练数据版本。
-- 固件发布、ROS 发布和模型发布可以独立打 tag，但比赛基线必须在文档中固定三者组合。
+ROS 归档不再是独立可构建 workspace，`COLCON_IGNORE` 阻止扫描。复现原始 ROS 布局用独立 checkout 的 `8064e66`，见 [归档说明](../../legacy/ros2/README.md)。协议和固件组合仍需固定 commit、配置与验收报告；结构调整不代表实机验证通过。

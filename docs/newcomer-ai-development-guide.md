@@ -1,3 +1,5 @@
+> 当前路线已调整：ROS 相关功能暂时弃用，自动控制以原生核心和 Runtime 为主。文中 ROS 操作是历史参考；当前步骤见 [轻量系统路线](lightweight-transition.md)。
+
 # AUV 新人 AI 辅助开发教程
 
 这份教程写给此前没有接触过软件、ROS 2、计算机视觉或嵌入式开发的同学。目标不是让你一次学完所有知识，而是让你能在**不破坏现有工程、不绕过安全保护**的前提下，借助 AI 完成一个个可验证的小任务。
@@ -57,13 +59,13 @@ STM32F405（底层、实时）
 | 路径 | 用途 | 新人是否常改 |
 |---|---|---|
 | `AGENTS.md` | 项目事实、版本和安全约束 | 通常只读 |
-| `src/auv_interfaces/` | 公共 msg/srv | 接口变化时改 |
-| `src/auv_stm32_bridge/` | ROS 2 与 STM32 串口桥 | 通信任务时改 |
-| `src/auv_vision/` | 相机、AprilTag 和交通锥视觉 | 视觉任务常改 |
-| `src/auv_mapping/` | 九宫格矫正与语义地图 | 建图任务时改 |
-| `src/auv_planning/` | A* 与目标访问顺序 | 规划任务时改 |
-| `src/auv_mission/` | 安全任务状态机 | 任务流程变化时改 |
-| `src/auv_bringup/` | launch 和共享 YAML 参数 | 新节点完成后改 |
+| `src/legacy/ros2/auv_interfaces/` | 公共 msg/srv | 接口变化时改 |
+| `src/legacy/ros2/auv_stm32_bridge/` | ROS 2 与 STM32 串口桥 | 通信任务时改 |
+| `src/legacy/ros2/auv_vision/` | 相机、AprilTag 和交通锥视觉 | 视觉任务常改 |
+| `src/legacy/ros2/auv_mapping/` | 九宫格矫正与语义地图 | 建图任务时改 |
+| `src/legacy/ros2/auv_planning/` | A* 与目标访问顺序 | 规划任务时改 |
+| `src/legacy/ros2/auv_mission/` | 安全任务状态机 | 任务流程变化时改 |
+| `src/legacy/ros2/auv_bringup/` | launch 和共享 YAML 参数 | 新节点完成后改 |
 | `firmware/stm32/` | STM32F405 CubeMX/Keil 工程 | 仅固件任务改 |
 | `vision/` | YOLO 训练、数据处理、实验 | P12 阶段常改 |
 | `datasets/` | 数据集约定；大文件不进 Git | 数据任务使用 |
@@ -74,14 +76,14 @@ STM32F405（底层、实时）
 
 当前已有八个 ROS package：
 
-- `auv_interfaces`
-- `auv_stm32_bridge`
-- `auv_vision`
-- `auv_mapping`
-- `auv_planning`
-- `auv_mission`
+- `legacy/ros2/auv_interfaces`
+- `legacy/ros2/auv_stm32_bridge`
+- `legacy/ros2/auv_vision`
+- `legacy/ros2/auv_mapping`
+- `legacy/ros2/auv_planning`
+- `legacy/ros2/auv_mission`
 - `auv_control`
-- `auv_bringup`
+- `legacy/ros2/auv_bringup`
 
 后续 package 仍应在真正开始实现且能独立测试时再创建。
 
@@ -175,7 +177,7 @@ AI 最适合做代码搜索、解释、生成小范围实现、补测试和整�
 
 ```text
 为九宫格透视矫正实现一个无 ROS 依赖的 C++ 函数：输入四个有序角点和输出尺寸，返回 homography。
-要求补充正常矩形、倾斜四边形和退化角点测试。只修改 auv_mapping，先不要接摄像头和 launch。
+要求补充正常矩形、倾斜四边形和退化角点测试。只修改 legacy/ros2/auv_mapping，先不要接摄像头和 launch。
 ```
 
 不要只说“帮我把 AUV 做完”。目标太大时，AI 会被迫猜接口、硬件和验收标准。
@@ -242,8 +244,8 @@ down camera ──/camera/down/image_raw──> AprilTag detector
 ros2 node list
 ros2 topic list -t
 ros2 topic info /camera/down/image_raw --verbose
-ros2 interface show auv_interfaces/msg/SemanticMap
-ros2 interface show auv_interfaces/srv/SetArmed
+ros2 interface show legacy/ros2/auv_interfaces/msg/SemanticMap
+ros2 interface show legacy/ros2/auv_interfaces/srv/SetArmed
 ros2 param list /auv_apriltag_detector
 ros2 node info /auv_apriltag_detector
 ```
@@ -272,7 +274,7 @@ source tools/setup_dev.fish
 默认 launch 不启动硬件节点：
 
 ```fish
-ros2 launch auv_bringup system.launch.py
+ros2 launch legacy/ros2/auv_bringup system.launch.py
 ```
 
 它应该输出工作区已准备好，且推进系统保持 DISARM。硬件节点都需要显式参数开启。
@@ -282,7 +284,7 @@ ros2 launch auv_bringup system.launch.py
 优先使用录制视频或图像序列，而不是直接依赖真实相机：
 
 ```fish
-ros2 run auv_vision camera_node --ros-args \
+ros2 run legacy/ros2/auv_vision camera_node --ros-args \
   -r __node:=auv_camera_down \
   -p source:=/绝对路径/测试视频.mp4 \
   -p topic:=/camera/down/image_raw \
@@ -299,14 +301,14 @@ ros2 topic hz /camera/down/image_raw
 ros2 topic echo /camera/down/image_raw --field header --once
 ```
 
-AprilTag 的具体参数、标定前后输出差异见 `src/auv_vision/README.md`。没有相机标定时 `pose_valid: false` 是正确结果，不应伪造位姿。
+AprilTag 的具体参数、标定前后输出差异见 `src/legacy/ros2/legacy/ros2/auv_vision/README.md`。没有相机标定时 `pose_valid: false` 是正确结果，不应伪造位姿。
 
 ### 7.2 STM32 bridge 的安全观察
 
 不配置串口时：
 
 ```fish
-ros2 run auv_stm32_bridge stm32_bridge_node
+ros2 run legacy/ros2/auv_stm32_bridge stm32_bridge_node
 ```
 
 另一个终端检查：
@@ -425,12 +427,12 @@ git commit -m "feat(mapping): add perspective transform core"
 
 1. 收集并登记测试素材：空气中、不同光照、不同倾角，之后补水下素材。
 2. 定义坐标和输出：角点顺序、俯视图尺寸、3×3 行列方向。
-3. 建立 `auv_mapping` package 和最小测试骨架。
+3. 建立 `legacy/ros2/auv_mapping` package 和最小测试骨架。
 4. 实现颜色预处理：HSV/LAB、形态学操作，参数放 YAML。
 5. 提取黄色边界和候选四角点。
 6. 用 `cv2.getPerspectiveTransform`/`warpPerspective` 对应的 C++ OpenCV API 做矫正。
 7. 把标准俯视图切成 3×3 cell。
-8. 输出 `auv_interfaces/msg/SemanticMap`。
+8. 输出 `legacy/ros2/auv_interfaces/msg/SemanticMap`。
 9. 发布 debug image，保留失败原因和置信度。
 10. 用固定图片做回归，再接 ROS 图片 topic 和 bringup。
 
@@ -475,8 +477,8 @@ C = 4πA / P²
 
 ```text
 请阅读 AGENTS.md、README.md、docs/architecture/repository-layout.md、
-src/auv_interfaces/msg/SemanticMap.msg 和 SemanticCell.msg。
-不要修改文件。请为 P8 的 auv_mapping package 给出最小设计：节点、纯算法类、参数、
+src/legacy/ros2/legacy/ros2/auv_interfaces/msg/SemanticMap.msg 和 SemanticCell.msg。
+不要修改文件。请为 P8 的 legacy/ros2/auv_mapping package 给出最小设计：节点、纯算法类、参数、
 topic、失败语义、debug 输出和单元测试。必须复用已有接口，不使用复杂 SLAM。
 ```
 
@@ -500,7 +502,7 @@ OpenCV 模块及测试。角点顺序为左上、右上、右下、左下；退�
 ### 10.4 修复构建错误
 
 ```text
-下面是我在 fish 中运行 `colcon build --symlink-install --packages-select auv_mapping`
+下面是我在 fish 中运行 `colcon build --symlink-install --packages-select legacy/ros2/auv_mapping`
 后的完整输出：<粘贴输出>。
 请结合当前 CMakeLists.txt/package.xml 诊断第一处根因。不要通过删除测试、关闭警告或
 安装不明版本依赖来掩盖问题。若需要修改，请做最小修改并重新运行同一命令验证。
@@ -676,7 +678,7 @@ ROS 运行代码使用系统 Python；YOLO 实验使用独立 uv 环境。不要
 2. 用 `camera_node` 发布 `/camera/down/image_raw`；
 3. 用 `ros2 topic hz` 验证帧率；
 4. 用 `ros2 topic echo ... --field header --once` 查看时间戳和坐标系；
-5. 阅读 `auv_vision` 的相机节点和测试，画出输入、参数、输出；
+5. 阅读 `legacy/ros2/auv_vision` 的相机节点和测试，画出输入、参数、输出；
 6. 请 AI 只审查你的数据流理解；
 7. 最后把操作、现象和问题写成一页实验记录。
 

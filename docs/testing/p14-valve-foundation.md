@@ -7,7 +7,7 @@
 - 输入：`/camera/front/image_raw`，BGR8 图像。
 - 输出：`/valve/detection`，每帧都会发布，包括未检测到目标的负结果。
 - 调试：`/valve/debug_image`，显示圆盘候选和把手轴线。
-- 参数：`src/auv_bringup/config/valve.yaml`。
+- 参数：`src/legacy/ros2/auv_bringup/config/valve.yaml`。
 - 启动开关：`start_valve:=true`，默认关闭。
 - 检测限频：默认 15 Hz，不降低前摄像头话题本身的帧率。
 
@@ -29,7 +29,7 @@ colcon test-result --verbose
 
 ## 摄像头实时验收
 
-先在 `src/auv_bringup/config/cameras.yaml` 中填写前摄像头的稳定设备路径，然后执行：
+先在 `src/legacy/ros2/auv_bringup/config/cameras.yaml` 中填写前摄像头的稳定设备路径，然后执行：
 
 ```fish
 source /opt/ros/lyrical/setup.fish

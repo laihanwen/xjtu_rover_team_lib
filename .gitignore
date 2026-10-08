@@ -92,3 +92,8 @@ compile_commands.json
 # Locally recorded training videos and frame timestamps
 /data/rov-recordings/
 firmware/stm32/MDK-ARM/RTE/_AUV_A0/
+
+/build-native/
+/legacy/ros2/build/
+/legacy/ros2/install/
+/legacy/ros2/log/

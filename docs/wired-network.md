@@ -30,7 +30,7 @@ set -gx ROS_LOCALHOST_ONLY 0
 
 ## 2. 树莓派启动
 
-先把 `src/auv_bringup/config/cameras.yaml` 的两个 `source` 改成实际稳定的
+先把 `src/legacy/ros2/auv_bringup/config/cameras.yaml` 的两个 `source` 改成实际稳定的
 `/dev/v4l/by-id/...`，把 `stm32_bridge.yaml` 的 `serial_device` 改成实际 UART 设备。
 随后构建并启动：
 

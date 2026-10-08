@@ -2,6 +2,8 @@
 
 根目录 [README.md](../README.md) 负责项目入口；本目录负责整理设计依据、接口协议、部署手册、验收门槛和评审结论。硬件参数未知时，以 [AGENTS.md](../AGENTS.md) 的安全约束为准，不从示例值推断真实接线。
 
+ROS 相关功能目前因性能不足和设计问题暂时弃用。当前自动控制开发、调试与部署入口为 [原生核心](../core/README.md) 和 [Runtime](../runtime/README.md)，见 [路线调整](lightweight-transition.md)。下方 ROS package 文档仅为历史资料。
+
 ## 阅读规则
 
 根README提供项目导航；模块README说明当前操作；project-status区分源码/部署/实机验证；reviews和deployment保存历史证据。历史文件中的参数不得覆盖当前配置。
@@ -62,7 +64,7 @@ docs/
 - [仓库布局与模块边界](./architecture/repository-layout.md)
 - [Pi ↔ STM32 串口协议 v1](./protocol/serial-protocol.md)
 - [STM32 固件说明](../firmware/stm32/README.md)
-- [ROS 运行时 package 导航](../src/README.md)
+- [ROS 历史归档导航](../core/README.md)
 
 ### 运行与部署
 
@@ -80,16 +82,16 @@ docs/
 - [P13 T35-L 单舵机夹爪验收](./testing/p13-gripper.md)
 - [P14 转盘视觉基础验收](./testing/p14-valve-foundation.md)
 
-### 模块文档
+### 模块文档（ROS 条目为历史资料）
 
 | 模块 | 文档 |
 |---|---|
-| ROS 2 ↔ STM32 bridge | [`auv_stm32_bridge`](../src/auv_stm32_bridge/README.md) |
-| 相机与视觉 | [`auv_vision`](../src/auv_vision/README.md) |
-| 九宫格语义地图 | [`auv_mapping`](../src/auv_mapping/README.md) |
-| 格子路径规划 | [`auv_planning`](../src/auv_planning/README.md) |
-| 路线执行控制 | [`auv_control`](../src/auv_control/README.md) |
-| Mission FSM | [`auv_mission`](../src/auv_mission/README.md) |
+| ROS 2 ↔ STM32 bridge | [`auv_stm32_bridge`](../legacy/ros2/src/auv_stm32_bridge/README.md) |
+| 相机与视觉 | [`auv_vision`](../legacy/ros2/src/auv_vision/README.md) |
+| 九宫格语义地图 | [`auv_mapping`](../legacy/ros2/src/auv_mapping/README.md) |
+| 格子路径规划 | [`auv_planning`](../legacy/ros2/src/auv_planning/README.md) |
+| 路线执行控制 | [`auv_control`](../legacy/ros2/src/auv_control/README.md) |
+| Mission FSM | [`auv_mission`](../legacy/ros2/src/auv_mission/README.md) |
 | 数据标注 | [`annotation`](../annotation/README.md) |
 | 数据集约定 | [`datasets`](../datasets/README.md) |
 | 模型注册 | [`models`](../models/README.md) |

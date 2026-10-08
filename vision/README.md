@@ -18,7 +18,7 @@ vision/
 - OpenCV 九宫格、交通锥算法应支持录制视频离线复现。
 - YOLO 第一版使用 YOLO11n，类别为 `sea_cucumber`、`turtle`、`starfish`。
 - 导出模型进入 `models/artifacts/`，并更新模型清单；权重文件不提交 Git。
-- ROS 推理节点最终位于 `src/auv_vision`，只消费发布后的模型，不包含训练环境。
+- ROS 推理节点最终位于 `src/legacy/ros2/auv_vision`，只消费发布后的模型，不包含训练环境。
 
 ## P12 环境
 

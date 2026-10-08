@@ -129,11 +129,7 @@ def pi(args, output, deploy=False):
         if deploy:
             archive = output / 'source.tar.gz'
             with tarfile.open(archive, 'w:gz') as tar:
-                paths = ['CMakeLists.txt', 'runtime', 'tools/rov', 'src/auv_core']
-                paths += [f'src/{name}/{part}' for name in
-                          ('auv_vision','auv_mapping','auv_planning','auv_mission','auv_control','auv_stm32_bridge')
-                          for part in ('include','src')]
-                paths += ['src/auv_mapping/test']
+                paths = ['CMakeLists.txt', 'core', 'runtime', 'tools/rov']
                 def exclude(info):
                     return None if '__pycache__' in Path(info.name).parts or info.name.endswith('.pyc') else info
                 for path in paths:

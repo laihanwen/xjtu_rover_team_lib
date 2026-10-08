@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 # Run on the Raspberry Pi from the repository root. Uses configured SSH keys only.
-if [ ! -f src/auv_core/CMakeLists.txt ]; then
+if [ ! -f core/auv_core/CMakeLists.txt ]; then
   echo 'Run from the AUV repository root' >&2
   exit 2
 fi

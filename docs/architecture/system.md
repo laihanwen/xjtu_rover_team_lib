@@ -3,9 +3,9 @@
 ## 当前分层
 
 1. STM32 实时层：传感器快照 → 控制源仲裁 → PID → 推力分配 → 起转补偿/限幅 → 安全 PWM。
-2. Pi 运行层：ROV 串口桥与摄像头 Runtime 分开运行；自主模式使用 Runtime 或 ROS Bridge 之一管理串口。
+2. Pi 运行层：ROV 串口桥与摄像头 Runtime 分开运行；自主模式使用 Runtime 管理串口，ROS Bridge 暂时弃用。
 3. PC 操作层：手柄/驾驶台控制线程、日志线程、双路录制线程独立；录像不参与 ARM 许可。
-4. 算法层：`auv_core` 提供地图、规划、任务等共享实现；ROS 节点和 Runtime 负责适配与生命周期。
+4. 算法层：`auv_core` 提供地图、规划、任务等共享实现；Runtime 负责适配与生命周期，ROS 节点归档。
 5. 离线工具层：训练、标注、数据处理不依赖正在运行的控制系统。
 
 ## 资源所有权
@@ -23,7 +23,7 @@ ROV 配置参考 `runtime/config/pi-rov.yaml`：串口为空、运动关闭，CS
 
 ## 本轮整理选择
 
-保留现有目录和工程路径，避免破坏 Keil 工程引用、CMake 目标、Python import、systemd ExecStart 和部署脚本。将当前操作手册与历史报告分离，根 README 只承担导航；模块 README 说明本模块接口，project-status 记录部署/验证状态。
+原生算法和 UART 核心迁至 `core/`，ROS 文件归档到 `legacy/ros2/`，CMake 和部署脚本已同步；详见 [迁移说明](../lightweight-transition.md)。Keil、Runtime 服务和配置路径保持兼容。将当前操作手册与历史报告分离，根 README 只承担导航；模块 README 说明本模块接口，project-status 记录部署/验证状态。
 
 本轮不迁移实时控制文件或拆分已有协议，也不把源码重构混入硬件参数调整。`MDK-ARM/Mate.c` 是当前权威控制实现；存在同名文件时先检查 uvprojx/CMake 的编译列表，不能同时修改两个版本并假设都生效。
 
@@ -35,7 +35,7 @@ ROV 配置参考 `runtime/config/pi-rov.yaml`：串口为空、运动关闭，CS
 | `tools/rov/trial_control_web.py` | 状态存储、手柄控制、HTTP展示 | 维持一个控制所有者和现有许可语义 |
 | `MDK-ARM/Mate.c` | 保持状态、控制计算、分配诊断 | 固定水下参数及输出回归，遵守 CubeMX USER CODE 边界 |
 
-这些是下一阶段拆分计划，不表示本轮已经完成源码模块迁移。当前应先完成自动保持和视频验收，再逐模块抽取，避免重构后难以区分硬件问题与软件回归。
+这些是下一阶段进程内部拆分计划；当前已完成原生核心与 ROS 归档的目录分离。当前应先完成自动保持和视频验收，再逐模块抽取，避免重构后难以区分硬件问题与软件回归。
 
 ## 版本与配置
 
