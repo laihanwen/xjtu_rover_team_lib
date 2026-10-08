@@ -27,11 +27,16 @@ def main():
     parser.add_argument('--record-dir', default=str(Path(__file__).resolve().parents[2] / 'data' / 'rov-recordings'))
     parser.add_argument('--log-dir', default=str(Path(__file__).resolve().parents[2] / 'logs' / 'rov'))
     parser.add_argument('--diagnostic-log', action='store_true', help='Enable separate 10 Hz rotating diagnostic snapshots')
+    parser.add_argument('--dial-min', type=float, help='Measured SI lower endpoint')
+    parser.add_argument('--dial-max', type=float, help='Measured SI upper endpoint')
     args = parser.parse_args()
     recorder = DatasetRecorder(f'http://{args.host}:{args.camera_port}',args.record_dir)
     os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = '1'
     mapping = load_mapping(args.mapping_config)
-    controller = RemoteControl(-.5,-.1,mapping)
+    if mapping['dial_axis'] is not None and (args.dial_min is None and mapping.get('dial_min') is None or args.dial_max is None and mapping.get('dial_max') is None):
+        parser.error('SI requires measured --dial-min and --dial-max; keep dial_axis null until measured')
+    controller = RemoteControl(args.dial_min if args.dial_min is not None else mapping.get('dial_min',-.5),
+                               args.dial_max if args.dial_max is not None else mapping.get('dial_max',-.1),mapping)
     lock = threading.Lock()
     state = {'connected':False,'telemetry':{},'error':'','detail':'等待手柄',
              'axes':[],'deadman':False,'centered':False,'can_arm':False,
@@ -115,7 +120,7 @@ def main():
                         state['selected_speed']=request['mode']
                         return self.reply({'selected_speed':request['mode']})
                     if action=='arm' and not state['can_arm']:
-                        return self.reply({'error':'回中、左肩许可及新鲜IMU遥测后才能ARM'},409)
+                        return self.reply({'error':'回中、独立安全许可及新鲜IMU遥测后才能ARM'},409)
                     if action=='level':
                         if request.get('shore_confirmed') is not True or not state['connected'] or not state.get('centered') or state['telemetry'].get('armed') or state.get('telemetry_age',999)>.3:
                             return self.reply({'error':'请在岸上放平、未ARM、摇杆回中并勾选确认'},409)
@@ -123,7 +128,7 @@ def main():
                     elif action=='pulse':
                         motor,offset=request.get('motor'),request.get('offset')
                         if type(motor) is not int or type(offset) is not int or not 0<=motor<8 or not -75<=offset<=75:raise ValueError('pulse')
-                        if not state.get('deadman') or not state.get('centered') or not state['telemetry'].get('armed'):return self.reply({'error':'先回中、左肩许可并显式ARM'},409)
+                        if not state.get('deadman') or not state.get('centered') or not state['telemetry'].get('armed'):return self.reply({'error':'先回中、独立安全许可并显式ARM'},409)
                         operator['action']={'action':'pulse','motor':motor,'offset':offset}
                     else:operator['action']=action
                 self.reply({'queued':action})
@@ -142,9 +147,16 @@ def main():
                 with lock: selected_speed=operator['speed']
                 frame=bytearray(frame);frame[6]=selected_speed
                 frame=manual_frame(frame)
+                with lock:
+                    state['camera_control'] = {
+                        'selector': int(frame[7]), 'dial_byte': int(frame[5]),
+                        'dial_verified': mapping['dial_axis'] is not None,
+                        'requested_angle_deg': -45.0 + frame[5]*55.0/255.0 if frame[7]==1 and frame[10]==1 else None,
+                        'selector_axis': mapping['servo_select_axis'], 'dial_axis': mapping['dial_axis'],
+                        'main_placeholder': True, 'position_feedback': False}
                 hold_switches={'SA':bool(frame[8]),'SD':bool(frame[9])}
                 axes=[controller.device.get_axis(i) for i in mapping['motion_axes']]
-                physical_deadman=controller.device.get_axis(mapping['servo_select_axis'])>=.5
+                physical_deadman=controller.device.get_axis(mapping.get('deadman_axis',mapping['servo_select_axis']))>=.5
                 controller_ok=True
                 with lock:
                     state.update(controller_connected=True,axes=axes,centered=centered(frame),

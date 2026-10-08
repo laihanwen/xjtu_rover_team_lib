@@ -87,6 +87,10 @@ TEST(TelemetryDecoder, DecodesValidAndUnavailableDepth)
   EXPECT_FLOAT_EQ(telemetry.depth, 1.25F);
   EXPECT_TRUE(telemetry.valid);
 
+  payload.resize(17U,0U); // AUV extension preserves the ROS depth prefix.
+  EXPECT_TRUE(auv_stm32_bridge::decode_depth_telemetry(payload, telemetry));
+  payload.resize(9U);
+
   write_f32(payload, 4U, std::numeric_limits<float>::quiet_NaN());
   payload[8] = 0U;
   ASSERT_TRUE(auv_stm32_bridge::decode_depth_telemetry(payload, telemetry));

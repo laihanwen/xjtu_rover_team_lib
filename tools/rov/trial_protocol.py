@@ -49,8 +49,12 @@ def manual_frame(frame):
     if len(frame) != 11 or frame[0] != 0xa5:
         raise ValueError('invalid RC frame')
     frame = bytearray(frame)
-    frame[5], frame[6], frame[7] = 127, (2 if frame[6]==2 else 0), 2
-    frame[8], frame[9], frame[10] = int(bool(frame[8])), int(bool(frame[9])), 0
+    camera = frame[7] == 1 and frame[10] == 1
+    # Preserve SC selection, but only forward a verified camera dial in middle.
+    frame[5] = frame[5] if camera else 127
+    frame[6] = 2 if frame[6] == 2 else 0
+    frame[7] = frame[7] if frame[7] in (0, 1, 2) else 0
+    frame[8], frame[9], frame[10] = int(bool(frame[8])), int(bool(frame[9])), int(camera)
     return bytes(frame)
 
 

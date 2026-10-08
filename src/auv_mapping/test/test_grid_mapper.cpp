@@ -23,6 +23,10 @@ namespace
 
 // Competition scene constants: a dark blue pool floor, white edges and
 // internal divisions, and a single yellow bottom-reference edge.
+auv_mapping::GridMapperConfig competition_config() {
+  auv_mapping::GridMapperConfig config; config.single_yellow_edge=true; config.white_grid_edges=true;
+  return config;
+}
 const cv::Scalar kPoolFloor(120, 60, 20);
 const cv::Scalar kWhite(255, 255, 255);
 const cv::Scalar kYellow(0, 255, 255);
@@ -101,7 +105,7 @@ TEST(GridMapper, OrdersCornersTopLeftClockwise)
 
 TEST(GridMapper, RequiresConsecutiveStableFrames)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat image = make_grid();
   const auto first = mapper.process(image);
   const auto second = mapper.process(image);
@@ -118,22 +122,22 @@ TEST(GridMapper, RequiresConsecutiveStableFrames)
 
 TEST(GridMapper, ConfirmsYellowOrientationOverConsecutiveFrames)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat image = make_grid(true, 0);
   const auto first = mapper.process(image);
   const auto second = mapper.process(image);
   const auto third = mapper.process(image);
   EXPECT_TRUE(first.geometry_valid) << first.reason;
-  EXPECT_FALSE(first.yellow_oriented);
+  EXPECT_FALSE(first.orientation_valid);
   EXPECT_TRUE(second.geometry_valid);
-  EXPECT_FALSE(second.yellow_oriented);
+  EXPECT_FALSE(second.orientation_valid);
   EXPECT_TRUE(third.geometry_valid);
-  EXPECT_TRUE(third.yellow_oriented);
+  EXPECT_TRUE(third.orientation_valid);
 }
 
 TEST(GridMapper, RejectsGridWithoutInternalGrid)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const auto result = mapper.process(make_grid(false));
   EXPECT_FALSE(result.geometry_valid);
   EXPECT_FALSE(result.stable);
@@ -146,7 +150,7 @@ TEST(GridMapper, OrientsYellowEdgeToBottom)
   // it must land on the bottom so the generated map uses the yellow edge as
   // its bottom edge.
   for (int yellow_side = 0; yellow_side < 4; ++yellow_side) {
-    auv_mapping::GridMapper mapper;
+    auv_mapping::GridMapper mapper(competition_config());
     const auto result = mapper.process(make_grid(true, yellow_side));
     ASSERT_TRUE(result.geometry_valid) << result.reason << " side=" << yellow_side;
 
@@ -173,19 +177,19 @@ TEST(GridMapper, OrientsYellowEdgeToBottom)
 
 TEST(GridMapper, KeepsOrientationUnconfirmedWhenNoSingleYellowEdge)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat image = make_all_yellow_grid();
   for (int frame = 0; frame < 5; ++frame) {
     const auto result = mapper.process(image);
-    EXPECT_TRUE(result.geometry_valid) << result.reason << " frame=" << frame;
-    EXPECT_FALSE(result.yellow_oriented)
+    EXPECT_FALSE(result.geometry_valid) << "ambiguous yellow must invalidate geometry";
+    EXPECT_FALSE(result.orientation_valid)
       << "all-yellow border must not confirm orientation (frame=" << frame << ")";
   }
 }
 
 TEST(GridMapper, RejectsBlankFrameAndResetsState)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat grid = make_grid();
   for (int frame = 0; frame < 3; ++frame) {
     mapper.process(grid);
@@ -194,11 +198,11 @@ TEST(GridMapper, RejectsBlankFrameAndResetsState)
   const auto blank_result = mapper.process(blank);
   EXPECT_FALSE(blank_result.geometry_valid);
   EXPECT_FALSE(blank_result.stable);
-  EXPECT_FALSE(blank_result.yellow_oriented);
+  EXPECT_FALSE(blank_result.orientation_valid);
   const auto after = mapper.process(grid);
   EXPECT_TRUE(after.geometry_valid) << after.reason;
   EXPECT_FALSE(after.stable) << "stability must restart after a rejected frame";
-  EXPECT_FALSE(after.yellow_oriented) << "orientation count must restart after a rejected frame";
+  EXPECT_FALSE(after.orientation_valid) << "orientation count must restart after a rejected frame";
 }
 
 TEST(GridMapper, HandlesBrightnessBlurAndModerateNoise)
@@ -210,14 +214,14 @@ TEST(GridMapper, HandlesBrightnessBlurAndModerateNoise)
   cv::randn(noise, cv::Scalar::all(0), cv::Scalar::all(5));
   cv::add(degraded, noise, degraded, cv::noArray(), degraded.type());
 
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const auto result = mapper.process(degraded);
   EXPECT_TRUE(result.geometry_valid) << result.reason;
 }
 
 TEST(GridMapper, RejectsOccludedBorderAndResetsCornerStability)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat grid = make_grid();
   EXPECT_FALSE(mapper.process(grid).stable);
   EXPECT_FALSE(mapper.process(grid).stable);
@@ -236,8 +240,9 @@ TEST(GridMapper, RejectsOccludedBorderAndResetsCornerStability)
 
 TEST(GridMapper, ReportsCameraPositionAndConfidence)
 {
-  auv_mapping::GridMapper mapper;
-  const auto result = mapper.process(make_grid());
+  auv_mapping::GridMapper mapper(competition_config());
+  auv_mapping::GridResult result;
+  for (int frame=0; frame<3; ++frame) result = mapper.process(make_grid());
   ASSERT_TRUE(result.geometry_valid) << result.reason;
   EXPECT_TRUE(result.position_valid);
   EXPECT_GE(result.camera_row, 0.0F);
@@ -258,7 +263,7 @@ TEST(GridMapper, ValidatesConfigurationAndInput)
       (void)invalid_mapper;
     },
     std::invalid_argument);
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   EXPECT_THROW(mapper.process(cv::Mat()), std::invalid_argument);
 }
 

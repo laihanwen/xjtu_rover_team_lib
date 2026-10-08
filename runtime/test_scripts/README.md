@@ -79,3 +79,9 @@ cmake --build build-lightweight -j 3
   场景的 `SEARCH_APRILTAG` 稳定抓取）；完整阶段顺序始终在 `events_<场景>.ndjson`。
 - **动力输出可观测性（后续）**：后续需在测试里验证自动控制系统是否发出动力/推进器
   指令（当前 `motion_commands_enabled: false`，不发出运动指令）。
+
+## 验收范围说明
+
+本目录测试旧 task_one 模式的视觉、阶段顺序与规划路径覆盖；关闭运动输出，因此不证明真实访问。A2 的上浮后遍历、定位门控、连续路径与观测访问由 a2_surface_traversal 和 a2_indexed_surface_replay CTest 验证；这些也是模拟回归，仍需实机验收。
+
+白边模式使用 vision.single_yellow_edge=true 和 vision.white_grid_edges=true；黑边场景设置 white_grid_edges=false。黄色边连续确认帧数使用 yellow_oriented_frames。

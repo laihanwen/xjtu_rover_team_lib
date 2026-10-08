@@ -57,6 +57,8 @@ rqt_image_view /mapping/debug_image
 ```
 
 `complete=true` requires three consecutive geometrically consistent frames, a completed temporal
-cone scan, and at least `expected_cone_count` targets (competition default: four). A grid frame
+cone scan, confirmed `orientation_valid`, and exactly `expected_cone_count` classified targets (competition default: four). A grid frame
 without two horizontal and two vertical internal divisions is rejected, and the generated map is
 oriented so the single yellow edge sits at the bottom.
+
+White edges require both single_yellow_edge=true and white_grid_edges=true. The core/runtime defaults retain the legacy mode; ROS mapping.yaml and Pi AUV templates explicitly select white edges. Set white_grid_edges=false for black-edge scenes. yellow_oriented_frames controls direction confirmation, which resets on rejected frames and corner changes. The A2 metric pose uses the same orientation_valid and yellow_edge fields; no second rotation is applied.

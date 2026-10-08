@@ -30,6 +30,8 @@ auv_semantic_mapper:
     line_band_ratio: 0.035
     minimum_line_support: 0.45
     stable_frames: 3
+    single_yellow_edge: true
+    white_grid_edges: true
     yellow_oriented_frames: 3
     maximum_corner_jitter_ratio: 0.02
     # Task-one grid has one yellow edge plus three white edges. white_s_max and

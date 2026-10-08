@@ -61,6 +61,7 @@ def test_semantic_map_matches_ground_truth(runtime_binary, tmp_path):
 
             path = plan_path(h.events())
             cone_cells = {rc for rc, obj in meta["cells"].items() if obj != "unknown"}
+            assert not any(c["visited"] for c in state["cells"]), "motion-disabled test must not claim real visits"
             assert cone_cells <= set(path), f"{stem}: route missing cones {cone_cells - set(path)}"
 
             visualize.write_scene_artifacts(stem, h, state, snapshots)
