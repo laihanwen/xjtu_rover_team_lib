@@ -44,7 +44,7 @@ CRC 使用 **CRC-16/CCITT-FALSE**：poly `0x1021`、init `0xFFFF`、refin/refout
 | `0x7F` | ACK | STM32 → Pi | 6 |
 | `0x80` | STATUS | STM32 → Pi | 30 + 2N |
 | `0x81` | IMU | STM32 → Pi | 40 |
-| `0x82` | DEPTH | STM32 → Pi | 9 |
+| `0x82` | DEPTH | STM32 → Pi | 9 (ROV) / 17 (AUV) |
 | `0x83` | ACTUATOR_STATUS | STM32 → Pi | 16 |
 
 未知 version、未知 ID、超长 payload、长度不完整或 CRC 错误的帧必须丢弃，不得更新控制目标。解析器从下一个 `AA 55` 重新同步。
@@ -142,6 +142,8 @@ Firmware error flags：
 当前 H30 接入仅提供欧拉角；未提供的角速度和线加速度字段必须发送 quiet NaN，bridge 同时把对应 covariance 首项设为 `-1`，不得用零伪装测量值。
 
 ### DEPTH `0x82`
+
+AUV 固件扩展到 17 字节，前 9 字节兼容原深度消息。偏移 9 为 `uint32` 真实传感器 `sample_sequence`，偏移 13 为 `uint32` 采样年龄（ms）；无有效样本时分别为 0 和 `0xFFFFFFFF`。偏移 0 的发送序号仍仅代表报文发送次数，不能用于上浮多次采样确认。A2 必须收到扩展帧；旧 9 字节报文只能用于基础深度显示。ROV 固件仍发送 9 字节，ROS 解码接受两种长度。
 
 | Offset | 类型 | 单位 | 字段 |
 |---:|---|---|---|

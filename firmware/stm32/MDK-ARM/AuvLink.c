@@ -343,7 +343,11 @@ static void SendImu(void)
 
 static void SendDepth(uint32_t now_ms)
 {
+#if AUV_AUTONOMOUS_PROFILE
+    uint8_t payload[17] = {0}; /* AUV adds real sensor sequence and sample age. */
+#else
     uint8_t payload[9] = {0};
+#endif
     AuvDepthSample sample;
     uint32_t mask = __get_PRIMASK();
     uint8_t fresh;
@@ -357,6 +361,10 @@ static void SendDepth(uint32_t now_ms)
     else
         AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
     payload[8] = fresh;
+#if AUV_AUTONOMOUS_PROFILE
+    AuvProtocol_WriteU32Le(&payload[9], fresh ? sample.sample_sequence : 0U);
+    AuvProtocol_WriteU32Le(&payload[13], fresh ? now_ms-sample.last_update_ms : 0xFFFFFFFFU);
+#endif
     SendFrame(AUV_MSG_DEPTH, payload, sizeof(payload));
 }
 

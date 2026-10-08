@@ -275,10 +275,6 @@ void Mate_Task(void)
     if (!AuvGripper_PwmEnabled()) HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
     __HAL_TIM_SET_COMPARE(
         &htim1, TIM_CHANNEL_1, (uint32_t)AuvGripper_GetPulseUs() * 2U);
-    AuvCameraServo_Tick(AuvSafety_IsArmed());
-#if AUV_CAMERA_SERVO_CALIBRATED
-    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, AuvCameraServo_GetCcr());
-#endif
 
     /* Copy the ISR-owned 11-byte snapshot in one short critical section. */
     uint32_t control_mask = __get_PRIMASK();
@@ -337,6 +333,14 @@ void Mate_Task(void)
     if ((pi_fresh == 0U) && (rc_fresh != 0U) &&
         (AuvSafety_IsArmed() != 0U))
         RCServo_Calc(MyRCKey);
+    else if (pi_fresh == 0U)
+        AuvCameraServo_CommandRemote(0U, 0U, 0U);
+    /* Apply servo ramp only after this tick's source freshness/selection decision. */
+    AuvCameraServo_Tick(AuvSafety_IsArmed());
+#if AUV_CAMERA_SERVO_CALIBRATED
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, AuvCameraServo_GetCcr());
+#endif
+
 
     // ===== 2. RcData[8]控制YAW PID，上升沿锁定当前航向 =====
 #if AUV_AUTONOMOUS_PROFILE

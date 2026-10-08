@@ -1,6 +1,7 @@
 #pragma once
 #include "localization.hpp"
 #include "auv_control/route_executor.hpp"
+#include "auv_control/surface_traversal.hpp"
 #include "auv_mapping/grid_mapper.hpp"
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
@@ -12,6 +13,7 @@
 #include <vector>
 #include <stdexcept>
 struct Config {
+  auv_control::SurfaceTraversalConfig traversal;
   auv_control::ObservationSearchConfig search;
   bool auto_origin{}, recording_enabled{}, recording_required{};
   std::string recording_dir{"/var/log/auv-runtime/runs"}, config_source;
@@ -81,6 +83,53 @@ static Config load_config(const std::string& path) {
     c.recording_reserve=r["minimum_free_bytes"].as<std::uint64_t>(c.recording_reserve);
   }
   c.localization=Localization::config(y["localization"]);
+  if(const auto t=y["surface_traversal"]) {
+    auto& a=c.traversal;
+    a.enabled=t["enabled"].as<bool>(false);
+    a.ascent_verified=t["ascent_clearance_verified"].as<bool>(false);
+    a.surface_verified=t["surface_localization_verified"].as<bool>(false);
+    a.center_approach_verified=t["center_approach_verified"].as<bool>(false);
+    a.center_approach_radius_cells=t["center_approach_radius_cells"].as<double>(0);
+    a.center_stable_sec=t["center_stable_sec"].as<double>(0.3);
+    a.center_timeout_sec=t["center_timeout_sec"].as<double>(10);
+    const auto cell=t["ascent_cell"].as<std::vector<int>>(std::vector<int>{-1,-1});
+    if(cell.size()!=2)throw std::runtime_error("ascent_cell requires row,col");
+    a.ascent_row=cell[0];a.ascent_col=cell[1];
+    a.ascent_tolerance_cells=t["ascent_tolerance_cells"].as<double>(a.ascent_tolerance_cells);
+    a.surface_depth_m=t["depth_target_m"].as<double>(a.surface_depth_m);
+    a.depth_tolerance_m=t["depth_tolerance_m"].as<double>(a.depth_tolerance_m);
+    a.ascent_rate_mps=t["ascent_rate_mps"].as<double>(a.ascent_rate_mps);
+    a.surface_stable_sec=t["surface_stable_sec"].as<double>(a.surface_stable_sec);
+    a.reacquire_frames=t["reacquire_frames"].as<int>(a.reacquire_frames);
+    a.surface_depth_samples=t["surface_depth_samples"].as<int>(a.surface_depth_samples);
+    a.depth_sample_timeout_sec=t["depth_sample_timeout_sec"].as<double>(a.depth_sample_timeout_sec);
+    a.reacquire_timeout_sec=t["reacquire_timeout_sec"].as<double>(a.reacquire_timeout_sec);
+    a.pose_timeout_sec=t["pose_timeout_sec"].as<double>(a.pose_timeout_sec);
+    a.maximum_speed=t["maximum_speed"].as<double>(a.maximum_speed);
+    a.gain=t["position_gain"].as<double>(a.gain);
+    a.arrival_tolerance_cells=t["arrival_tolerance_cells"].as<double>(a.arrival_tolerance_cells);
+    a.arrival_stable_sec=t["arrival_stable_sec"].as<double>(a.arrival_stable_sec);
+    a.entry_margin_cells=t["entry_margin_cells"].as<double>(a.entry_margin_cells);
+    a.boundary_clearance_m=t["boundary_clearance_m"].as<double>(a.boundary_clearance_m);
+    a.corridor_tolerance_cells=t["corridor_tolerance_cells"].as<double>(a.corridor_tolerance_cells);
+    a.pose_jump_tolerance_m=t["pose_jump_tolerance_m"].as<double>(a.pose_jump_tolerance_m);
+    a.waypoint_timeout_sec=t["waypoint_timeout_sec"].as<double>(a.waypoint_timeout_sec);
+    a.underwater.verified=c.localization.plane.verified;
+    a.underwater.width=c.localization.width;a.underwater.height=c.localization.height;
+    a.underwater.camera_matrix=c.localization.intrinsics;a.underwater.distortion=c.localization.distortion;
+    a.underwater.camera_to_body=c.localization.rotation;a.underwater.camera_offset_m=c.localization.camera_offset;
+    a.underwater.depth_offset_m=c.localization.depth_offset;
+    a.underwater.cell_size_m=t["cell_size_m"].as<double>(0);
+    a.underwater.pool_depth_m=c.localization.plane.pool_depth;
+    a.underwater.height_tolerance_m=t["height_tolerance_m"].as<double>(0.15);
+    a.underwater.max_reprojection_px=t["maximum_reprojection_px"].as<double>(3);
+    a.underwater.minimum_confidence=t["minimum_grid_confidence"].as<double>(0.8);
+    a.surface=a.underwater;a.surface.verified=a.surface_verified;
+    a.surface.width=t["width"].as<int>(0);a.surface.height=t["height"].as<int>(0);
+    a.surface.camera_matrix=t["camera_matrix"].as<std::vector<double>>(std::vector<double>{});
+    a.surface.distortion=t["distortion_coefficients"].as<std::vector<double>>(std::vector<double>{});
+  }
+  c.traversal.validate();
   c.camera = y["camera"]["source"].as<std::string>();
   c.camera_width = y["camera"]["width"].as<int>();
   c.camera_height = y["camera"]["height"].as<int>();
@@ -150,6 +199,9 @@ static Config load_config(const std::string& path) {
   c.mission_profile = y["mission"]["profile"].as<std::string>();
   c.mission.full_mission = c.mission_profile == "full";
   c.mission.stop_after_map = c.mission_profile == "a1_observation";
+  c.mission.surface_before_visit = c.mission_profile == "a2_task_one";
+  c.mission.surface_relocalize_timeout_sec=c.traversal.reacquire_timeout_sec;
+  c.planner.forbid_target_reentry=c.mission.surface_before_visit;
   c.mission.allow_armed_during_observation=c.search.enabled;
   c.mission.cucumber_search_timeout_sec = y["mission"]["cucumber_search_timeout_sec"].as<double>();
   c.mission.cucumber_align_timeout_sec = y["mission"]["cucumber_align_timeout_sec"].as<double>();
@@ -186,7 +238,7 @@ static Config load_config(const std::string& path) {
       c.route.maximum_speed,c.route.arrival_tolerance,c.route.surge_from_row,c.route.surge_from_col,
       c.route.sway_from_row,c.route.sway_from_col,c.mission.self_check_timeout_sec,
       c.mission.apriltag_timeout_sec,c.mission.map_timeout_sec,c.mission.planning_timeout_sec,
-      c.mission.cone_visit_timeout_sec,c.segment_time})
+      c.mission.cone_visit_timeout_sec,c.mission.surface_timeout_sec,c.segment_time})
     if(!std::isfinite(value))throw std::runtime_error("nonfinite runtime parameter");
   if (c.camera_width <= 0 || c.camera_width > 1920 || c.camera_height <= 0 ||
       c.camera_height > 1080 || c.camera_fps <= 0 || c.camera_fps > 120 ||
@@ -202,14 +254,29 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("invalid runtime configuration");
   if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
     throw std::runtime_error("operation.mode must be debug or autonomous");
-  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation")
+  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation" && c.mission_profile!="a2_task_one")
     throw std::runtime_error("invalid mission.profile");
   if(c.recording_enabled && (c.recording_dir.empty()||!std::isfinite(c.recording_segment)||
       c.recording_segment<=0||c.recording_reserve<1024))throw std::runtime_error("invalid recording settings");
   if(c.recording_required && !c.recording_enabled)throw std::runtime_error("required onboard recording is disabled");
   if(c.search.enabled && (!c.motion_enabled||!c.localization.enabled||!c.auto_origin||
-      !c.recording_required || !c.mission.stop_after_map))
-    throw std::runtime_error("A0/A1 search requires motion, localization, auto_origin, recording and a1_observation profile");
+      !c.recording_required || (!c.mission.stop_after_map&&!c.mission.surface_before_visit)))
+    throw std::runtime_error("search requires motion, localization, auto_origin, recording and A1/A2 profile");
+  if(c.traversal.enabled && (!c.mission.surface_before_visit||!c.search.enabled||!c.grid.single_yellow_edge||
+      c.expected_cones!=4||!c.recording_required||!c.front_enabled||
+      c.traversal.surface.width!=c.camera_width||c.traversal.surface.height!=c.camera_height||
+      c.traversal.underwater.width!=c.camera_width||c.traversal.underwater.height!=c.camera_height||
+      c.traversal.maximum_speed>c.route.maximum_speed||
+      c.traversal.surface_depth_m>=c.search.depth_m||c.localization.plane.depth_zero!=0||
+      c.camera_matrix!=c.localization.intrinsics||c.distortion!=c.localization.distortion))
+    throw std::runtime_error("A2 requires complete A1, dual recording, matching underwater calibration and measured ascent/surface limits");
+  if(c.traversal.enabled && (c.mission.surface_timeout_sec<=
+      (c.search.depth_m-c.traversal.surface_depth_m)/c.traversal.ascent_rate_mps+c.traversal.surface_stable_sec+
+      c.traversal.center_timeout_sec+c.traversal.surface_depth_samples*c.traversal.depth_sample_timeout_sec ||
+      c.traversal.ascent_row!=1||c.traversal.ascent_col!=1))
+    throw std::runtime_error("A2 requires center ascent column and sufficient ascent timeout");
+  if(c.mission.surface_before_visit&&c.motion_enabled&&!c.traversal.enabled)
+    throw std::runtime_error("A2 motion requires enabled calibrated surface traversal");
   if (c.operation_mode == "debug" && (c.auto_start || c.auto_arm))
     throw std::runtime_error("automatic operation is only valid in autonomous mode");
   if (c.operation_mode == "autonomous" && !c.auto_start)

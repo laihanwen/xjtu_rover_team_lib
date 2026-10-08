@@ -51,6 +51,7 @@ struct GridPlannerConfig
   std::vector<std::string> target_object_types{"circle_cone", "square_cone"};
   std::vector<std::string> blocked_object_types{"obstacle", "forbidden"};
   std::size_t maximum_targets{8U};
+  bool forbid_target_reentry{false};
 };
 
 struct PlanResult

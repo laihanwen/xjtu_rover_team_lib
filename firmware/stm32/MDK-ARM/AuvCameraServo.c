@@ -85,7 +85,13 @@ AuvArmResult AuvCameraServo_Accept(const uint8_t *payload,
 void AuvCameraServo_CommandRemote(uint8_t dial, uint8_t enabled, uint8_t armed)
 {
     uint32_t span;
-    if (active_config.calibrated == 0U || enabled == 0U || armed == 0U) return;
+    if (active_config.calibrated == 0U || active_status.state == AUV_CAMERA_SERVO_FAULT) return;
+    if (enabled == 0U || armed == 0U) {
+        /* Deselect/disarm cancels the outstanding ramp, holding current PWM. */
+        active_status.target_ccr = active_status.current_ccr;
+        active_status.state = AUV_CAMERA_SERVO_STOPPED;
+        return;
+    }
     span = (uint32_t)(active_config.maximum_ccr - active_config.minimum_ccr);
     active_status.target_ccr = (uint16_t)(active_config.minimum_ccr +
         ((uint32_t)dial * span) / 255U);

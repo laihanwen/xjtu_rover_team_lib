@@ -198,6 +198,49 @@ PlanResult GridPlanner::plan(const PlanningGrid & grid, const GridCell & start) 
     return result;
   }
 
+  if (config_.forbid_target_reentry) {
+    // On a 3x3 field, BFS over (cell, visited-target mask) finds the shortest
+    // whole path. Entering an unvisited target counts immediately; entering
+    // one already present in the mask is forbidden, including transit cells.
+    if (grid.rows != 3 || grid.cols != 3 || targets.size() > 4) {
+      result.reason = "strict traversal requires 3x3 and at most four targets";
+      return result;
+    }
+    std::array<int,9> bit{}; bit.fill(-1);
+    for (std::size_t i=0;i<targets.size();++i) bit[targets[i].row*3+targets[i].col]=static_cast<int>(i);
+    const int masks=1<<targets.size(), full=masks-1, sid=start.row*3+start.col;
+    if(grid.cells[sid].visited && has_type(config_.target_object_types,grid.cells[sid].cell.object_type)) {
+      result.reason="strict start is an already visited target";return result;
+    }
+    const int smask=bit[sid]<0 ? 0 : 1<<bit[sid];
+    const int initial=smask*9+sid;
+    std::vector<int> parent(static_cast<std::size_t>(masks*9),-1);
+    parent[initial]=initial;
+    std::queue<int> open;open.push(initial);int goal=-1;
+    while(!open.empty()) {
+      const int state=open.front();open.pop();const int mask=state/9,id=state%9;
+      if(mask==full){goal=state;break;}
+      for(const auto& delta : std::array<std::array<int,2>,4>{{{{-1,0}},{{0,-1}},{{0,1}},{{1,0}}}}) {
+        const int r=id/3+delta[0],c=id%3+delta[1];
+        if(r<0||r>=3||c<0||c>=3||is_blocked(grid,r,c))continue;
+        const int next=r*3+c;
+        if(grid.cells[next].visited && has_type(config_.target_object_types,grid.cells[next].cell.object_type))continue;
+        if(bit[next]>=0 && (mask & (1<<bit[next])))continue;
+        const int nm=bit[next]<0 ? mask : mask | (1<<bit[next]);
+        const int ns=nm*9+next;if(parent[ns]>=0)continue;
+        parent[ns]=state;open.push(ns);
+      }
+    }
+    if(goal<0){result.reason="no route without target reentry";return result;}
+    for(int state=goal;;state=parent[state]) {
+      result.path.push_back(grid.cells[state%9].cell);if(state==initial)break;
+    }
+    std::reverse(result.path.begin(),result.path.end());
+    for(const auto& cell:result.path) if(bit[cell.row*3+cell.col]>=0)result.targets.push_back(cell);
+    result.valid=true;result.reason="whole path forbids target reentry";
+    result.total_cost=static_cast<float>(result.path.size()-1);return result;
+  }
+
   std::vector<GridCell> best_targets;
   std::vector<GridCell> best_path;
   std::size_t best_cost = std::numeric_limits<std::size_t>::max();

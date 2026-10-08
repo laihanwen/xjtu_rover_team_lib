@@ -1,0 +1,32 @@
+{
+  "flash": {
+    "hex_sha256": "acbf329a412454c478f2e302466e2f9a5a3eb5cbf244ba9fc799675bc5dc3c2d",
+    "backup_sha256": "0c58bb88f4683401a6ad8233f2900c892e287aa1d142dd43f5a3a8082a79e3f5",
+    "verified": true,
+    "arm_sent": false
+  },
+  "pi_deploy": {
+    "host": "192.168.137.150",
+    "backup": "/var/backups/auv-servo/auv-servo-1791378725",
+    "files": {
+      "trial_server.py": "1936a8ce4d8dafd559bedda0c6adb9d36dfb61f53f537af1666b03f3e411b41a",
+      "trial_protocol.py": "31b9070a3b990a08f8bfa338c01db8d272943f03f43bb0e4fa38450cb9e7e85a"
+    },
+    "arm_sent": false
+  },
+  "console": "http://127.0.0.1:8767/",
+  "telemetry_age_sec": 0.06692448299997977,
+  "armed": false,
+  "camera_control": {
+    "selector": 2,
+    "dial_byte": 127,
+    "dial_verified": true,
+    "requested_angle_deg": null,
+    "selector_axis": 6,
+    "dial_axis": 4,
+    "main_placeholder": true,
+    "position_feedback": false
+  },
+  "physical_servo_angles_verified": false,
+  "arm_sent": false
+}

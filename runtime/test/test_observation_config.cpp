@@ -26,5 +26,24 @@ int main(int argc,char** argv){
   y["camera"]["camera_matrix"]=YAML::Load("[250,0,320,0,250,240,0,0,1]");
   y["camera"]["distortion_coefficients"]=YAML::Load("[0,0,0,0,0]");write();
   c=load_config(temp.string());require(c.search.enabled); // No unrelated grid-route gains required in A1.
+  const auto a2base=std::filesystem::path(argv[1])/"runtime/config/pi-auv-task-one.yaml";
+  c=load_config(a2base.string());require(c.mission.surface_before_visit&&!c.traversal.enabled&&!c.motion_enabled);
+  y["mission"]["profile"]="a2_task_one";require(rejects()); // A1 motion cannot bypass surface commissioning.
+  auto l=y["localization"];
+  l["camera_matrix"]=YAML::Load("[250,0,320,0,250,240,0,0,1]");
+  l["distortion"]=YAML::Load("[0,0,0,0,0]");l["camera_to_body"]=YAML::Load("[0,1,0,1,0,0,0,0,-1]");
+  l["camera_offset_m"]=YAML::Load("[0,0,0]");l["depth_offset_m"]=YAML::Load("[0,0,0]");
+  l["imu_signs"]=YAML::Load("[1,1,1]");l["imu_offsets_deg"]=YAML::Load("[0,0,0]");
+  l["pool_depth_m"]=2;l["calibration_verified"]=true;
+  y["camera_front"]["enabled"]=true;
+  auto t=YAML::LoadFile(a2base.string())["surface_traversal"];y["surface_traversal"]=t;
+  t["enabled"]=true;t["ascent_clearance_verified"]=true;t["surface_localization_verified"]=true;
+  t["center_approach_verified"]=true;t["center_approach_radius_cells"]=.3;
+  t["ascent_cell"]=YAML::Load("[1,1]");t["cell_size_m"]=.5;t["boundary_clearance_m"]=.1;
+  t["camera_matrix"]=YAML::Load("[260,0,320,0,260,240,0,0,1]");t["distortion_coefficients"]=YAML::Load("[0,0,0,0,0]");
+  write();c=load_config(temp.string());require(c.traversal.enabled&&c.planner.forbid_target_reentry);
+  t["surface_localization_verified"]=false;require(rejects());t["surface_localization_verified"]=true;
+  t["boundary_clearance_m"]=0;require(rejects());t["boundary_clearance_m"]=.1;
+  t["camera_matrix"]=YAML::Load("[260,0,320,0,260,240,0,0,.nan]");require(rejects());
   std::filesystem::remove(temp);
 }
