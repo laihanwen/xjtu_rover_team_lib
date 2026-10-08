@@ -94,6 +94,7 @@ class RuntimeHarness:
         )
         # Keep every safety flag off: no motion output, no arm, no auto-start.
         config = config.replace("enabled: true", "enabled: false")
+        config = config.replace("vision:\n", "vision:\n  single_yellow_edge: true\n  white_grid_edges: true\n")
         (self.root / "runtime.yaml").write_text(config)
 
         self._proc = subprocess.Popen(

@@ -62,7 +62,7 @@ bool decode_imu_telemetry(const std::vector<uint8_t> & payload, ImuTelemetry & t
 
 bool decode_depth_telemetry(const std::vector<uint8_t> & payload, DepthTelemetry & telemetry)
 {
-  if (payload.size() != 9U || payload[8] > 1U) {
+  if ((payload.size() != 9U && payload.size() != 17U) || payload[8] > 1U) {
     return false;
   }
   telemetry.sequence = auv_protocol_read_u32_le(payload.data());

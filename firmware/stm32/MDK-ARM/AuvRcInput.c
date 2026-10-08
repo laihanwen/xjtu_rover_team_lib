@@ -90,8 +90,10 @@ uint8_t AuvRcInput_AcceptCrc(uint32_t sequence, const uint8_t *frame,
 {
     uint32_t i;
     if (frame == NULL || frame[0] != AUV_RC_FRAME_HEADER || deadman > 1U ||
-        frame[5] != 127U || frame[6] > 2U || frame[7] != 2U ||
-        frame[8] || frame[9] || frame[10] ||
+        frame[6] > 2U || frame[7] > 2U ||
+        frame[8] > 1U || frame[9] > 1U || frame[10] > 1U ||
+        (frame[10] && frame[7] != 1U) ||
+        (!frame[10] && frame[5] != 127U) ||
         (crc_seen && (int32_t)(sequence - crc_sequence) <= 0)) return 0U;
     ++publish_sequence;
     for (i=0U; i<AUV_RC_FRAME_SIZE; ++i) published[i]=frame[i];

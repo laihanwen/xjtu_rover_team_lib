@@ -49,7 +49,7 @@ try {
     Write-Host "Controller: $($taskState.controller_connected); Pi link: $($taskState.connected)"
     Write-Host "Level calibrated: $($taskState.telemetry.level_calibrated); ARM: $($taskState.telemetry.armed)"
     Write-Host 'After MCU restart: place level on shore, check the confirmation, then calibrate.'
-    Write-Host 'For water testing: centered sticks + left shoulder permission, then click ARM.'
+    Write-Host 'For water testing: centered sticks + independent left shoulder permission (SC is camera selection), then click ARM.'
     Write-Host 'STOP / Esc stops control. No ARM or calibration commands are sent by this script.'
 } finally {
     $env:PYTHONPATH = $taskOldPythonPath

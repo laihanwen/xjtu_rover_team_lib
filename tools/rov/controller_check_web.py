@@ -35,9 +35,19 @@ async function refresh(){let s=await(await fetch('/state',{cache:'no-store'})).j
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    global STEPS
+    parser.add_argument('--servo-only', action='store_true', help='Read-only SI / SC endpoint check')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--output', default='build/controller-guided.json')
     args = parser.parse_args()
+    if args.servo_only:
+        STEPS = [
+            ('SI：向下端点', '仅转动 SI：先来回转动覆盖完整行程，最后保持你定义的向下极限，再点完成。不要动其他开关。'),
+            ('SI：向上端点', '仅转动 SI 到你定义的向上极限，保持后点完成。'),
+            ('SC：下档', '仅拨 SC：先走过下、中、上三个档位，最后保持下档（不控制舵机），点完成。'),
+            ('SC：中档', '仅将 SC 拨到中档（摄像头），保持后点完成。'),
+            ('SC：上档', '仅将 SC 拨到上档（机械爪占位），保持后点完成。'),
+        ]
     os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = '1'
     import pygame
     pygame.display.init()
@@ -49,6 +59,7 @@ def main():
 
     def save():
         report['results'] = state['results']
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
 
     class Handler(BaseHTTPRequestHandler):
