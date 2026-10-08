@@ -27,6 +27,9 @@ struct GridMapperConfig
 {
   // Legacy fixtures retain the closed yellow frame. Competition uses one yellow edge.
   bool single_yellow_edge{false};
+  bool white_grid_edges{false}; // Explicit white-boundary profile; retain dark/legacy fixtures.
+  double white_s_max{60.0}, white_v_min{150.0};
+  int yellow_oriented_frames{3};
   int dark_value_max{95};
   double yellow_edge_minimum_support{0.45};
   double yellow_edge_margin{0.20};
@@ -88,6 +91,7 @@ private:
   std::array<cv::Point2f, 4> previous_corners_{};
   bool previous_corners_valid_{false};
   int stable_count_{0};
+  int orientation_count_{0};
 };
 
 }  // namespace auv_mapping

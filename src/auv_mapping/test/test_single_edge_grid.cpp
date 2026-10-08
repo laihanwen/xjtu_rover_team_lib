@@ -19,7 +19,7 @@ static cv::Mat scene(bool yellow=true,bool lines=true){
   return image;
 }
 void test_single_edge_grid(){
-  auv_mapping::GridMapperConfig cfg;cfg.single_yellow_edge=true;cfg.stable_frames=1;
+  auv_mapping::GridMapperConfig cfg;cfg.single_yellow_edge=true;cfg.stable_frames=1;cfg.yellow_oriented_frames=1;
   for(int rotation=0;rotation<4;++rotation){
     cv::Mat image=scene();for(int i=0;i<rotation;++i)cv::rotate(image,image,cv::ROTATE_90_CLOCKWISE);
     auv_mapping::GridMapper mapper(cfg);auto grid=mapper.process(image);

@@ -165,6 +165,10 @@ static Config load_config(const std::string& path) {
   if(y["vision"]["apriltag_ids"])c.apriltag_ids=y["vision"]["apriltag_ids"].as<std::vector<int>>();
   if(c.tag_stable_frames<=0)throw std::runtime_error("invalid tag confirmation count");
   c.grid.single_yellow_edge=y["vision"]["single_yellow_edge"].as<bool>(false);
+  c.grid.white_grid_edges=y["vision"]["white_grid_edges"].as<bool>(false);
+  c.grid.white_s_max=y["vision"]["white_s_max"].as<double>(60);
+  c.grid.white_v_min=y["vision"]["white_v_min"].as<double>(150);
+  c.grid.yellow_oriented_frames=y["vision"]["yellow_oriented_frames"].as<int>(3);
   c.grid.dark_value_max=y["vision"]["grid_dark_value_max"].as<int>(95);
   c.grid.yellow_edge_minimum_support=y["vision"]["yellow_edge_minimum_support"].as<double>(.45);
   c.grid.yellow_edge_margin=y["vision"]["yellow_edge_margin"].as<double>(.2);

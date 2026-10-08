@@ -13,6 +13,7 @@ int main(int argc,char** argv) {
     ("auv-surface-replay-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
   std::filesystem::create_directories(dir);
   auto config=YAML::LoadFile((std::filesystem::path(argv[1])/"runtime/config/pi-auv-task-one.yaml").string());
+  config["vision"]["white_grid_edges"]=false; // This fixture deliberately uses black grid edges.
   auto l=config["localization"];
   l["camera_to_body"]=YAML::Load("[0,1,0,1,0,0,0,0,-1]");
   l["camera_offset_m"]=YAML::Load("[0,0,0]");l["depth_offset_m"]=YAML::Load("[0,0,0]");l["pool_depth_m"]=1.875;

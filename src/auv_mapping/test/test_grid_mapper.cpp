@@ -21,17 +21,21 @@
 namespace
 {
 
-cv::Mat make_grid(const bool draw_internal_lines = true)
-{
-  cv::Mat canonical(500, 500, CV_8UC3, cv::Scalar(220, 220, 220));
-  cv::rectangle(canonical, cv::Rect(8, 8, 484, 484), cv::Scalar(0, 255, 255), 18);
-  if (draw_internal_lines) {
-    cv::line(canonical, cv::Point(167, 10), cv::Point(167, 490), cv::Scalar(20, 20, 20), 8);
-    cv::line(canonical, cv::Point(333, 10), cv::Point(333, 490), cv::Scalar(20, 20, 20), 8);
-    cv::line(canonical, cv::Point(10, 167), cv::Point(490, 167), cv::Scalar(20, 20, 20), 8);
-    cv::line(canonical, cv::Point(10, 333), cv::Point(490, 333), cv::Scalar(20, 20, 20), 8);
-  }
+// Competition scene constants: a dark blue pool floor, white edges and
+// internal divisions, and a single yellow bottom-reference edge.
+auv_mapping::GridMapperConfig competition_config() {
+  auv_mapping::GridMapperConfig config; config.single_yellow_edge=true; config.white_grid_edges=true;
+  return config;
+}
+const cv::Scalar kPoolFloor(120, 60, 20);
+const cv::Scalar kWhite(255, 255, 255);
+const cv::Scalar kYellow(0, 255, 255);
 
+// Warp a canonical 500x500 grid onto a larger dark-blue canvas so the mapper
+// must recover the quadrilateral under perspective rather than read an
+// axis-aligned rectangle.
+cv::Mat warp_to_perspective(const cv::Mat & canonical)
+{
   const std::array<cv::Point2f, 4> source{
     cv::Point2f(0.0F, 0.0F), cv::Point2f(499.0F, 0.0F),
     cv::Point2f(499.0F, 499.0F), cv::Point2f(0.0F, 499.0F)};
@@ -39,11 +43,52 @@ cv::Mat make_grid(const bool draw_internal_lines = true)
     cv::Point2f(115.0F, 80.0F), cv::Point2f(550.0F, 115.0F),
     cv::Point2f(590.0F, 430.0F), cv::Point2f(70.0F, 455.0F)};
   const cv::Mat transform = cv::getPerspectiveTransform(source.data(), destination.data());
-  cv::Mat perspective(520, 660, CV_8UC3, cv::Scalar(5, 10, 15));
+  cv::Mat perspective(520, 660, CV_8UC3, kPoolFloor);
   cv::warpPerspective(
     canonical, perspective, transform, perspective.size(), cv::INTER_LINEAR,
     cv::BORDER_TRANSPARENT);
   return perspective;
+}
+
+// Draw the canonical 500x500 grid: three white edges plus one yellow edge
+// (yellow_side: 0=top, 1=right, 2=bottom, 3=left), with white 2x2 internal
+// divisions, over a dark-blue pool floor.
+cv::Mat make_canonical_grid(const bool draw_internal_lines, const int yellow_side)
+{
+  cv::Mat canonical(500, 500, CV_8UC3, kPoolFloor);
+  cv::rectangle(canonical, cv::Rect(8, 8, 484, 484), kWhite, 18);
+  if (yellow_side == 0) {
+    cv::line(canonical, cv::Point(8, 8), cv::Point(492, 8), kYellow, 18);
+  } else if (yellow_side == 1) {
+    cv::line(canonical, cv::Point(492, 8), cv::Point(492, 492), kYellow, 18);
+  } else if (yellow_side == 3) {
+    cv::line(canonical, cv::Point(8, 8), cv::Point(8, 492), kYellow, 18);
+  } else {
+    cv::line(canonical, cv::Point(8, 492), cv::Point(492, 492), kYellow, 18);
+  }
+  if (draw_internal_lines) {
+    cv::line(canonical, cv::Point(167, 10), cv::Point(167, 490), kWhite, 8);
+    cv::line(canonical, cv::Point(333, 10), cv::Point(333, 490), kWhite, 8);
+    cv::line(canonical, cv::Point(10, 167), cv::Point(490, 167), kWhite, 8);
+    cv::line(canonical, cv::Point(10, 333), cv::Point(490, 333), kWhite, 8);
+  }
+  return canonical;
+}
+
+cv::Mat make_grid(const bool draw_internal_lines = true, const int yellow_side = 2)
+{
+  return warp_to_perspective(make_canonical_grid(draw_internal_lines, yellow_side));
+}
+
+// A legacy-style grid whose four border edges are all yellow: no single edge
+// stands out, so yellow-edge orientation must stay unconfirmed indefinitely.
+cv::Mat make_all_yellow_grid()
+{
+  cv::Mat canonical = make_canonical_grid(true, 2);
+  cv::line(canonical, cv::Point(8, 8), cv::Point(492, 8), kYellow, 18);
+  cv::line(canonical, cv::Point(492, 8), cv::Point(492, 492), kYellow, 18);
+  cv::line(canonical, cv::Point(8, 8), cv::Point(8, 492), kYellow, 18);
+  return warp_to_perspective(canonical);
 }
 
 TEST(GridMapper, OrdersCornersTopLeftClockwise)
@@ -58,9 +103,9 @@ TEST(GridMapper, OrdersCornersTopLeftClockwise)
   EXPECT_EQ(ordered[3], cv::Point2f(15.0F, 90.0F));
 }
 
-TEST(GridMapper, RequiresStableValidGrid)
+TEST(GridMapper, RequiresConsecutiveStableFrames)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat image = make_grid();
   const auto first = mapper.process(image);
   const auto second = mapper.process(image);
@@ -75,24 +120,89 @@ TEST(GridMapper, RequiresStableValidGrid)
   EXPECT_GT(third.confidence, 0.45F);
 }
 
-TEST(GridMapper, RejectsYellowQuadrilateralWithoutInternalGrid)
+TEST(GridMapper, ConfirmsYellowOrientationOverConsecutiveFrames)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
+  const cv::Mat image = make_grid(true, 0);
+  const auto first = mapper.process(image);
+  const auto second = mapper.process(image);
+  const auto third = mapper.process(image);
+  EXPECT_TRUE(first.geometry_valid) << first.reason;
+  EXPECT_FALSE(first.orientation_valid);
+  EXPECT_TRUE(second.geometry_valid);
+  EXPECT_FALSE(second.orientation_valid);
+  EXPECT_TRUE(third.geometry_valid);
+  EXPECT_TRUE(third.orientation_valid);
+}
+
+TEST(GridMapper, RejectsGridWithoutInternalGrid)
+{
+  auv_mapping::GridMapper mapper(competition_config());
   const auto result = mapper.process(make_grid(false));
   EXPECT_FALSE(result.geometry_valid);
   EXPECT_FALSE(result.stable);
   EXPECT_EQ(result.reason, "internal grid lines missing");
 }
 
-TEST(GridMapper, RejectsBlankFrameAndResetsStability)
+TEST(GridMapper, OrientsYellowEdgeToBottom)
 {
-  auv_mapping::GridMapper mapper;
+  // Whichever of the four sides carries the yellow edge, after rectification
+  // it must land on the bottom so the generated map uses the yellow edge as
+  // its bottom edge.
+  for (int yellow_side = 0; yellow_side < 4; ++yellow_side) {
+    auv_mapping::GridMapper mapper(competition_config());
+    const auto result = mapper.process(make_grid(true, yellow_side));
+    ASSERT_TRUE(result.geometry_valid) << result.reason << " side=" << yellow_side;
+
+    cv::Mat hsv;
+    cv::cvtColor(result.rectified, hsv, cv::COLOR_BGR2HSV);
+    cv::Mat bottom_yellow;
+    cv::Mat top_yellow;
+    cv::inRange(
+      hsv(cv::Rect(0, 555, 600, 45)), cv::Scalar(15, 60, 60), cv::Scalar(40, 255, 255),
+      bottom_yellow);
+    cv::inRange(
+      hsv(cv::Rect(0, 0, 600, 45)), cv::Scalar(15, 60, 60), cv::Scalar(40, 255, 255),
+      top_yellow);
+    const double bottom_ratio =
+      static_cast<double>(cv::countNonZero(bottom_yellow)) / bottom_yellow.total();
+    const double top_ratio =
+      static_cast<double>(cv::countNonZero(top_yellow)) / top_yellow.total();
+    EXPECT_GT(bottom_ratio, 0.2) << "yellow edge should map to the bottom band (side="
+                                 << yellow_side << ")";
+    EXPECT_LT(top_ratio, 0.1) << "top band should be a white edge, not yellow (side="
+                              << yellow_side << ")";
+  }
+}
+
+TEST(GridMapper, KeepsOrientationUnconfirmedWhenNoSingleYellowEdge)
+{
+  auv_mapping::GridMapper mapper(competition_config());
+  const cv::Mat image = make_all_yellow_grid();
+  for (int frame = 0; frame < 5; ++frame) {
+    const auto result = mapper.process(image);
+    EXPECT_FALSE(result.geometry_valid) << "ambiguous yellow must invalidate geometry";
+    EXPECT_FALSE(result.orientation_valid)
+      << "all-yellow border must not confirm orientation (frame=" << frame << ")";
+  }
+}
+
+TEST(GridMapper, RejectsBlankFrameAndResetsState)
+{
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat grid = make_grid();
-  EXPECT_FALSE(mapper.process(grid).stable);
-  EXPECT_FALSE(mapper.process(grid).stable);
+  for (int frame = 0; frame < 3; ++frame) {
+    mapper.process(grid);
+  }
   const cv::Mat blank(grid.size(), grid.type(), cv::Scalar(0, 0, 0));
-  EXPECT_FALSE(mapper.process(blank).geometry_valid);
-  EXPECT_FALSE(mapper.process(grid).stable);
+  const auto blank_result = mapper.process(blank);
+  EXPECT_FALSE(blank_result.geometry_valid);
+  EXPECT_FALSE(blank_result.stable);
+  EXPECT_FALSE(blank_result.orientation_valid);
+  const auto after = mapper.process(grid);
+  EXPECT_TRUE(after.geometry_valid) << after.reason;
+  EXPECT_FALSE(after.stable) << "stability must restart after a rejected frame";
+  EXPECT_FALSE(after.orientation_valid) << "orientation count must restart after a rejected frame";
 }
 
 TEST(GridMapper, HandlesBrightnessBlurAndModerateNoise)
@@ -104,14 +214,14 @@ TEST(GridMapper, HandlesBrightnessBlurAndModerateNoise)
   cv::randn(noise, cv::Scalar::all(0), cv::Scalar::all(5));
   cv::add(degraded, noise, degraded, cv::noArray(), degraded.type());
 
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const auto result = mapper.process(degraded);
   EXPECT_TRUE(result.geometry_valid) << result.reason;
 }
 
 TEST(GridMapper, RejectsOccludedBorderAndResetsCornerStability)
 {
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   const cv::Mat grid = make_grid();
   EXPECT_FALSE(mapper.process(grid).stable);
   EXPECT_FALSE(mapper.process(grid).stable);
@@ -128,6 +238,21 @@ TEST(GridMapper, RejectsOccludedBorderAndResetsCornerStability)
   EXPECT_FALSE(result.stable);
 }
 
+TEST(GridMapper, ReportsCameraPositionAndConfidence)
+{
+  auv_mapping::GridMapper mapper(competition_config());
+  auv_mapping::GridResult result;
+  for (int frame=0; frame<3; ++frame) result = mapper.process(make_grid());
+  ASSERT_TRUE(result.geometry_valid) << result.reason;
+  EXPECT_TRUE(result.position_valid);
+  EXPECT_GE(result.camera_row, 0.0F);
+  EXPECT_LE(result.camera_row, 3.0F);
+  EXPECT_GE(result.camera_col, 0.0F);
+  EXPECT_LE(result.camera_col, 3.0F);
+  EXPECT_GE(result.confidence, 0.0F);
+  EXPECT_LE(result.confidence, 1.0F);
+}
+
 TEST(GridMapper, ValidatesConfigurationAndInput)
 {
   auv_mapping::GridMapperConfig config;
@@ -138,7 +263,7 @@ TEST(GridMapper, ValidatesConfigurationAndInput)
       (void)invalid_mapper;
     },
     std::invalid_argument);
-  auv_mapping::GridMapper mapper;
+  auv_mapping::GridMapper mapper(competition_config());
   EXPECT_THROW(mapper.process(cv::Mat()), std::invalid_argument);
 }
 

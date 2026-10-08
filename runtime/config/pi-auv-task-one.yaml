@@ -31,6 +31,10 @@ operation:
 vision:
   expected_cones: 4
   single_yellow_edge: true
+  white_grid_edges: true
+  white_s_max: 60
+  white_v_min: 150
+  yellow_oriented_frames: 3
   grid_dark_value_max: 95
   yellow_edge_minimum_support: 0.45
   yellow_edge_margin: 0.20
