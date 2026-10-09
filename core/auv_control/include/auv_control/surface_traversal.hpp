@@ -237,6 +237,13 @@ class SurfaceRouteExecutor {
         }
       }else arrival_=-1;
     }
+    // Remain motionless inside the arrival band while collecting independent
+    // pose evidence. Continuing tiny corrections here can drive the vehicle
+    // out of the band before its observation dwell completes.
+    if(std::abs(dr)<=c_.arrival_tolerance_cells&&std::abs(dc)<=c_.arrival_tolerance_cells) {
+      out.detail="holding waypoint arrival band for fresh observation confirmation";
+      return out;
+    }
     const double ex=dc*c_.surface.cell_size_m*c_.gain,ey=dr*c_.surface.cell_size_m*c_.gain;
     out.surge=pose.body_from_grid[0]*ex+pose.body_from_grid[1]*ey;
     out.sway=pose.body_from_grid[3]*ex+pose.body_from_grid[4]*ey;

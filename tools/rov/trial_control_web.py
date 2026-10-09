@@ -12,10 +12,13 @@ from Re_control import RemoteControl, load_mapping
 from trial_protocol import manual_frame, centered
 from video_recorder import DatasetRecorder
 from telemetry_log import TelemetryLog
+from data_collection import DataCollection
 
 WEB_DIR = Path(__file__).with_name('web')
 DASHBOARD_DIR = Path(__file__).resolve().parents[2] / 'runtime/web/dashboard'
 HTML = (WEB_DIR / 'console.html').read_text(encoding='utf-8')
+HTML = HTML.replace('<div class="navigation-grid">', (WEB_DIR/'collection.html').read_text(encoding='utf-8')+'<div class="navigation-grid">')
+HTML = HTML.replace('</head>', '<script defer src="/collection.js"></script></head>')
 
 
 def main():
@@ -28,6 +31,7 @@ def main():
     parser.add_argument('--record-dir', default=str(Path(__file__).resolve().parents[2] / 'data' / 'rov-recordings'))
     parser.add_argument('--log-dir', default=str(Path(__file__).resolve().parents[2] / 'logs' / 'rov'))
     parser.add_argument('--diagnostic-log', action='store_true', help='Enable separate 10 Hz rotating diagnostic snapshots')
+    parser.add_argument('--observe-only', action='store_true', help='Disable all control and localization reset commands')
     parser.add_argument('--dial-min', type=float, help='Measured SI lower endpoint')
     parser.add_argument('--dial-max', type=float, help='Measured SI upper endpoint')
     args = parser.parse_args()
@@ -41,7 +45,7 @@ def main():
     lock = threading.Lock()
     state = {'connected':False,'telemetry':{},'error':'','detail':'等待手柄',
              'axes':[],'deadman':False,'centered':False,'can_arm':False,
-             'speed_control_available':True,'selected_speed':'low'}
+             'speed_control_available':not args.observe_only,'selected_speed':'low'}
     localization_state={'valid':False,'reason':'service_unavailable'}
     localization_stop=threading.Event()
     camera_base=f'http://{args.host}:{args.camera_port}'
@@ -68,6 +72,20 @@ def main():
             return result
     telemetry_log = TelemetryLog(args.log_dir,log_snapshot)
     diagnostic_log = TelemetryLog(Path(args.log_dir)/'diagnostic',log_snapshot,interval=.1) if args.diagnostic_log else None
+    def collection_snapshot():
+        value=log_snapshot()
+        value['source']='rov_bridge'
+        # No joystick/ROV bridge is needed for manually moved AUV data capture.
+        # This reads the existing runtime cache, never opens a camera or UART.
+        if not value.get('connected'):
+            try:
+                with urlopen(camera_base+'/api/status',timeout=.5) as response:
+                    runtime=json.loads(response.read(1024*1024))
+                return {'source':'runtime','status':runtime,'received_monotonic':time.monotonic()}
+            except (OSError,ValueError):
+                value['source']='unavailable'
+        return value
+    collection=DataCollection(Path(args.record_dir)/'collection',collection_snapshot,recorder.status)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args):
             pass
@@ -77,7 +95,9 @@ def main():
             self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         def do_GET(self):
             if self.path == '/dashboard':
-                self.send_response(302);self.send_header('Location','/dashboard/');self.end_headers();return
+                self.send_response(302);self.send_header('Location','/');self.end_headers();return
+            if self.path == '/dashboard/':
+                self.send_response(302);self.send_header('Location','/');self.end_headers();return
             if self.path == '/dashboard/config':
                 return self.reply({'demo':False,'source':'rov','camera_base':camera_base})
             dashboard_assets={'/dashboard/':('index.html','text/html'),
@@ -90,7 +110,7 @@ def main():
                 self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path=='/':return self.reply(HTML,html=True)
             if self.path=='/console-config':return self.reply({'camera_base':f'http://{args.host}:{args.camera_port}'})
-            assets={'/console.css':('console.css','text/css'),'/console.js':('console.js','text/javascript')}
+            assets={'/console.css':('console.css','text/css'),'/console.js':('console.js','text/javascript'),'/collection.js':('collection.js','text/javascript')}
             if self.path in assets:
                 name,mime=assets[self.path];body=(WEB_DIR/name).read_bytes()
                 self.send_response(200);self.send_header('Content-Type',mime+'; charset=utf-8')
@@ -99,19 +119,37 @@ def main():
                 with lock:value=dict(localization_state)
                 return self.reply(value)
             if self.path=='/recording':return self.reply(recorder.status())
+            if self.path=='/collection':return self.reply(collection.status())
+            if self.path=='/collection/export':
+                try:body=collection.export()
+                except ValueError as error:return self.reply({'error':str(error)},409)
+                self.send_response(200);self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
+                self.send_header('Content-Disposition','attachment; filename="collection.jsonl"')
+                self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path=='/logs':return self.reply(dict(telemetry_log.status(),diagnostic=diagnostic_log.status() if diagnostic_log else None))
+            if self.path in ('/log-viewer','/logs.js'):
+                name='logs.html' if self.path=='/log-viewer' else 'logs.js'
+                body=(DASHBOARD_DIR/name).read_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type',('text/html' if name.endswith('.html') else 'application/javascript')+'; charset=utf-8')
+                self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path!='/state':return self.reply({'error':'not found'},404)
             with lock:
                 operator['last_poll']=time.monotonic()
                 snapshot=dict(state)
             self.reply(snapshot)
         def do_POST(self):
-            if self.path not in ('/action','/recording','/localization') or self.headers.get('Origin')!=f'http://127.0.0.1:{args.web_port}':
+            if self.path not in ('/action','/recording','/localization','/collection') or self.headers.get('Origin')!=f'http://127.0.0.1:{args.web_port}':
                 return self.reply({'error':'invalid origin'},403)
             try:
                 size=int(self.headers.get('Content-Length',0))
-                if not 0<size<=64:raise ValueError('size')
+                if not 0<size<=(4096 if self.path=='/collection' else 64):raise ValueError('size')
                 request=json.loads(self.rfile.read(size)); action=request['action']
+                if args.observe_only and self.path in ('/action','/localization'):
+                    return self.reply({'error':'当前为只读采集模式，不连接 ROV 控制桥或发送控制命令'},403)
+                if self.path=='/collection':
+                    if action not in ('start','mark','stop'):raise ValueError('action')
+                    return self.reply(collection.start(request) if action=='start' else collection.mark(request) if action=='mark' else collection.stop())
                 if self.path=='/localization':
                     if action!='reset':raise ValueError('action')
                     with lock:
@@ -152,6 +190,10 @@ def main():
     conn=None;buffer=bytearray();lease=None;last_reply=0.0;sequence=0
     try:
         while True:
+            if args.observe_only:
+                with lock:state.update(detail='只读采集模式 · 不连接控制桥',can_arm=False,connected=False,controller_connected=False)
+                time.sleep(.2)
+                continue
             now=time.monotonic()
             controller_ok=False
             try:
@@ -222,6 +264,7 @@ def main():
     finally:
         if conn:conn.close()
         localization_stop.set()
+        collection.stop()
         recorder.close()
         telemetry_log.close()
         if diagnostic_log: diagnostic_log.close()

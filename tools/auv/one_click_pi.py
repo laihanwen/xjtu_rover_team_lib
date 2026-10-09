@@ -37,7 +37,10 @@ with serial.Serial(DEVICE,115200,timeout=.05,exclusive=True) as port:
     else:neutral.clear()
   if len(neutral)>=3:break
  else:raise RuntimeError('MCU DISARM/neutral confirmation failed; services remain stopped')
-print('MCU DISARM and eight neutral outputs confirmed; services stopped')
+if globals().get('START_ROV',False):
+ if s.get('dual_mode'):raise RuntimeError('Independent ROV firmware required; services remain stopped')
+ for u in ['auv-runtime','auv-rov']:subprocess.run(['systemctl','start',u],check=True)
+print('MCU DISARM and eight neutral outputs confirmed; '+('independent ROV services started' if globals().get('START_ROV',False) else 'services stopped'))
 '''
 
 def main():
@@ -65,10 +68,11 @@ def main():
             for source,target in [('tools/auv/switch_mode.py','auv/switch_mode.py'),('tools/rov/trial_protocol.py','rov/trial_protocol.py')]:
                 ftp.put(str(ROOT/source),remote_dir+'/'+target)
         if a.stage=='prepare':
-            script='DEVICE='+repr(a.device)+'\n'+PREPARE
+            script='import sys\nsys.path.insert(0,'+repr(remote_dir+'/rov')+')\nDEVICE='+repr(a.device)+'\n'+PREPARE
             command='PYTHONPATH='+remote_dir+'/rov python3 -c '+shlex.quote(script)
         else:
-            command='python3 '+remote_dir+'/auv/switch_mode.py rov --device '+shlex.quote(a.device)
+            script='import sys\nsys.path.insert(0,'+repr(remote_dir+'/rov')+')\nDEVICE='+repr(a.device)+'\nSTART_ROV=True\n'+PREPARE
+            command='python3 -c '+shlex.quote(script)
         remote(client,command,logs/(a.stage+'.log'),password,elevated=True)
     finally:client.close()
 

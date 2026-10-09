@@ -1,4 +1,3 @@
-#include "AuvMode.h"
 #include "AuvRovDepth.h"
 #include "AuvRovConfig.h"
 #include <string.h>
@@ -121,7 +120,7 @@ float AuvRovDepth_Step(AuvRovDepthControl *control, const AuvDepthSample *sample
     if (output > limit) output = limit;
     if (output < -limit) output = -limit;
     control->output = (lock_current ? AUV_ROV_DEPTH_FZ_SIGN :
-        (AUV_MODE_IS_AUV ? AUV_AUTONOMY_DEPTH_FZ_SIGN : AUV_DEPTH_FZ_SIGN)) * output;
+        (AUV_AUTONOMOUS_PROFILE ? AUV_AUTONOMY_DEPTH_FZ_SIGN : AUV_DEPTH_FZ_SIGN)) * output;
     control->sequence = sample->sample_sequence;
     control->sample_ms = sample->last_update_ms;
     return control->output;

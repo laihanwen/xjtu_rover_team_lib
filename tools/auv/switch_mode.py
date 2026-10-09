@@ -31,7 +31,11 @@ def select_mcu(port, mode, timeout=5, clock=time.monotonic):
         now = clock()
         if now >= next_send:
             port.write(encode(1, struct.pack('<II', sequence, 0)))
-            port.write(encode(2, struct.pack('<IB', sequence, 0)))
+            # Once selection is sent, do not overwrite the MCU's single ACK
+            # slot with repeated DISARM acknowledgements. SELECT_MODE itself
+            # requires DISARM and clears all targets; heartbeat stays active.
+            if not command_sent:
+                port.write(encode(2, struct.pack('<IB', sequence, 0)))
             next_send = now+.1
         for kind, payload in parser.push(port.read(4096)):
             if kind == 0x7f and len(payload) == 6 and payload[0] == 9:
@@ -64,7 +68,7 @@ def select_mcu(port, mode, timeout=5, clock=time.monotonic):
                     selected_at = clock()
             elif mode_ack and bool(flags & 32) == bool(mode) and clock()-selected_at >= .2:
                 return 'auv' if mode else 'rov'
-    raise RuntimeError('Mode switch timeout; services remain stopped and ARM was not requested')
+    raise RuntimeError(f'Mode switch timeout (neutral={len(neutral)}, selected={command_sent}, ack={mode_ack}); services remain stopped and ARM was not requested')
 
 
 def systemctl(*args):
@@ -72,6 +76,7 @@ def systemctl(*args):
 
 
 def main():
+    raise RuntimeError('Session mode switching retired: flash independent ROV or AUV firmware and use its matching Pi service')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['rov', 'auv'])
     parser.add_argument('--device', default='/dev/serial0')

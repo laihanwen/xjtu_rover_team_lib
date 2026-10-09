@@ -30,6 +30,9 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(sum(k==9 for k,p in mcu.sent),1)
         self.assertTrue(all(p[4]==0 for k,p in mcu.sent if k==2))
         self.assertTrue(all(k in (1,2,9) for k,p in mcu.sent))
+        selected=next(i for i,(k,p) in enumerate(mcu.sent) if k==9)
+        self.assertFalse(any(k==2 for k,p in mcu.sent[selected+1:]),
+                         'Repeated DISARM must not overwrite the pending mode ACK')
     def test_old_firmware_not_selected(self):
         mcu=FakeMcu(capable=False)
         with self.assertRaises(RuntimeError):select_mcu(mcu,1,clock=lambda:mcu.now)

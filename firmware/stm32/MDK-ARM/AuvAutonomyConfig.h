@@ -6,9 +6,6 @@
 #ifndef AUV_AUTONOMOUS_PROFILE
 #define AUV_AUTONOMOUS_PROFILE 0
 #endif
-#ifndef AUV_DUAL_PROFILE
-#define AUV_DUAL_PROFILE 0 /* Independent combined build; boots in ROV/DISARM. */
-#endif
 #ifndef AUV_AUTONOMY_COMMISSIONED
 #define AUV_AUTONOMY_COMMISSIONED 0
 #endif

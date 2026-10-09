@@ -1,11 +1,11 @@
-param(
+﻿param(
     [string]$PiHost='192.168.137.150',
     [string]$PiUser='pi',
     [string]$Device='/dev/serial0',
     [string]$Probe='ATK 20190528',
     [string]$Keil='C:/Keil_v5/UV4/UV4.exe',
     [string]$Pack='C:/Keil_v5/ARM/PACK/Keil/STM32F4xx_DFP/1.0.8',
-    [string]$Python='python',
+    [string]$Python='',
     [int]$WebPort=8767,
     [switch]$SafeToFlash,
     [switch]$CheckOnly
@@ -17,6 +17,14 @@ $taskOldPassword=$env:AUV_DEPLOY_PASSWORD
 $taskLogDir=Join-Path $taskRoot ('build/one-click/'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
 Push-Location $taskRoot
 try {
+    if(!$Python){
+        $taskCandidates=@(
+            (Join-Path $env:LOCALAPPDATA 'xjtu-auv/console-venv/Scripts/python.exe'),
+            (Join-Path $env:USERPROFILE 'AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/xjtu-auv/console-venv/Scripts/python.exe')
+        )
+        $Python=$taskCandidates | Where-Object {Test-Path -LiteralPath $_} | Select-Object -First 1
+        if(!$Python){$Python='python'}
+    }
     $taskPython=(Get-Command $Python -ErrorAction Stop).Source
     if(!(Test-Path -LiteralPath $Keil)){throw '未找到 Keil 编译器'}
     if(!(Test-Path -LiteralPath (Join-Path $Pack 'Flash/STM32F4xx_1024.FLM'))){throw '未找到 STM32F405 烧录算法'}
@@ -33,13 +41,13 @@ try {
     }
     New-Item -ItemType Directory -Force $taskLogDir | Out-Null
     # Rebuild from this working tree, not a downloaded or cached HEX.
-    & (Join-Path $PSScriptRoot 'Build-AuvFirmware.ps1') -Profile AUV_ROV_DUAL -Keil $Keil -Rebuild
-    $taskHex=Join-Path $taskRoot 'firmware/stm32/MDK-ARM/AUV_ROV_DUAL/AUV_ROV_DUAL.hex'
+    & (Join-Path $taskRoot 'tools/rov/Maintain-Rov.ps1') -Action build -Keil $Keil
+    $taskHex=Join-Path $taskRoot 'firmware/stm32/MDK-ARM/Copy_cup/Copy_cup.hex'
     $taskHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskHex).Hash
     Set-Content -LiteralPath (Join-Path $taskLogDir 'firmware-sha256.txt') -Value $taskHash
     # Close only this checkout's console. Never leave an old operator running across reset.
     $taskEntry=Join-Path $taskRoot 'tools/rov/trial_control_web.py'
-    Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(w)?\.exe$' -and $_.CommandLine -like "*$taskEntry*" } | ForEach-Object {Stop-Process -Id $_.ProcessId}
+    Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(w)?\.exe$' -and $_.CommandLine -like "*$taskEntry*" } | ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue}
     $taskPortCheck=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$WebPort)
     try {$taskPortCheck.Start()} finally {$taskPortCheck.Stop()}
     & $taskPython tools/auv/one_click_pi.py prepare --host $PiHost --user $PiUser --device $Device --log-dir $taskLogDir
@@ -47,9 +55,9 @@ try {
     & $taskPython tools/rov/maintenance.py flash --hex $taskHex --probe $Probe --pack $Pack
     if($LASTEXITCODE -ne 0){throw '烧录/读回校验失败；保留 Pi 控制服务停止状态'}
     & $taskPython tools/auv/one_click_pi.py finish --host $PiHost --user $PiUser --device $Device --log-dir $taskLogDir
-    if($LASTEXITCODE -ne 0){throw 'MCU 双模式确认或 Pi 服务启动失败；未启动 PC 驾驶台'}
+    if($LASTEXITCODE -ne 0){throw '独立 ROV 固件确认或 Pi 服务启动失败；未启动 PC 驾驶台'}
     & (Join-Path $taskRoot 'tools/rov/Start-RovTest.ps1') -PiHost $PiHost -WebPort $WebPort -NoBrowser -Python $taskPython
-    Start-Process "http://127.0.0.1:$WebPort/dashboard/"
+    Start-Process "http://127.0.0.1:$WebPort/"
     Write-Host "已烧录并读回校验：$taskHash；驾驶台保持等待显式 ARM。记录：$taskLogDir"
 } finally {
     $env:PYTHONPATH=$taskOldPath;$env:AUV_DEPLOY_PASSWORD=$taskOldPassword

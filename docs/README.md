@@ -1,5 +1,7 @@
 # AUV 文档中心
 
+更新：2026-10-10。[当前状态](project-status.md)是路线与验证入口；[完整文档索引](catalog.md)覆盖全仓库 Markdown。独立驾驶台、日志与采集是当前流程；`archive/dual-mode/` 仅为弃用资料，`reports/日期/` 保存最近部署/复盘证据。
+
 根目录 [README.md](../README.md) 负责项目入口；本目录负责整理设计依据、接口协议、部署手册、验收门槛和评审结论。硬件参数未知时，以 [AGENTS.md](../AGENTS.md) 的安全约束为准，不从示例值推断真实接线。
 
 ROS 相关功能目前因性能不足和设计问题暂时弃用。当前自动控制开发、调试与部署入口为 [原生核心](../core/README.md) 和 [Runtime](../runtime/README.md)，见 [路线调整](lightweight-transition.md)。下方 ROS package 文档仅为历史资料。
