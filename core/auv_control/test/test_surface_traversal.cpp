@@ -65,6 +65,37 @@ static void geometry() {
     g.orientation_valid=false;check(!auv_mapping::metric_grid_pose(g,calibration,{640,480},0,10,1).valid,"unoriented pose");
   }
 }
+static void front_geometry() {
+  auto c=config();c.metric_camera_front=true;
+  c.front_underwater=c.underwater;c.front_surface=c.surface;
+  c.underwater.verified=c.surface.verified=false;
+  c.validate(); // Unused down PnP models are not prerequisites for front PnP.
+  auto missing=c;missing.front_underwater.verified=false;
+  bool rejected=false;try{missing.validate();}catch(const std::invalid_argument&){rejected=true;}
+  check(rejected,"unverified front water model accepted");
+  auto mismatch=c;mismatch.front_surface.cell_size_m=.6;
+  rejected=false;try{mismatch.validate();}catch(const std::invalid_argument&){rejected=true;}
+  check(rejected,"front water/surface geometry mismatch accepted");
+  cv::Mat r;cv::Rodrigues(cv::Vec3d(.7853981633974483,0,0),r);
+  cv::Matx33d rotation;for(int i=0;i<9;++i)rotation.val[i]=r.at<double>(i/3,i%3);
+  const cv::Matx33d body(0,1,0,1,0,0,0,0,-1);
+  auto& model=c.front_surface;const auto extrinsic=body*rotation.t();
+  model.camera_to_body.assign(extrinsic.val,extrinsic.val+9);
+  const auto translation=-(rotation*cv::Vec3d(.75,.75,-2));
+  std::vector<cv::Point3d> world{{0,0,0},{1.5,0,0},{1.5,1.5,0},{0,1.5,0}};
+  std::vector<cv::Point2d> pixels;
+  cv::projectPoints(world,cv::Vec3d(.7853981633974483,0,0),translation,
+    cv::Matx33d(model.camera_matrix.data()),cv::noArray(),pixels);
+  auv_mapping::GridResult grid;grid.geometry_valid=grid.stable=grid.orientation_valid=true;
+  grid.yellow_edge=2;grid.confidence=1;
+  for(int i=0;i<4;++i)grid.corners[i]=pixels[i];
+  const auto actual=auv_mapping::metric_grid_pose(grid,model,{640,480},0,10,1);
+  check(actual.valid,"calibrated oblique camera rejected as body tilt");
+  check(std::abs(actual.row-1.5)<.001&&std::abs(actual.col-1.5)<.001,"oblique body position");
+  model.camera_to_body=c.front_underwater.camera_to_body;
+  check(!auv_mapping::metric_grid_pose(grid,model,{640,480},0,10,1).valid,
+    "incorrect oblique extrinsic passed body tilt gate");
+}
 static auv_mapping::MetricGridPose pose(double row,double col,double time,std::uint64_t sequence) {
   auv_mapping::MetricGridPose p;p.valid=true;p.row=row;p.col=col;p.stamp=time;p.sequence=sequence;
   p.body_from_grid={0,1,0,1,0,0,0,0,-1};return p;
@@ -157,4 +188,4 @@ static void fsm() {
   m.tick(1.7);check(m.snapshot().phase==MissionPhase::kVisitCones,"route transition");
   m.update_map(true,true,1.8);m.tick(1.8);check(m.snapshot().phase==MissionPhase::kComplete,"A2 stage complete");
 }
-int main(){try{planning();geometry();ascent();execution();fsm();std::cout<<"A2 geometry, ascent, 1134 layouts, observed traversal and FSM passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{planning();geometry();front_geometry();ascent();execution();fsm();std::cout<<"A2 geometry, ascent, 1134 layouts, observed traversal and FSM passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

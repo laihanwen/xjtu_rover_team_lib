@@ -299,7 +299,7 @@ class Runtime {
       cfg_.camera_fps,cfg_.camera_pixel_format,cfg_.camera.rfind("file:",0)==0});
     CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
         cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
-    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+    CameraRectifier surface(cfg_.traversal.enabled && !cfg_.traversal.metric_camera_front,cfg_.traversal.surface.width,
         cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
     double last_ready=seconds();
     bool received=false;
@@ -637,7 +637,7 @@ class Runtime {
     auv_vision::ConeTracker tracker(cfg_.tracker);
     CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
         cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
-    CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
+    CameraRectifier surface(cfg_.traversal.enabled && !cfg_.traversal.metric_camera_front,cfg_.traversal.surface.width,
         cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
     // Front metric rectifiers mirror the down pair; front_loop rectifies at
     // capture time, so these only run on surface/underwater phase transitions.
@@ -661,7 +661,7 @@ class Runtime {
           if (front_seen != front_sequence_) { front_seen = front_sequence_; front_image = front_frame_;
             front_cached=front_rectified_frame_;front_cached_surface=front_surface_frame_;front_stamp=front_time_; } }
       }
-      if (image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+      if (image.empty() && front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
       if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;mapper.reset();tracker.reset();}
@@ -670,20 +670,13 @@ class Runtime {
       {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
       const bool surface_phase=cfg_.traversal.enabled && surface_grid_phase(phase);
       if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;}
-      // Reuse capture correction, except when a mission transition changed the model.
-      if(!cached.empty() && cached_surface==surface_phase)image=cached;
-      else image=surface_phase?surface.apply(image):underwater.apply(image);
-      // Grid mapping + metric pose use the front camera in front-metric mode;
-      // the AprilTag trigger below always stays on the down camera.
-      cv::Mat metric_image;double metric_stamp=stamp;std::uint64_t metric_seq=seen;
-      if(metric_front) {
-        if(front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
-        if(!front_cached.empty() && front_cached_surface==surface_phase)metric_image=front_cached;
-        else metric_image=surface_phase?front_surface.apply(front_image):front_underwater.apply(front_image);
-        metric_stamp=front_stamp;metric_seq=front_seen;
-      } else metric_image=image;
-      const auto found = tags.detect(image);
-      if(phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
+      // Camera streams are independent: front mapping must not wait for down frames.
+      if(!image.empty()) {
+        if(!cached.empty() && cached_surface==surface_phase)image=cached;
+        else image=surface_phase?surface.apply(image):underwater.apply(image);
+      }
+      if(!image.empty() && phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
+        const auto found = tags.detect(image);
         const auto eligible=std::find_if(found.begin(),found.end(),[this](const auto& tag){
           return cfg_.apriltag_ids.empty()||std::find(cfg_.apriltag_ids.begin(),cfg_.apriltag_ids.end(),tag.id)!=cfg_.apriltag_ids.end();});
         if(eligible==found.end()){tag_id=-1;tag_votes=0;}
@@ -700,6 +693,16 @@ class Runtime {
           mapper.reset();tracker.reset();
         }
       }
+      // Grid mapping + metric pose use the front camera in front-metric mode;
+      // the AprilTag trigger above always stays on the down camera.
+      cv::Mat metric_image;double metric_stamp=stamp;std::uint64_t metric_seq=seen;
+      if(metric_front) {
+        if(front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+        if(!front_cached.empty() && front_cached_surface==surface_phase)metric_image=front_cached;
+        else metric_image=surface_phase?front_surface.apply(front_image):front_underwater.apply(front_image);
+        metric_stamp=front_stamp;metric_seq=front_seen;
+      } else metric_image=image;
+      if(metric_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       const auto grid = mapper.process(metric_image);
       auv_mapping::MetricGridPose metric;
       if(cfg_.traversal.enabled) {
@@ -744,7 +747,8 @@ class Runtime {
              (!cone_debug.empty() && !cv::imwrite(filename+".cones.jpg",cone_debug)))
             throw std::runtime_error("cannot save cone evidence");
           std::ofstream artifact(filename+".json");artifact.precision(15);
-          artifact<<"{\"run_id\":\""<<run_id_<<"\",\"steady_sec\":"<<stamp
+          artifact<<"{\"run_id\":\""<<run_id_<<"\",\"steady_sec\":"<<metric_stamp
+            <<",\"camera\":\""<<(metric_front?"front":"down")<<"\",\"frame_sequence\":"<<metric_seq
             <<",\"rows\":3,\"cols\":3,\"bottom_edge\":\""<<(cfg_.grid.single_yellow_edge?"yellow":"legacy_yellow_frame")<<"\",\"orientation_valid\":"
             <<(grid.orientation_valid?"true":"false")<<",\"confidence\":"<<grid.confidence<<",\"corners\":[";
           for(std::size_t i=0;i<grid.corners.size();++i){if(i)artifact<<',';artifact<<'['<<grid.corners[i].x<<','<<grid.corners[i].y<<']';}
@@ -772,13 +776,16 @@ class Runtime {
       if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
-      row_ = grid.camera_row; col_ = grid.camera_col; pose_time_ = metric_stamp;
+      if(metric_front) {
+        pose_valid_=metric.valid;row_=metric.row;col_=metric.col;
+      } else { row_=grid.camera_row;col_=grid.camera_col; }
+      pose_time_=metric_stamp;
       const double finished=seconds();
       if (processed_time_ > 0 && finished > processed_time_)
         vision_hz_=vision_hz_ <= 0 ? 1.0/(finished-processed_time_) :
           0.9*vision_hz_+0.1/(finished-processed_time_);
       processed_time_ = finished; ++processed_frames_;
-      latency_ms_[latency_index_++ % latency_ms_.size()] = (finished-stamp)*1000.0;
+      latency_ms_[latency_index_++ % latency_ms_.size()] = (finished-metric_stamp)*1000.0;
       latency_count_=std::min(latency_count_+1,latency_ms_.size());
       } catch (const std::exception& e) {
         fault(std::string("vision: ")+e.what());
@@ -1283,6 +1290,7 @@ class Runtime {
         << ",\"yaw_rad\":"<<json_number(status_.yaw)<<",\"voltage_v\":"<<json_number(status_.voltage)
         << ",\"depth_sample_fresh\":"<<(depth_sample_fresh(now)?"true":"false")
         << ",\"depth_sample_age_sec\":"<<json_number(depth_sample_received_?now-depth_sample_received_+depth_sample_.age_sec:-1)
+        << ",\"metric_camera\":\""<<(cfg_.traversal.metric_camera_front?"front":"down")<<"\""
         << ",\"metric_pose_reason\":\""<<json_escape(metric_pose_.reason)<<"\""
         << ",\"metric_reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
         << ",\"frame_timeout_sec\":"<<cfg_.frame_timeout<<",\"status_timeout_sec\":"<<cfg_.status_timeout

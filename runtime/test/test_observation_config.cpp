@@ -2,8 +2,9 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <iostream>
 static void require(bool x){if(!x)throw std::runtime_error("A0 configuration regression");}
-int main(int argc,char** argv){
+int main(int argc,char** argv){try{
   require(argc==2);
   const auto base=std::filesystem::path(argv[1])/"runtime/config/pi-auv-observation.yaml";
   auto c=load_config(base.string());require(!c.motion_enabled && !c.auto_arm && c.recording_required &&
@@ -56,5 +57,21 @@ int main(int argc,char** argv){
   t["surface_localization_verified"]=false;require(rejects());t["surface_localization_verified"]=true;
   t["boundary_clearance_m"]=0;require(rejects());t["boundary_clearance_m"]=.1;
   t["camera_matrix"]=YAML::Load("[260,0,320,0,260,240,0,0,.nan]");require(rejects());
+  // Active front configuration uses front K/D and resolution; down odometry
+  // remains calibrated, but the unused down surface PnP matrix can be absent.
+  t["camera_matrix"]=YAML::Load("[]");
+  auto f=y["front_metric"];f["enabled"]=true;
+  for(const auto* phase:{"underwater","surface"}) {
+    f[phase]["verified"]=true;f[phase]["width"]=320;f[phase]["height"]=240;
+    f[phase]["camera_matrix"]=YAML::Load("[250,0,160,0,250,120,0,0,1]");
+    f[phase]["distortion_coefficients"]=YAML::Load("[0,0,0,0,0]");
+  }
+  f["camera_to_body"]=YAML::Load("[0,1,0,1,0,0,0,0,-1]");
+  f["camera_offset_m"]=YAML::Load("[0,0,0]");f["depth_offset_m"]=YAML::Load("[0,0,0]");
+  write();c=load_config(temp.string());require(c.traversal.metric_camera_front);
+  f["surface"]["width"]=640;require(rejects());f["surface"]["width"]=320;
+  f["underwater"]["verified"]=false;require(rejects());f["underwater"]["verified"]=true;
+  l["calibration_verified"]=false;require(rejects()); // Down odometry safety gate still applies.
   std::filesystem::remove(temp);
+}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}
 }

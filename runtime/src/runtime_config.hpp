@@ -355,6 +355,7 @@ static Config load_config(const std::string& path) {
       !c.recording_required || (!c.mission.stop_after_map&&!c.mission.surface_before_visit)))
     throw std::runtime_error("search requires motion, localization, auto_origin, recording and A1/A2 profile");
   if(c.traversal.enabled && (!c.mission.surface_before_visit||!c.search.enabled||!c.grid.single_yellow_edge||
+      !c.localization.plane.verified||
       c.expected_cones!=4||!c.recording_required||!c.front_enabled||
       c.traversal.maximum_speed>c.route.maximum_speed||
       c.traversal.surface_depth_m>=c.search.depth_m||c.localization.plane.depth_zero!=0||
