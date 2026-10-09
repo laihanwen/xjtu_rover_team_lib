@@ -85,12 +85,7 @@ build-native/runtime/auv_runtime --check-config runtime/config/pi-auv-tag-dockin
 
 此前 Pi 原生构建成功，19 项测试中 18 项通过：原有 17 项回归和新增标签几何/状态机测试通过；端到端虚拟双摄测试触发定位新鲜度保护。已将模拟素材的逐像素噪声替换为可跟踪地面纹理以减少虚假标签轮廓，并完善重获目标多帧门控、非有限定位拒绝、启动前视确认与诊断字段。当前 Pi SSH 不可达，**这些最新 C++ 改动和模拟修正尚未复测，不能宣称全部通过**。后续连接恢复后运行完整 19 项 CTest；通过前不进入实机执行。
 
-2026-10-09 原生 CTest 复测（当前 20 项）：18 项通过、2 项失败，均落在 `tag_docking` 功能内，与“前视度量定位”改动无关（该改动只涉及 `surface_traversal.hpp`、`runtime_config.hpp` 与 `pi-auv-task-one.yaml`）：
-
-- `tag_docking`（`runtime/test/test_tag_docking.cpp`）：首个断言抛 `down optical/body conversion`。夹具 `project(c,{CV_PI,0,0},{-.1,-.2,.5})` 把标签投影到上边两角 y≈-95 px（超出 240 高画面），`dock_observation` 的边界检查（`border_px=3`）按设计判为截断标签并返回 `metric_valid=false`，期望 `forward=.2 / left=.1` 不可达，属测试夹具与期望值自相矛盾。
-- `tag_docking_simulation`（`runtime/test/tag_docking_simulation.py`）：进入 HOVER 前锁存 `telemetry, pressure, recording, camera or attitude safety gate`（`tag_docking.hpp` 的 `!ready` 门）。合成 PTY 环境中下视 AVI 以约 2333 fps 重放、前视被限到约 15 fps，帧新鲜度/定位在某 tick 短暂失效触发该门，属仿真夹具时序敏感，非功能回归。
-
-两项需在 `tag_docking` 功能内修复后复测，不阻塞前视度量定位路线。
+2026-10-10 PR #6 已同步主线的标签夹具修复，Windows 便携构建的 `tag_docking` 回归通过。上述旧测试记录仅对应旧版本；本轮完整 Linux Runtime 与 `tag_docking_simulation` 尚未复测（Pi SSH 连接超时），不能据便携测试宣布完整仿真通过。
 
 独立 AUV_TAG_DOCK 固件已由 Keil 编译，0 错误、0 警告；未烧录。软件模拟使用 PTY 和视频文件，不接触真实串口或推进器。
 
