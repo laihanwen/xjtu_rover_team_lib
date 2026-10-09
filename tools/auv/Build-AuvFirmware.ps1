@@ -1,6 +1,6 @@
-param(
+﻿param(
     [string]$Keil = 'C:/Keil_v5/UV4/UV4.exe',
-    [ValidateSet('AUV_A0','AUV_TAG_DOCK','AUV_ROV_DUAL')][string]$Profile = 'AUV_A0',
+    [ValidateSet('AUV_A0','AUV_TAG_DOCK')][string]$Profile = 'AUV_A0',
     [switch]$Rebuild
 )
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,6 @@ $taskProject = $taskProject.Replace('<TargetName>Copy_cup</TargetName>',"<Target
 $taskProject = $taskProject.Replace('<OutputDirectory>Copy_cup\</OutputDirectory>',"<OutputDirectory>$Profile\</OutputDirectory>")
 $taskProject = $taskProject.Replace('<OutputName>Copy_cup</OutputName>',"<OutputName>$Profile</OutputName>")
 $taskDefines = 'USE_HAL_DRIVER,STM32F405xx,AUV_AUTONOMOUS_PROFILE=1'
-if ($Profile -eq 'AUV_ROV_DUAL') { $taskDefines = 'USE_HAL_DRIVER,STM32F405xx,AUV_DUAL_PROFILE=1,AUV_AUTONOMY_MAX_DEPTH_M=1.2f' }
 if ($Profile -eq 'AUV_TAG_DOCK') { $taskDefines += ',AUV_AUTONOMY_MAX_DEPTH_M=1.2f' }
 $taskProject = $taskProject.Replace('<Define>USE_HAL_DRIVER,STM32F405xx</Define>',"<Define>$taskDefines</Define>")
 $taskGenerated = Join-Path $taskMdk 'Copy_cup_auv.uvprojx'

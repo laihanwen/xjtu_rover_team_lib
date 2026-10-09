@@ -2,11 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 project(auv_firmware_host_tests LANGUAGES C)
 
 enable_testing()
-add_executable(test_auv_dual_mode test_auv_dual_mode.c ../MDK-ARM/AuvControlSource.c
-    ../MDK-ARM/AuvMotionTarget.c ../MDK-ARM/AuvProtocol.c)
-target_include_directories(test_auv_dual_mode PRIVATE ../MDK-ARM)
-target_compile_definitions(test_auv_dual_mode PRIVATE AUV_DUAL_PROFILE=1 AUV_AUTONOMY_MAX_DEPTH_M=1.2f)
-add_test(NAME auv_dual_mode COMMAND test_auv_dual_mode)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 

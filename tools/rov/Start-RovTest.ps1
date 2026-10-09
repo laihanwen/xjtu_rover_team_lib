@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Flash,
     [string]$PiHost = '192.168.137.150',
     [int]$WebPort = 8767,

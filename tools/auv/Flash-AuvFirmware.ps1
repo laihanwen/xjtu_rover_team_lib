@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('AUV_A0','AUV_TAG_DOCK','AUV_ROV_DUAL')][string]$Profile = 'AUV_TAG_DOCK',
+    [ValidateSet('AUV_A0','AUV_TAG_DOCK')][string]$Profile = 'AUV_TAG_DOCK',
     [string]$Probe = 'ATK 20190528',
     [string]$Pack = 'C:/Keil_v5/ARM/PACK/Keil/STM32F4xx_DFP/1.0.8'
 )

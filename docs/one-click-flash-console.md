@@ -1,6 +1,14 @@
-# 一键烧录双模式固件并打开驾驶台
+# 一键烧录独立 ROV 固件并打开原驾驶台
+
+**当前流程已回退为独立模式。** `Flash-And-Console.cmd` 编译并烧录 `Copy_cup/Copy_cup.hex`，确认中立后启动 ROV 服务，打开原驾驶台根页面 `/`，双摄复用原连续 MJPEG 与录像代码。AUV 使用 `Build-AuvFirmware.ps1 -Profile AUV_TAG_DOCK` 和独立烧录入口。`AUV_ROV_DUAL` 不再是可选构建项，`switch_mode.py` 命令入口停用；切换 ROV/AUV 必须使用各自固件与匹配服务。
+
+以下双模式记录为回退前历史，不作为当前烧录操作依据。
 
 Windows 连接 Pi 与现有 pyOCD 可识别的烧录探针后，双击 `tools/auv/Flash-And-Console.cmd`。确认已停止任务、断开推进器动力或可靠固定机器人，输入 `SAFE_TO_FLASH`，随后自动执行。脚本不发送 ARM 或机构动作。
+
+2026-10-09 入口修复：默认优先使用当前用户 `%LOCALAPPDATA%/xjtu-auv/console-venv` 独立 Python 环境，兼容 Codex Windows 应用的环境重定向；不存在时才尝试系统 Python，也可显式指定 `-Python`。相关 PowerShell 文件使用带 BOM 的 UTF-8，兼容双击调用的 Windows PowerShell 5.1。远端准备阶段优先加载本轮上传的协议辅助模块，避免 Pi 当前目录中的历史模块遮蔽。
+
+实机联调同时修复模式选择 ACK 被重复 DISARM 应答覆盖的问题：选择已发出后只维持 heartbeat，继续要求匹配 ACK 和选择后的中立遥测，不放宽确认条件。2026-10-09 经用户物理安全确认后，AUV_ROV_DUAL 编译 0 错误/0 警告，固件 SHA256 为 `37b6c634ad866ee9a4f340509e10c1d50b86d51a2a2ac484617a5ad65736357e`，完整 32 KiB 读回校验通过，Pi 交接确认 ROV/DISARM，PC 驾驶台已启动，双摄快照均可用。当前手柄未连接，PC 遥控链尚未就绪；不代表水池运动验收，也未执行 ARM。首次整合执行在确认阶段中止，修复后分别完成交接与控制台启动；不将其描述为一键从头到尾无失败。
 
 也可从仓库根目录执行：
 

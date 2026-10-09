@@ -1,0 +1,11 @@
+<section id="collection-panel">
+<div class="section-head"><h2>试验数据采集助手</h2><span class="muted">人工测量与搬运 · 不发送运动命令</span></div>
+<div class="control-grid">
+<div><label>采集项目 <select id="collect-kind"><option value="depth">深度计与水面零点</option><option value="front_calibration">前视水下标定</option><option value="camera_handover">双摄标签交接</option><option value="installation">池深与安装尺寸</option><option value="motion_response">受控运动响应记录</option></select></label><p id="collect-guide"></p></div>
+<div><label>当前实测深度 / m <input id="collect-reference" type="number" min="0" step="0.01" placeholder="未测量留空"></label><label>实测池深 / m <input id="collect-pool" type="number" min="0" step="0.01" placeholder="不是作业深度上限"></label><label>前视实测俯角 / ° <input id="collect-angle" type="number" step="0.1" placeholder="固定作业角度"></label></div>
+<div><label>采样时长 / 秒 <input id="collect-duration" type="number" min="10" max="600" value="30"></label><label>阶段与备注 <input id="collect-note" maxlength="1000" placeholder="如：水面静止、前视可见、下视居中"></label><label><input id="collect-safe" type="checkbox"> 已断开推进器动力或可靠固定，现场条件适合采集</label></div>
+</div>
+<div class="buttons"><button id="collect-start" onclick="collectAction('start')">开始定时采样</button><button id="collect-mark" onclick="collectAction('mark')" disabled>标记当前阶段</button><button id="collect-stop" onclick="collectAction('stop')" disabled>结束采样</button><a id="collect-export" href="/collection/export">导出采样 JSONL</a></div>
+<p id="collect-state" aria-live="polite">读取采集状态…</p><pre id="collect-live"></pre>
+<small>需要视频时，先在上方开启双摄录制。采样结束不会停止录像；采样记录关联录像目录及帧数。实测值是人工注释，不会自动校准或解除运动保护。当前 AUV 固件只能进行无动力观测，ROV 遥控需匹配独立 ROV 固件及服务。</small>
+</section>

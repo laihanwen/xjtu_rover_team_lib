@@ -18,7 +18,6 @@
 #include "usart.h"
 #include "AuvRovConfig.h"
 #include "AuvRcInput.h"
-#include "AuvMode.h"
 #include <math.h>
 
 #ifndef AUV_LINK_UART_HANDLE
@@ -106,44 +105,25 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
         AuvArmResult result = AUV_ARM_MALFORMED;
         if (frame->payload_length == 5U) {
             sequence = AuvProtocol_ReadU32Le(frame->payload);
-#if AUV_HAS_ROV
+#if AUV_ROV_MANUAL_TRIAL
             if (frame->payload[4] == 1U &&
-                (AUV_MODE_IS_ROV && (!AuvRcInput_CanArm(now_ms) || !imu_level_calibrated)))
+                (!AuvRcInput_CanArm(now_ms) || !imu_level_calibrated))
                 result = AUV_ARM_UNSAFE;
             else
 #endif
-#if AUV_HAS_AUTONOMY
+#if AUV_AUTONOMOUS_PROFILE
             if (frame->payload[4] == 1U &&
-                (AUV_MODE_IS_AUV && (!AUV_AUTONOMY_READY || !imu_level_calibrated)))
+                (!AUV_AUTONOMY_READY || !imu_level_calibrated))
                 result = AUV_ARM_UNSAFE;
-            else
-#endif
-#if AUV_DUAL_PROFILE
-            if(frame->payload[4] == 1U && !AuvMode_ArmReady(now_ms)) result=AUV_ARM_UNSAFE;
             else
 #endif
             result = AuvSafety_RequestArm(frame->payload[4], now_ms);
-#if AUV_HAS_ROV
+#if AUV_ROV_MANUAL_TRIAL
             if (result == AUV_ARM_ACCEPTED && frame->payload[4] == 1U)
                 trial_arm_start_ms = now_ms;
 #endif
         }
         QueueAck(AUV_MSG_SET_ARMED, (uint8_t)result, sequence);
-    } else if (frame->message_type == AUV_MSG_SELECT_MODE) {
-        uint32_t seq=frame->payload_length>=4U ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
-        AuvArmResult result=AUV_ARM_UNSUPPORTED;
-#if AUV_DUAL_PROFILE
-        result=frame->payload_length==5U ? AuvMode_Select(seq,frame->payload[4],AuvSafety_IsArmed(),now_ms) : AUV_ARM_MALFORMED;
-        if(result==AUV_ARM_ACCEPTED) {
-            AuvMotionTarget_Init();AuvRcInput_Init();AuvDepth_Invalidate(now_ms);
-            (void)AuvControlSource_Update(0U,0U,0U);
-            external_kill_active=AUV_MODE_IS_ROV ? 1U : 0U;
-            external_safety_seen=external_sensors_valid=1U;
-            calibration_offset=0;
-            (void)AuvSafety_RequestArm(0U,now_ms);
-        }
-#endif
-        QueueAck(AUV_MSG_SELECT_MODE,(uint8_t)result,seq);
     } else if (frame->message_type == AUV_MSG_CALIBRATE_LEVEL) {
         uint32_t seq = frame->payload_length >= 4U ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
         uint8_t result = (uint8_t)AUV_ARM_UNSAFE;
@@ -156,8 +136,8 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
         }
         QueueAck(AUV_MSG_CALIBRATE_LEVEL, result, seq);
     } else if (frame->message_type == AUV_MSG_RC_TARGET) {
-#if AUV_HAS_ROV
-        if (AUV_MODE_IS_ROV && frame->payload_length == 16U) {
+#if AUV_ROV_MANUAL_TRIAL
+        if (frame->payload_length == 16U) {
             uint8_t ok = AuvRcInput_AcceptCrc(AuvProtocol_ReadU32Le(frame->payload),
                 frame->payload + 4, frame->payload[15], now_ms);
             if (!ok || !frame->payload[15]) {
@@ -183,9 +163,9 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
         }
 #endif
     } else if (frame->message_type == AUV_MSG_REMOTE_KILL) {
-#if AUV_HAS_ROV
+#if AUV_ROV_MANUAL_TRIAL
         if (frame->payload_length == 1U && frame->payload[0] <= 1U) {
-            if (frame->payload[0] || (AUV_MODE_IS_ROV && AuvRcInput_CanArm(now_ms))) {
+            if (frame->payload[0] || AuvRcInput_CanArm(now_ms)) {
                 external_kill_active = frame->payload[0];
                 if (external_kill_active) (void)AuvSafety_RequestArm(0U,now_ms);
             }
@@ -194,9 +174,12 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
     } else if (frame->message_type == AUV_MSG_MOTION_TARGET) {
         uint32_t sequence = (frame->payload_length >= 4U)
             ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
+#if AUV_ROV_MANUAL_TRIAL
         AuvArmResult result = AUV_ARM_UNSUPPORTED;
-        if (!AUV_MODE_IS_ROV) result = AuvMotionTarget_Accept(
+#else
+        AuvArmResult result = AuvMotionTarget_Accept(
             frame->payload, frame->payload_length, now_ms, AuvSafety_IsArmed());
+#endif
         QueueAck(AUV_MSG_MOTION_TARGET, (uint8_t)result, sequence);
     } else if (frame->message_type == AUV_MSG_ACTUATOR_COMMAND) {
         uint32_t sequence = (frame->payload_length >= 4U)
@@ -278,10 +261,6 @@ static void SendStatus(uint32_t now_ms)
     imu_fresh = (imu_sample_sequence != 0U) &&
         ((uint32_t)(now_ms - imu_last_sample_ms) <= AUV_IMU_TIMEOUT_MS);
     if (imu_level_calibrated) state_flags |= 1U << 3;
-#if AUV_DUAL_PROFILE
-    state_flags |= 1U << 4;
-    if(AUV_MODE_IS_AUV) state_flags |= 1U << 5;
-#endif
     __set_PRIMASK(mask);
 
     if (context->state == AUV_SAFETY_ARMED) state_flags |= 1U << 0;
@@ -364,7 +343,7 @@ static void SendImu(void)
 
 static void SendDepth(uint32_t now_ms)
 {
-#if AUV_HAS_AUTONOMY
+#if AUV_AUTONOMOUS_PROFILE
     uint8_t payload[17] = {0}; /* AUV adds real sensor sequence and sample age. */
 #else
     uint8_t payload[9] = {0};
@@ -382,7 +361,7 @@ static void SendDepth(uint32_t now_ms)
     else
         AuvProtocol_WriteU32Le(&payload[4], AUV_QUIET_NAN_BITS);
     payload[8] = fresh;
-#if AUV_HAS_AUTONOMY
+#if AUV_AUTONOMOUS_PROFILE
     AuvProtocol_WriteU32Le(&payload[9], fresh ? sample.sample_sequence : 0U);
     AuvProtocol_WriteU32Le(&payload[13], fresh ? now_ms-sample.last_update_ms : 0xFFFFFFFFU);
 #endif
@@ -495,7 +474,7 @@ void AuvLink_Task(void)
         ((uint32_t)(now_ms - imu_last_sample_ms) <= AUV_IMU_TIMEOUT_MS);
     AuvSafety_SetInputs(external_kill_active,
         (external_safety_seen != 0U && external_sensors_valid != 0U &&
-         (AUV_MODE_IS_ROV || depth_fresh != 0U) && imu_fresh != 0U && imu_level_calibrated) ? 1U : 0U, now_ms);
+         (AUV_ROV_MANUAL_TRIAL || depth_fresh != 0U) && imu_fresh != 0U && imu_level_calibrated) ? 1U : 0U, now_ms);
     __set_PRIMASK(primask);
 #if AUV_ROV_MANUAL_TRIAL && (AUV_ROV_TRIAL_ARM_MAX_MS > 0U)
     if (AuvSafety_IsArmed() &&
@@ -534,10 +513,7 @@ void AuvLink_SetSafetyInputs(uint8_t kill_active,
 
 uint8_t AuvLink_UpdateDepth(float depth_m)
 {
-#if AUV_HAS_AUTONOMY
-#if AUV_DUAL_PROFILE
-    if(AUV_MODE_IS_ROV) return AuvDepth_UpdateGauge(depth_m,HAL_GetTick());
-#endif
+#if AUV_AUTONOMOUS_PROFILE
     if (!AUV_DEPTH_ZERO_CALIBRATED || !isfinite(depth_m) || !isfinite(AUV_DEPTH_ZERO_M)) {
         AuvDepth_Invalidate(HAL_GetTick());
         return 0U;

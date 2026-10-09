@@ -20,8 +20,10 @@ static auv_vision::AprilTagObservation project(const TagDockConfig& c,cv::Vec3d 
 int main(int argc,char** argv) {
   check(argc==2,"source directory");auto c=fixture();c.validate(true);
   const std::vector<double> k{400,0,160,0,400,120,0,0,1};
-  auto a=dock_observation(project(c,{CV_PI,0,0},{-.1,-.2,.5}),1,1,{320,240},k,k,c,false);
-  check(a.metric_valid&&std::abs(a.forward-.2)<1e-5&&std::abs(a.left-.1)<1e-5,"down optical/body conversion");
+  // Keep all four corners inside the image; the previous y=-.2 projection
+  // placed its center above the frame and must be rejected by the border gate.
+  auto a=dock_observation(project(c,{CV_PI,0,0},{-.1,-.06,.5}),1,1,{320,240},k,k,c,false);
+  check(a.metric_valid&&std::abs(a.forward-.06)<1e-5&&std::abs(a.left-.1)<1e-5,"down optical/body conversion");
   auto f=dock_observation(project(c,{CV_PI/2,0,0},{.05,.2,1}),1,1,{320,240},k,k,c,true);
   check(f.metric_valid&&std::abs(f.forward-1)<1e-4&&std::abs(f.left+.05)<1e-4,"front metric target");
   auto unverified=c;unverified.geometry_verified=false;
@@ -73,6 +75,10 @@ int main(int argc,char** argv) {
   for(int i=1;i<=6;++i){p.stamp=1+i*.05;centered.step(p.stamp,.6,i,true,true,p,{},down);}
   check(centered.phase!=TagDockTask::Phase::Hold,"repeated centered frame cannot enter hover");
   p.stamp=3.1;centered.step(3.1,.6,10,true,true,p,{},{});
+  // Measure loss from a processed missing observation, rather than assuming
+  // the skipped simulation interval was observed by the controller.
+  p.stamp=3.1+c.lost_timeout+.05;
+  centered.step(p.stamp,.6,11,true,true,p,{},{});
   check(centered.phase==TagDockTask::Phase::Fault,"tag loss timeout");
   TagDockTask disarmed(c);p={true,true,7,1,0,0,0};check(disarmed.start(1,.6,p),"disarm fixture");
   p.stamp=1.05;disarmed.step(1.05,.6,1,true,true,p,{},{});
