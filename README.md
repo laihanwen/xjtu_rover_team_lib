@@ -18,10 +18,13 @@
 
 ## 当前运行入口
 
+2026-10-10：使用独立 ROV / AUV 固件与驾驶台；双模式固件和会话切换已弃用。切换形态须烧录对应固件并使用匹配 Pi 服务。最新设备事实以 [项目状态](docs/project-status.md) 和带日期记录为准。
+
+
 | 模式 | PC / Pi 入口 | STM32 通信归属 | 使用场景 |
 |---|---|---|---|
 | ROV 遥控 | PC `trial_control_web.py` → Pi `trial_server.py` | Pi `auv-rov` 独占 UART | 手柄、水下调试、视频数据采集 |
-| 轻量自主 | Pi `auv_runtime` + `legacy/ros2/auv_core` | Runtime 独占 UART | 无 ROS 的任务一开发与验证 |
+| 轻量自主 | Pi `auv_runtime` + `core/auv_core` | Runtime 独占 UART | 无 ROS 的任务一开发与验证 |
 
 ROV 模式可同时运行 Runtime 摄像头服务，但其 `serial.device` 必须为空、运动命令关闭。两种串口控制入口不能同时占用同一设备。PC 的 `console_view.py` 只是驾驶台代理，不能再启动第二个手柄控制进程。
 
@@ -34,7 +37,7 @@ flowchart LR
   Bridge --> MCU[STM32 实时控制]
   MCU --> Bridge
   MCU --> Motors[八路推进器 PWM]
-  Core[legacy/ros2/auv_core 共享算法] --> Runtime
+  Core[core/auv_core 共享算法] --> Runtime
 ```
 
 ## 当前硬件与控制边界
@@ -46,6 +49,13 @@ flowchart LR
 - 横滚、俯仰调平已获用户水下稳定反馈。回中自动定深、定航向及新诊断为待部署、待实机验证源码。
 - M10 约 0.5–1 Hz，相对深度保持不等同于已校准的绝对水深。平移是开环推力指令，没有 DVL 速度闭环。
 - 当前实机没有漏水检测；机械爪和云台动作保持禁用。保留 DISARM 默认、显式 ARM、心跳/通信/IMU 超时和输出限幅；定深工作中深度失效会 DISARM。
+
+## 日志、模拟与复盘
+
+- [独立驾驶台模拟](docs/reports/20261010/console-refresh-20261010.md)：`python tools/console/preview.py --port 8770`；ROV `/rov/`，AUV `/dashboard/`。
+- [日志分析](docs/log-analysis.md)：ROV 每秒结构化快照，AUV/ROV 离线时间线与 AI 证据导出；不连接实机。
+- [人工任务复盘](docs/reports/20261010/manual-task-review-20261010.md)：剪辑素材、原始帧时间对齐和遍历到位停移改进。
+- [全仓库文档索引](docs/catalog.md)。
 
 ## 构建与启动
 
@@ -80,7 +90,7 @@ ROS 历史实现见 [归档说明](legacy/ros2/README.md)，当前构建、运�
 | 目录 | 职责 |
 |---|---|
 | `firmware/stm32` | 实时控制、传感器、混控、PWM、安全与主机测试 |
-| `src/legacy/ros2/auv_core` | ROS 与 Runtime 共用算法核心 |
+| `core/auv_core` | 当前原生算法核心；ROS 包装在 legacy/ 归档 |
 | `legacy/ros2/` | 暂时弃用的 ROS 节点、接口和启动配置 |
 | `runtime` | Pi 原生运行时、双摄采集、HTTP、服务部署 |
 | `tools/rov` | PC 驾驶台、Pi 手动桥、日志、录像、维护脚本 |

@@ -35,6 +35,7 @@ class Preview(BaseHTTPRequestHandler):
                      '/dashboard/dashboard.css': ('dashboard.css', 'text/css'),
                      '/dashboard/dashboard.js': ('dashboard.js', 'text/javascript'),
                      '/dashboard/recording.js': ('recording.js', 'text/javascript')}
+            files.update({'/dashboard/logs.html':('logs.html','text/html'),'/dashboard/logs.js':('logs.js','text/javascript')})
             if path not in files:
                 self.send_error(404)
                 return

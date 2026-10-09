@@ -1,5 +1,7 @@
 # 仓库布局与构建边界
 
+更新：2026-10-10。`tools/auv/` 管理独立 AUV 构建、检查与离线复盘；`tools/console/` 只提供分开的虚拟页面；`tools/docs/` 检查文档链接与索引。`docs/reports/日期/` 保存证据，`docs/archive/dual-mode/` 保存已弃用说明。编译目录、日志、录像和依赖仍被 Git 忽略。
+
 当前自动控制研发中心是 `core/` + `runtime/`。由于性能不足和设计问题，ROS 相关功能暂时弃用并归档；决策与恢复条件见 [路线调整](../lightweight-transition.md)。
 
 | 目录 | 职责 | 构建 / 使用入口 |

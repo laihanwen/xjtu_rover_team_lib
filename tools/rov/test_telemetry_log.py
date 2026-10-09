@@ -9,6 +9,29 @@ from trial_protocol import decode_pid, encode, Parser
 
 
 class LogTests(unittest.TestCase):
+    def test_negative_age_and_stale_evidence(self):
+        state={'connected':True,'telemetry_age':-1,'telemetry':{'armed':True}}
+        r=TelemetryLog.record(state,1)
+        self.assertFalse(r['validity']['telemetry_fresh'])
+        self.assertIsNone(r['imu'])
+        self.assertTrue(r['received_cache']['telemetry']['armed'])
+
+    def test_session_sequence_changes_and_manifest(self):
+        state={'connected':False}
+        with tempfile.TemporaryDirectory() as directory:
+            logger=TelemetryLog(directory,lambda:dict(state),interval=.01)
+            try:
+                deadline=time.monotonic()+2
+                while logger.status()['records']<1 and time.monotonic()<deadline:time.sleep(.005)
+                state['connected']=True
+                while logger.status()['records']<3 and time.monotonic()<deadline:time.sleep(.005)
+            finally:logger.close()
+            rows=[json.loads(line) for p in sorted(logger.directory.glob('telemetry_*.jsonl')) for line in p.read_text().splitlines()]
+            self.assertGreaterEqual(len(rows),3)
+            self.assertEqual([r['sequence'] for r in rows],list(range(1,len(rows)+1)))
+            self.assertTrue(any(c['field']=='connected' for r in rows for c in r['changes']))
+            self.assertTrue((logger.directory/'manifest.json').exists())
+
     def test_hold_states_and_allocation_extension(self):
         base=struct.pack('<IB14f',100,255,*([0]*14))
         result=decode_pid(base+bytes([5,4,128]))

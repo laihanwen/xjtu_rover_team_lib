@@ -127,6 +127,12 @@ def main():
                 self.send_header('Content-Disposition','attachment; filename="collection.jsonl"')
                 self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path=='/logs':return self.reply(dict(telemetry_log.status(),diagnostic=diagnostic_log.status() if diagnostic_log else None))
+            if self.path in ('/log-viewer','/logs.js'):
+                name='logs.html' if self.path=='/log-viewer' else 'logs.js'
+                body=(DASHBOARD_DIR/name).read_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type',('text/html' if name.endswith('.html') else 'application/javascript')+'; charset=utf-8')
+                self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path!='/state':return self.reply({'error':'not found'},404)
             with lock:
                 operator['last_poll']=time.monotonic()

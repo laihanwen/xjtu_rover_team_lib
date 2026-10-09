@@ -1,5 +1,7 @@
 # A2 任务一闭环实现与验收
 
+> 2026-10-10：新增到位容差内停平移等待新观测，Windows 便携 12/12 CTest 通过。这里的 surface 阶段名称沿用接口，不代表允许机器人露出水面；实际遍历净空和独立成像标定需实测。下视完整图可见性不足、前视定位链尚未迁移，见 [当前状态](project-status.md)。
+
 2026-10-07。衔接 [A0/A1](auv-a0-a1-implementation.md)，新增原生 Runtime 配置 `runtime/config/pi-auv-task-one.yaml`，profile 为 `a2_task_one`。默认关闭运动、自动启动/ARM 与 A2 推进阶段，必须实测标定后启用。
 
 ## 运行边界

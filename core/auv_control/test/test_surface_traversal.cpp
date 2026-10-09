@@ -114,6 +114,13 @@ static void execution() {
     time+=.1;
   }
   check(complete&&visits.size()==4&&entries.size()>=4,"measured traversal incomplete");
+  executor.set_route(plan);
+  auto settling=executor.step(pose(1.51,1.49,45,1),45);
+  check(!settling.fault&&settling.waypoint==0&&settling.surge==0&&settling.sway==0,
+    "arrival band must stop translation while waiting for evidence");
+  settling=executor.step(pose(1.51,1.49,45,1),45.1);
+  check(settling.waypoint==0&&settling.surge==0&&settling.sway==0,
+    "repeated arrival frame must neither advance nor resume translation");
   executor.set_route(plan);check(executor.step(pose(1.5,1.5,50,1),50).new_sample,"new frame");
   check(executor.step(pose(1.5,1.5,50,1),50.1).waypoint==0,"duplicate frame advanced waypoint");
   check(executor.step(pose(1.5,1.5,50,1),51).fault,"stale grid continued");

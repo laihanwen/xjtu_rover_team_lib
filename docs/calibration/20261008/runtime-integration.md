@@ -1,5 +1,7 @@
 # ROV / AUV 轻量系统标定接入
 
+> 2026-10-10：用户反馈前视显示矫正效果良好，保留现有试验参数；已矫正的屏幕录制不用于再次标定。正式前视度量内外参仍未验证，见 [最新筛查](../20261010/front-screen-review.md)。
+
 已修改 `runtime/config/runtime.yaml`、`pi-rov.yaml`、`pi-auv-observation.yaml`、
 `pi-auv-task-one.yaml`。摄像头均为 CSI 下视和现有 ROV 配置中的 USB 前视设备；
 双摄均启用，采集尺寸 320×240，K/D 来自本目录的 down 和 front_trial 报告。
