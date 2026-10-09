@@ -2,3 +2,16 @@
 
 #position-map{height:240px;background:#091420;border:1px solid #283d52;border-radius:8px;margin-top:14px}
 #collection-panel label{display:block;margin:8px 0}#collection-panel input:not([type=checkbox]),#collection-panel select{display:block;width:100%;margin-top:5px;padding:9px;background:#0a1623;border:1px solid #344b60;color:var(--text);border-radius:6px}#collect-live{max-height:220px;overflow:auto;background:#091420;padding:12px;border-radius:6px}#collect-export{color:var(--accent);padding:8px}
+
+/* Marine operations refresh: camera-first hierarchy, cobalt instruments. */
+:root{--bg:#101b29;--panel:#172637;--line:#34475c;--text:#f0f5fa;--muted:#a4b7ca;--accent:#68b9ec}
+body{background:#101b29;color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+header{border-bottom:3px solid #4d9ac8;background:#152638}h1{letter-spacing:.02em}h1 small{color:#b2c5d6}
+main{max-width:1560px;margin:auto;display:flex;flex-direction:column;gap:20px}main>section{margin:0;border-radius:12px;box-shadow:none;background:#172637;border-color:#34475c}
+main>section:has(.camera-grid){order:-2;border-top:3px solid #68b9ec}main>section:has(.control-grid){order:-1}
+.camera-grid{gap:16px}.camera{border-radius:8px;background:#0c1723}.viewport{aspect-ratio:4/3;background:#07121c}.camera-label{padding:13px 16px}.camera-label b{font-size:15px}
+button{min-height:42px;border-radius:6px;font-weight:600}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #f1c675;outline-offset:3px}
+#stop{background:#aa3948;color:white;border-color:#dc6e7a}#arm{border-color:#c8a55d}#collection-panel{border-left:4px solid #68b9ec}
+.stats>div{background:#112132;border-radius:6px}.stats strong{font-variant-numeric:tabular-nums}.section-head h2 i{display:none}
+@media(max-width:650px){.section-head{flex-wrap:wrap}.buttons{flex-wrap:wrap}.camera-grid{gap:12px}}
+.viewport canvas{width:100%;height:100%;display:block}main>section:has(.demo-banner){order:-3;border-color:#91b5ce}

@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ASSETS = Path(__file__).resolve().parents[2]/'runtime/web/dashboard'
+ROV = Path(__file__).resolve().parents[2]/'tools/rov/web'
 
 
 class Preview(BaseHTTPRequestHandler):
@@ -17,7 +18,16 @@ class Preview(BaseHTTPRequestHandler):
             self.end_headers()
             return
         path = self.path.split('?', 1)[0]
-        if path == '/dashboard/config':
+        if path == '/rov/':
+            html=(ROV/'console.html').read_text(encoding='utf-8')
+            html=html.replace('<script defer src="/console.js"></script>','<script defer src="/rov/demo.js"></script>')
+            html=html.replace('/console.css','/rov/console.css')
+            html=html.replace('<main>','<main><section><b class="demo-banner">虚拟 ROV 检视 · 不连接机器人</b><p>所有遥测和画面为模拟。<a href="/dashboard/">查看 AUV 模拟 →</a></p></section>')
+            body=html.encode();mime='text/html'
+        elif path in ('/rov/console.css','/rov/demo.js'):
+            file=ROV/'console.css' if path.endswith('.css') else Path(__file__).with_name('rov_demo.js')
+            body=file.read_bytes();mime='text/css' if path.endswith('.css') else 'text/javascript'
+        elif path == '/dashboard/config':
             body = json.dumps({'demo': True, 'source': 'virtual', 'camera_base': ''}).encode()
             mime = 'application/json'
         else:

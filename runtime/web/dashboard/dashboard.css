@@ -2,3 +2,12 @@
 
 select{font:11px 'Microsoft YaHei',sans-serif;background:#0c1925;border:1px solid var(--line);color:#b9ccd7;border-radius:5px;padding:4px 7px;margin-right:10px}select:focus-visible{outline:2px solid var(--cyan)}
 .camera-recording{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;margin-bottom:16px;border:1px solid var(--line);border-radius:7px;background:#0b1823}.camera-recording>b{font-size:12px}.camera-recording>div{display:flex;gap:8px;margin-left:auto}.camera-recording button{font-size:11px;padding:7px 10px}.camera-recording>.footnote{flex-basis:100%;margin:0}.camera-recording .mini-badge{white-space:nowrap}@media(max-width:600px){.camera-recording>div{width:100%;margin-left:0}.camera-recording button{flex:1}}
+
+/* Shared marine identity; autonomous mission remains a separate entry. */
+body{background:#101b29;color:#f0f5fa;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+.sidebar{background:#152638;border-right:1px solid #34475c}.brand-mark{background:#28475f;color:#9ad5f7}.panel{background:#172637;border:1px solid #34475c;border-radius:12px;box-shadow:none}
+.panel-head{border-bottom:1px solid #34475c;padding-bottom:14px}.section-number{display:none}.panel-head h2{letter-spacing:.02em}
+.viewport{aspect-ratio:4/3;background:#07121c}.camera-head{background:#112132;padding:13px 16px}.camera-head b{font-size:15px}.camera-meta{background:#112132}
+.main-header{border-bottom:3px solid #4d9ac8;padding-bottom:18px}button{min-height:42px;border-radius:6px;font-weight:600}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid #f1c675;outline-offset:3px}
+#stop{background:#aa3948;color:white;border:1px solid #dc6e7a}.banner{background:#23394b;border-color:#5b8bae}.muted,.footnote,.label{color:#a4b7ca}.mini-badge{border-color:#60788e}.side-column{gap:20px}
+@media(max-width:700px){.panel-head{flex-wrap:wrap;gap:10px}.main-header{flex-wrap:wrap}}
