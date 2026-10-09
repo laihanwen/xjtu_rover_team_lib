@@ -1,5 +1,6 @@
 #pragma once
 #include "localization.hpp"
+#include "tag_docking.hpp"
 #include "auv_control/route_executor.hpp"
 #include "auv_control/surface_traversal.hpp"
 #include "auv_mapping/grid_mapper.hpp"
@@ -13,6 +14,7 @@
 #include <vector>
 #include <stdexcept>
 struct Config {
+  TagDockConfig docking;
   auv_control::SurfaceTraversalConfig traversal;
   auv_control::ObservationSearchConfig search;
   bool auto_origin{}, recording_enabled{}, recording_required{};
@@ -59,6 +61,28 @@ static Config load_config(const std::string& path) {
   const auto y = YAML::LoadFile(path);
   Config c;
   c.config_source=path;
+  if(const auto t=y["tag_docking"]) {
+    auto& a=c.docking;
+    a.id=t["id"].as<int>(18);a.size_m=t["size_m"].as<double>(.138);
+    a.votes=t["stable_frames"].as<int>(3);
+    a.max_depth=t["maximum_depth_m"].as<double>(1.2);a.min_depth=t["minimum_depth_m"].as<double>(.1);
+    a.depth_rate=t["depth_rate_mps"].as<double>(.03);a.depth_tolerance=t["depth_tolerance_m"].as<double>(.03);
+    a.depth_hold=t["depth_hold_sec"].as<double>(2);a.depth_timeout=t["depth_stage_timeout_sec"].as<double>(30);
+    a.speed=t["maximum_target"].as<double>(.08);a.gain=t["position_gain"].as<double>(.3);
+    a.down_speed=t["down_maximum_target"].as<double>(.04);a.hover_speed=t["hover_maximum_target"].as<double>(.03);
+    a.target_rate=t["maximum_target_change_per_sec"].as<double>(.08);
+    a.resume_px=t["hover_resume_error_px"].as<double>(15);
+    a.minimum_edge_px=t["minimum_tag_edge_px"].as<double>(8);a.border_px=t["tag_border_margin_px"].as<double>(3);
+    a.radius=t["maximum_radius_m"].as<double>(0);a.timeout=t["task_timeout_sec"].as<double>(90);
+    a.lost_timeout=t["tag_loss_timeout_sec"].as<double>(2);a.frame_timeout=t["observation_timeout_sec"].as<double>(.3);
+    a.reprojection=t["maximum_reprojection_px"].as<double>(2);a.center_px=t["center_tolerance_px"].as<double>(10);
+    a.center_hold=t["center_hold_sec"].as<double>(2);a.max_tilt=t["maximum_tilt_rad"].as<double>(.15);
+    a.geometry_verified=t["geometry_verified"].as<bool>(false);
+    a.corridor_verified=t["corridor_verified"].as<bool>(false);a.depth_verified=t["depth_verified"].as<bool>(false);
+    for(auto item:{std::make_pair("depth_targets_m",&a.depth_targets),{"front_camera_to_body",&a.front_rotation},
+        {"front_camera_offset_m",&a.front_offset},{"down_camera_to_body",&a.down_rotation},{"down_camera_offset_m",&a.down_offset}})
+      if(t[item.first])*item.second=t[item.first].as<std::vector<double>>();
+  }
   if(const auto s=y["observation_search"]) {
     c.search.enabled=s["enabled"].as<bool>(false);
     c.search.calibrated=s["corridor_calibrated"].as<bool>(false);
@@ -295,7 +319,7 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("invalid runtime configuration");
   if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
     throw std::runtime_error("operation.mode must be debug or autonomous");
-  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation" && c.mission_profile!="a2_task_one")
+  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation" && c.mission_profile!="a2_task_one" && c.mission_profile!="tag_docking")
     throw std::runtime_error("invalid mission.profile");
   if(c.recording_enabled && (c.recording_dir.empty()||!std::isfinite(c.recording_segment)||
       c.recording_segment<=0||c.recording_reserve<1024))throw std::runtime_error("invalid recording settings");
@@ -344,11 +368,25 @@ static Config load_config(const std::string& path) {
   if (c.motion_enabled && (c.serial.empty() || !c.directions_calibrated || !c.limits_calibrated ||
       c.route.maximum_speed <= 0 || c.route.maximum_speed > 0.2 ||
       c.camera_matrix.size() != 9 || c.distortion.empty() ||
-      (!c.search.enabled && (!std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
+      (!c.search.enabled && c.mission_profile!="tag_docking" && (!std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
         c.route.surge_from_col*c.route.sway_from_row) ||
       std::abs(c.route.surge_from_row*c.route.sway_from_col-
         c.route.surge_from_col*c.route.sway_from_row) < 1e-6))))
     throw std::runtime_error("motion requires calibrated directions, limits and serial device");
+  if(c.mission_profile=="tag_docking") {
+    c.docking.validate(c.motion_enabled);
+    if(c.search.enabled||c.traversal.enabled||!c.front_enabled||!c.recording_required||
+       !c.auto_origin||!c.localization.enabled||c.apriltag_family!="tag16h5"||c.docking.id!=18||
+       c.apriltag_ids!=std::vector<int>{18}||c.camera_width!=c.front_width||c.camera_height!=c.front_height||
+       !c.down_preview_rectify||!c.front_preview_rectify||c.front_camera_matrix.size()!=9)
+      throw std::runtime_error("tag docking requires independent dual rectified cameras, recording, localization and tag16h5/18");
+    if(c.motion_enabled&&(!c.localization.plane.verified||
+        c.front_calibration_quality!="independently_verified"||
+        c.camera_matrix!=c.localization.intrinsics||c.distortion!=c.localization.distortion||
+        c.docking.down_rotation!=c.localization.rotation||c.docking.down_offset!=c.localization.camera_offset||
+        c.docking.speed>c.route.maximum_speed))
+      throw std::runtime_error("tag docking motion requires independently verified front calibration and matching down geometry");
+  }
   if (!c.camera_matrix.empty() && c.camera_matrix.size() != 9)
     throw std::runtime_error("camera_matrix must contain 9 values");
   if (!c.distortion.empty() && c.distortion.size() != 4 && c.distortion.size() != 5 &&

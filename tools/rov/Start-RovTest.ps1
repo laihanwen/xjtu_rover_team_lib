@@ -2,7 +2,8 @@ param(
     [switch]$Flash,
     [string]$PiHost = '192.168.137.150',
     [int]$WebPort = 8767,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [string]$Python='python'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -30,7 +31,7 @@ try {
         $env:SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS = '1'
         $taskLogs = Join-Path $taskRoot ('build/rov-test/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
         New-Item -ItemType Directory -Force $taskLogs | Out-Null
-        $taskProcess = Start-Process -FilePath (Get-Command python).Source -ArgumentList @(
+        $taskProcess = Start-Process -FilePath (Get-Command $Python).Source -ArgumentList @(
             ('"' + (Join-Path $PSScriptRoot 'trial_control_web.py') + '"'),
             '--host',$PiHost,'--web-port',"$WebPort",'--diagnostic-log'
         ) -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru `

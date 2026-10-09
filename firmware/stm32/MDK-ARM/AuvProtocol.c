@@ -36,6 +36,7 @@ uint8_t AuvProtocol_IsKnownType(uint8_t message_type)
     case AUV_MSG_REMOTE_KILL:
     case 0x07U: /* Single-thruster commissioning pulse. */
     case AUV_MSG_CALIBRATE_LEVEL: /* Explicit DISARM shore level calibration. */
+    case AUV_MSG_SELECT_MODE:
     case AUV_MSG_ACK:
     case AUV_MSG_STATUS:
     case AUV_MSG_IMU:

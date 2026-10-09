@@ -32,3 +32,7 @@ Pi 使用 SSH 密钥或环境变量 `AUV_DEPLOY_PASSWORD`；密码不写进脚�
 `check` 验证 SSH、两项服务处于 active、服务启动命令/时间和 runtime `/api/status`；这是只读基础检查，不代表实机喷流、PID、水下稳定性或摄像头持续帧率已经验收。检查 URL 当前使用已验证的 Pi 配置地址 `192.168.137.150:8080`，其他配置需同步修改或另行检查。
 
 后续可以直接请求“运行维护脚本 build/check/all”，无需重新拼装长命令。`all` 在本机编译后按顺序执行，任一步失败即停止，已成功步骤不会自动撤销。
+
+## 本机记住部署凭据
+
+对于 `pi@192.168.137.150`，维护启动器可自动读取当前 Windows 用户的 `%LOCALAPPDATA%/xjtu-auv/pi-password.dpapi` 加密凭据；显式 `AUV_DEPLOY_PASSWORD` 优先。其他主机或用户名不会使用该文件。凭据通过 Windows DPAPI 保护，执行结束恢复原环境，不写入仓库或日志。换电脑或 Windows 用户后需单独配置凭据，不能直接复制文件使用。

@@ -9,6 +9,8 @@ bool decode_status(const std::vector<std::uint8_t>& p, Stm32Status& out) {
   Stm32Status s;
   s.sequence = auv_protocol_read_u32_le(p.data());
   s.armed = (p[4] & 1U) != 0;
+  s.dual_mode = (p[4] & 16U) != 0;
+  s.autonomous_mode = s.dual_mode && (p[4] & 32U) != 0;
   s.error_flags = auv_protocol_read_u32_le(p.data() + 5);
   s.voltage = auv_protocol_read_f32_le(p.data() + 9);
   s.depth = auv_protocol_read_f32_le(p.data() + 13);

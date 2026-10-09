@@ -1,3 +1,4 @@
+#include "AuvMode.h"
 /**
  * @file    Mate.h
  * @brief   八推全矢量主控制模块接口
@@ -17,14 +18,14 @@
  * the final hull. They never bypass the common +/-450 PWM deviation limit.
  */
 #ifndef AUV_SURGE_PWM_PER_MPS
-#if AUV_AUTONOMOUS_PROFILE
+#if AUV_HAS_AUTONOMY
 #define AUV_SURGE_PWM_PER_MPS AUV_AUTONOMY_SURGE_PWM_PER_TARGET
 #else
 #define AUV_SURGE_PWM_PER_MPS 300.0f
 #endif
 #endif
 #ifndef AUV_SWAY_PWM_PER_MPS
-#if AUV_AUTONOMOUS_PROFILE
+#if AUV_HAS_AUTONOMY
 #define AUV_SWAY_PWM_PER_MPS AUV_AUTONOMY_SWAY_PWM_PER_TARGET
 #else
 #define AUV_SWAY_PWM_PER_MPS 300.0f

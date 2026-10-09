@@ -9,8 +9,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$taskOldDeployPassword = $env:AUV_DEPLOY_PASSWORD
 Push-Location $taskRoot
 try {
+    # DPAPI credential belongs to the current Windows user; never commit its value.
+    $taskCredentialFile = Join-Path $env:LOCALAPPDATA 'xjtu-auv/pi-password.dpapi'
+    if ($Action -in @('deploy','check','all') -and !$env:AUV_DEPLOY_PASSWORD -and
+        $PiHost -eq '192.168.137.150' -and $PiUser -eq 'pi' -and
+        (Test-Path -LiteralPath $taskCredentialFile)) {
+        $taskSecret = (Get-Content -LiteralPath $taskCredentialFile -Raw).Trim() | ConvertTo-SecureString
+        $env:AUV_DEPLOY_PASSWORD = ([System.Net.NetworkCredential]::new('', $taskSecret)).Password
+    }
     $taskPaths = @('build/debug-deps','build/deploy-ssh') | ForEach-Object { Join-Path $taskRoot $_ }
     $taskOldPythonPath = $env:PYTHONPATH
     $env:PYTHONPATH = ($taskPaths + @($taskOldPythonPath) | Where-Object { $_ }) -join [IO.Path]::PathSeparator
@@ -31,6 +40,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Maintenance failed ($LASTEXITCODE)" }
     }
 } finally {
+    $env:AUV_DEPLOY_PASSWORD = $taskOldDeployPassword
     $env:PYTHONPATH = $taskOldPythonPath
     Pop-Location
 }

@@ -42,6 +42,7 @@ int auv_protocol_is_known_message_type(const uint8_t message_type)
     case AUV_PROTOCOL_MSG_SET_ARMED:
     case AUV_PROTOCOL_MSG_MOTION_TARGET:
     case AUV_PROTOCOL_MSG_ACTUATOR_COMMAND:
+    case AUV_PROTOCOL_MSG_SELECT_MODE:
     case AUV_PROTOCOL_MSG_ACK:
     case AUV_PROTOCOL_MSG_STATUS:
     case AUV_PROTOCOL_MSG_IMU:

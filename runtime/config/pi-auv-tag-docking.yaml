@@ -1,0 +1,203 @@
+# 池底标签接近测试：tag16h5 / 18 / 黑色外边长 138 mm。模板保持 DISARM。
+# A0/A1 commissioning template: DISARM, no motion, no network dependence.
+camera:
+  # Down camera is CSI; measured underwater intrinsics below.
+  source: csi:0
+  width: 320
+  height: 240
+  fps: 30
+  pixel_format: MJPG
+  # Underwater calibration 2026-10-08, original 320x240 pixels.
+  preview_rectify: true
+  calibration_width: 320
+  calibration_height: 240
+  calibration_id: underwater-down-20261008
+  calibration_quality: same_session_validated
+  camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
+  distortion_coefficients: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
+camera_front:
+  enabled: true
+  source: /dev/v4l/by-id/usb-HD_Camera_Manufacturer_USB_2.0_Camera-video-index0
+  width: 320
+  height: 240
+  fps: 30
+  # Provisional front calibration: visual preview only; not verified for metric pose.
+  preview_rectify: true
+  calibration_width: 320
+  calibration_height: 240
+  calibration_id: underwater-front-trial-20261008
+  calibration_quality: provisional_unstable_intrinsics
+  camera_matrix: [330.922779006695, 0.0, 148.05861974792015, 0.0, 351.869456969992, 141.7192514430644, 0.0, 0.0, 1.0]
+  distortion_coefficients: [-0.2574423751465809, -1.258184396225997, -0.07397539006050448, 0.0024943819270529946, 5.38508326862477]
+serial:
+  device: ""
+  baud: 115200
+control:
+  socket: /run/auv-runtime/control.sock
+operation:
+  # debug requires explicit auvctl commands. autonomous starts without an operator.
+  mode: debug
+  auto_origin: true
+  auto_start: false
+  auto_arm: false
+  startup_delay_sec: 5.0
+  startup_timeout_sec: 30.0
+  startup_stable_sec: 1.0
+vision:
+  expected_cones: 4
+  single_yellow_edge: true
+  white_grid_edges: true
+  white_s_max: 60
+  white_v_min: 150
+  yellow_oriented_frames: 3
+  grid_dark_value_max: 95
+  yellow_edge_minimum_support: 0.45
+  yellow_edge_margin: 0.20
+  apriltag_ids: [18]
+  apriltag_stable_frames: 3
+  apriltag_family: tag16h5
+  grid_stable_frames: 3
+  cone_minimum_confidence: 0.72
+  cone_history_size: 5
+  cone_required_votes: 3
+  cone_clear_votes: 3
+planning:
+  maximum_targets: 8
+  target_object_types: [circle_cone, square_cone]
+  blocked_object_types: [obstacle, forbidden]
+mission:
+  profile: tag_docking
+  self_check_timeout_sec: 10.0
+  apriltag_timeout_sec: 30.0
+  map_timeout_sec: 30.0
+  planning_timeout_sec: 10.0
+  cone_visit_timeout_sec: 120.0
+  cucumber_search_timeout_sec: 60.0
+  cucumber_align_timeout_sec: 30.0
+  gripper_timeout_sec: 15.0
+  transport_timeout_sec: 120.0
+  valve_search_timeout_sec: 60.0
+  valve_align_timeout_sec: 30.0
+  valve_rotate_timeout_sec: 30.0
+  return_home_timeout_sec: 120.0
+  surface_timeout_sec: 60.0
+safety:
+  status_timeout_sec: 0.5
+  frame_timeout_sec: 0.5
+  pose_timeout_sec: 0.5
+  control_watchdog_timeout_sec: 0.25
+  actuator_status_timeout_sec: 0.5
+motion:
+  motion_commands_enabled: false
+  directions_calibrated: false
+  limits_calibrated: false
+  surge_from_row: 0.0
+  surge_from_col: 0.0
+  sway_from_row: 0.0
+  sway_from_col: 0.0
+  maximum_speed: 0.1
+  arrival_tolerance: 0.15
+  arrival_stable_ticks: 5
+logging:
+  events: /var/log/auv-runtime/events.ndjson
+  debug_dir: /var/log/auv-runtime/debug
+  max_event_bytes: 10485760
+video:
+  enabled: false
+  directory: /run/auv-runtime/hls
+  encoder: h264_v4l2m2m
+  software_fallback_enabled: false
+  width: 640
+  height: 240
+  fps: 30
+  bitrate_kbps: 2000
+  segment_time_sec: 0.5
+web:
+  enabled: false
+  bind: 192.168.137.201
+  port: 8080
+  assets: /usr/local/share/auv-runtime/web
+
+# Independent read-only plane odometry. Do not mark verified until underwater calibration.
+localization:
+  enabled: true
+  hz: 10
+  telemetry_file: /run/auv-rov/localization-input.json
+  width: 320
+  height: 240
+  camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
+  distortion: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
+  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_offset_m: []  # camera position relative to body origin
+  depth_offset_m: []  # pressure sensor position relative to body origin
+  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
+  imu_offsets_deg: []
+  pool_depth_m: 0
+  depth_zero_m: 0
+  calibration_verified: false
+
+# Onboard recording starts at process launch; no PC streaming client is needed.
+recording:
+  enabled: true
+  required_for_motion: true
+  directory: /var/log/auv-runtime/runs
+  segment_sec: 60
+  minimum_free_bytes: 268435456
+
+# Fill safe relative-origin corridors from real pool measurements. No default patrol.
+observation_search:
+  enabled: false
+  corridor_calibrated: false
+  maximum_radius_m: 0
+  waypoints_m: []
+  maximum_speed: 0.1
+  position_gain: 0.4
+  arrival_tolerance_m: 0.1
+  arrival_stable_sec: 0.5
+  pose_timeout_sec: 0.3
+  waypoint_timeout_sec: 20
+  depth_target_m: 0
+  yaw_relative_rad: 0
+
+release:
+  git_commit: UNVERIFIED
+  firmware_hex_sha256: UNVERIFIED
+  calibration_id: UNVERIFIED
+  model_sha256: not_used_tag_docking
+
+# 三个深度必须实测确认后填写：较深点、较浅点、作业深度。
+# 1.2 m 是允许上限，不是池深，也不直接设为下潜目标。
+tag_docking:
+  id: 18
+  size_m: 0.138
+  stable_frames: 3
+  minimum_depth_m: 0.1
+  maximum_depth_m: 1.2
+  depth_targets_m: [0.8, 0.6, 0.7]
+  depth_rate_mps: 0.03
+  depth_tolerance_m: 0.03
+  depth_hold_sec: 2
+  depth_stage_timeout_sec: 30
+  maximum_target: 0.08 # 协议归一化平移目标，不能解释为 m/s
+  down_maximum_target: 0.04
+  hover_maximum_target: 0.03
+  maximum_target_change_per_sec: 0.08 # 归一化目标向量每秒变化上限；丢失/故障立即清零
+  hover_resume_error_px: 15 # 10 px 内停止修正，超过 15 px 才重新纠偏
+  minimum_tag_edge_px: 8
+  tag_border_margin_px: 3
+  position_gain: 0.3
+  maximum_radius_m: 0 # 实测无障碍的局部直线接近范围
+  task_timeout_sec: 90
+  tag_loss_timeout_sec: 2
+  observation_timeout_sec: 0.3
+  maximum_reprojection_px: 2
+  center_tolerance_px: 10
+  center_hold_sec: 2
+  maximum_tilt_rad: 0.15
+  geometry_verified: false
+  corridor_verified: false
+  depth_verified: false
+  front_camera_to_body: []
+  front_camera_offset_m: []
+  down_camera_to_body: []
+  down_camera_offset_m: []

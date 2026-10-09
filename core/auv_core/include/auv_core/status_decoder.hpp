@@ -7,6 +7,7 @@ namespace auv_core {
 struct Stm32Status {
   std::uint32_t sequence{};
   bool armed{};
+  bool dual_mode{}, autonomous_mode{};
   bool telemetry_valid{};
   bool voltage_valid{};
   std::uint32_t error_flags{};

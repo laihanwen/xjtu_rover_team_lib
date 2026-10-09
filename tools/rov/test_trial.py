@@ -8,6 +8,15 @@ from trial_server import run, LevelCheck
 
 
 class TrialTests(unittest.TestCase):
+    def test_dual_mode_status_compatibility(self):
+        from trial_protocol import decode_status
+        payload=bytearray(46);payload[29]=8
+        self.assertEqual(decode_status(payload)['operating_mode'],'fixed_profile')
+        payload[4]=16
+        self.assertEqual(decode_status(payload)['operating_mode'],'rov')
+        payload[4]=48
+        self.assertEqual(decode_status(payload)['operating_mode'],'auv')
+
     def test_manual_calibration_bridge_waits_for_ack_and_never_arms(self):
         self.check_level_action(True)
 

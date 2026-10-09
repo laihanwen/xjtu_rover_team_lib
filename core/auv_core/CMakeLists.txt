@@ -75,6 +75,9 @@ endif()
 
 
 if(BUILD_TESTING)
+  add_executable(test_status_mode test/test_status_mode.cpp)
+  target_link_libraries(test_status_mode PRIVATE auv_core)
+  add_test(NAME status_mode_compatibility COMMAND test_status_mode)
   add_executable(test_white_edge_grid ../auv_mapping/test/test_white_edge_grid.cpp)
   target_link_libraries(test_white_edge_grid PRIVATE auv_core)
   add_test(NAME white_edge_grid_regression COMMAND test_white_edge_grid)

@@ -44,6 +44,8 @@
 /firmware/stm32/.cproject
 /firmware/stm32/MDK-ARM/Copy_cup/
 /firmware/stm32/MDK-ARM/AUV_A0/
+/firmware/stm32/MDK-ARM/AUV_TAG_DOCK/
+/firmware/stm32/MDK-ARM/RTE/_AUV_TAG_DOCK/
 /firmware/stm32/MDK-ARM/*.generated.uvprojx
 /firmware/stm32/MDK-ARM/Copy_cup_auv.uvprojx
 /firmware/stm32/MDK-ARM/*.uvguix.*
@@ -97,3 +99,6 @@ firmware/stm32/MDK-ARM/RTE/_AUV_A0/
 /legacy/ros2/build/
 /legacy/ros2/install/
 /legacy/ros2/log/
+
+/firmware/stm32/MDK-ARM/AUV_ROV_DUAL/
+/firmware/stm32/MDK-ARM/RTE/_AUV_ROV_DUAL/

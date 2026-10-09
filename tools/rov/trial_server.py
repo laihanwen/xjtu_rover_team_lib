@@ -142,7 +142,7 @@ def run(uart, server, localization=None):
                                 if not level_check and not level_ack and action is not None:
                                     detail = '停止；需重新点击ARM'
                             elif action == 'arm':
-                                if level_check or level_ack or not telemetry.get('level_calibrated') or not centered(frame) or now-telemetry_ms > .3 or telemetry.get('roll_deg') is None:
+                                if telemetry.get('operating_mode') == 'auv' or level_check or level_ack or not telemetry.get('level_calibrated') or not centered(frame) or now-telemetry_ms > .3 or telemetry.get('roll_deg') is None:
                                     detail = '拒绝ARM：摇杆未回中或遥测/IMU无效'
                                 elif not telemetry.get('armed'):
                                     arm_pending = now

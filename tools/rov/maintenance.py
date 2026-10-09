@@ -20,7 +20,7 @@ def flash(args, output):
     from pyocd.flash.file_programmer import FileProgrammer
     from pyocd.flash.flash import Flash
     from pyocd.target.pack.flash_algo import PackFlashAlgo
-    image_path = ROOT / 'firmware/stm32/MDK-ARM/Copy_cup/Copy_cup.hex'
+    image_path = Path(args.hex).resolve() if args.hex else ROOT / 'firmware/stm32/MDK-ARM/Copy_cup/Copy_cup.hex'
     image = IntelHex(str(image_path))
     segments = image.segments()
     if not segments or not all(0x08000000 <= a < b <= 0x08008000 for a, b in segments):
@@ -129,9 +129,13 @@ def pi(args, output, deploy=False):
         if deploy:
             archive = output / 'source.tar.gz'
             with tarfile.open(archive, 'w:gz') as tar:
-                paths = ['CMakeLists.txt', 'core', 'runtime', 'tools/rov']
+                paths = ['CMakeLists.txt', 'core', 'runtime', 'tools/rov', 'docs/calibration']
                 def exclude(info):
-                    return None if '__pycache__' in Path(info.name).parts or info.name.endswith('.pyc') else info
+                    if '__pycache__' in Path(info.name).parts or info.name.endswith('.pyc'):
+                        return None
+                    # Do not make Ninja inputs appear in the future on a Pi with clock skew.
+                    info.mtime = 0
+                    return info
                 for path in paths:
                     tar.add(ROOT / path, arcname=path, filter=exclude)
             directory = '/tmp/auv-maintenance-' + output.name
@@ -147,11 +151,22 @@ def pi(args, output, deploy=False):
             if args.apply_pi_profile:
                 command += ' --apply-pi-profile'
             remote(client, command, output / 'deploy.log', password, elevated=True)
+        health_check = """import json,time,urllib.request
+deadline=time.monotonic()+30
+while True:
+    try:
+        with urllib.request.urlopen('http://192.168.137.150:8080/api/status',timeout=5) as response:
+            status=json.load(response)
+        print(json.dumps(status))
+        break
+    except (OSError, ValueError):
+        if time.monotonic()>=deadline:
+            raise
+        time.sleep(0.5)
+"""
         remote(client, "systemctl is-active auv-runtime auv-rov && "
                "systemctl show auv-runtime auv-rov -p ExecStart -p ActiveEnterTimestamp && "
-               "python3 -c \"import json,urllib.request; "
-               "d=json.load(urllib.request.urlopen('http://192.168.137.150:8080/api/status',timeout=5)); "
-               "print(json.dumps(d))\"", output / 'check.log')
+               "python3 -c " + shlex.quote(health_check), output / 'check.log')
     finally:
         client.close()
 
@@ -164,6 +179,7 @@ def main():
     parser.add_argument('--host', default='192.168.137.150')
     parser.add_argument('--user', default='pi')
     parser.add_argument('--apply-pi-profile', action='store_true')
+    parser.add_argument('--hex', help='Explicit firmware HEX; default is the established ROV image')
     args = parser.parse_args()
     output = ROOT / 'build/maintenance' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     output.mkdir(parents=True)

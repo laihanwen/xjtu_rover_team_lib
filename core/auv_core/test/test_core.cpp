@@ -13,6 +13,12 @@ int main() {
   auv_core::Stm32Status status;
   require(auv_core::decode_status(bytes,status));
   require(status.voltage == 12.0F && !status.armed && status.telemetry_valid);
+  require(!status.dual_mode && !status.autonomous_mode);
+  bytes[4]=16;
+  require(auv_core::decode_status(bytes,status) && status.dual_mode && !status.autonomous_mode);
+  bytes[4]=48;
+  require(auv_core::decode_status(bytes,status) && status.dual_mode && status.autonomous_mode);
+  bytes[4]=0;
   bytes[29] = 9;
   require(!auv_core::decode_status(bytes,status));
   bytes[29] = 0;

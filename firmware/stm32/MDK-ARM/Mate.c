@@ -56,7 +56,7 @@ static volatile float last_thruster_outputs[VECTOR_THRUSTER_COUNT];
 static uint8_t roll_correction_active, pitch_correction_active;
 static AuvWaterRate pitch_rate, yaw_rate;
 static uint8_t heading_hold_active;
-#if AUV_ROV_MANUAL_TRIAL
+#if AUV_HAS_ROV
 static uint8_t heading_locked;
 #endif
 static MatePidSnapshot pid_snapshot;
@@ -288,9 +288,8 @@ void Mate_Task(void)
     imu_fresh = (imu_sample_sequence != 0U &&
         (uint32_t)(HAL_GetTick() - imu_last_sample_ms) <= 250U) ? 1U : 0U;
     __set_PRIMASK(control_mask);
-#if AUV_AUTONOMOUS_PROFILE
-    rc_fresh = 0U; /* Autonomous intervals never select an RC source. */
-#endif
+    if(AUV_MODE_IS_AUV) rc_fresh=0U;
+    if(AUV_MODE_IS_ROV) pi_fresh=0U;
 
     /*
      * Lock one command source for the complete armed interval.  A missing
@@ -313,9 +312,9 @@ void Mate_Task(void)
     }
 
     /* Only explicit high-speed RC selection raises the manual ceiling. */
-#if AUV_ROV_MANUAL_TRIAL
-    MOTOR_COMMAND_LIMIT = (rc_fresh && rc_frame[6] == 2U)
-        ? AUV_ROV_HIGH_PWM_LIMIT : AUV_ROV_TRIAL_PWM_LIMIT;
+#if AUV_HAS_ROV
+    MOTOR_COMMAND_LIMIT = AUV_MODE_IS_AUV ? AUV_AUTONOMY_PWM_LIMIT :
+        ((rc_fresh && rc_frame[6] == 2U) ? AUV_ROV_HIGH_PWM_LIMIT : AUV_ROV_TRIAL_PWM_LIMIT);
 #endif
     // ===== 1. 遥控器先形成六维动力层指令，不在此处进行电机分配 =====
     VectorWrenchCommand rc_wrench;
@@ -342,23 +341,21 @@ void Mate_Task(void)
 #endif
 
 
-    // ===== 2. RcData[8]控制YAW PID，上升沿锁定当前航向 =====
-#if AUV_AUTONOMOUS_PROFILE
-    heading_hold_active = (uint8_t)(pi_fresh && imu_fresh && AuvSafety_IsArmed());
-    yaw_target = pi_fresh ? pi_target.yaw * 57.29577951308232f : control_angle.yaw;
-    if (!AuvSafety_IsArmed() || !imu_fresh) {
-        pitch_rate.ready=yaw_rate.ready=0;
-    } else {
-        AuvWater_Rate(&pitch_rate,control_angle.pit,control_imu_ms,control_imu_sequence);
-        AuvWater_Rate(&yaw_rate,control_angle.yaw,control_imu_ms,control_imu_sequence);
+    // Runtime mode changes are only accepted while DISARM.
+#if AUV_PROVEN_ATTITUDE_CONTROL
+    if(AUV_MODE_IS_AUV) {
+        heading_hold_active=(uint8_t)(pi_fresh && imu_fresh && AuvSafety_IsArmed());
+        yaw_target=pi_fresh ? pi_target.yaw*57.29577951308232f : control_angle.yaw;
     }
-#elif AUV_ROV_MANUAL_TRIAL
-    heading_hold_active=AuvWater_Heading(control_angle.yaw,
-        (uint8_t)(AUV_ROV_AUTO_HOLD_ENABLED && AuvSafety_IsArmed() && imu_fresh && rc_fresh),
-        (uint8_t)(MyRCKey[1] || MyRCKey[2]),&heading_locked,&yaw_target);
-    if(!AuvSafety_IsArmed() || !imu_fresh) {
-        pitch_rate.ready=yaw_rate.ready=0;
-    } else {
+#if AUV_HAS_ROV
+    else {
+        heading_hold_active=AuvWater_Heading(control_angle.yaw,
+            (uint8_t)(AUV_ROV_AUTO_HOLD_ENABLED && AuvSafety_IsArmed() && imu_fresh && rc_fresh),
+            (uint8_t)(MyRCKey[1] || MyRCKey[2]),&heading_locked,&yaw_target);
+    }
+#endif
+    if(!AuvSafety_IsArmed() || !imu_fresh) pitch_rate.ready=yaw_rate.ready=0;
+    else {
         AuvWater_Rate(&pitch_rate,control_angle.pit,control_imu_ms,control_imu_sequence);
         AuvWater_Rate(&yaw_rate,control_angle.yaw,control_imu_ms,control_imu_sequence);
     }

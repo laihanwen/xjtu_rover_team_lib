@@ -14,6 +14,7 @@ from video_recorder import DatasetRecorder
 from telemetry_log import TelemetryLog
 
 WEB_DIR = Path(__file__).with_name('web')
+DASHBOARD_DIR = Path(__file__).resolve().parents[2] / 'runtime/web/dashboard'
 HTML = (WEB_DIR / 'console.html').read_text(encoding='utf-8')
 
 
@@ -75,6 +76,18 @@ def main():
             self.send_response(code);self.send_header('Content-Type','text/html; charset=utf-8' if html else 'application/json; charset=utf-8')
             self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         def do_GET(self):
+            if self.path == '/dashboard':
+                self.send_response(302);self.send_header('Location','/dashboard/');self.end_headers();return
+            if self.path == '/dashboard/config':
+                return self.reply({'demo':False,'source':'rov','camera_base':camera_base})
+            dashboard_assets={'/dashboard/':('index.html','text/html'),
+                '/dashboard/dashboard.css':('dashboard.css','text/css'),
+                '/dashboard/dashboard.js':('dashboard.js','text/javascript'),
+                '/dashboard/recording.js':('recording.js','text/javascript')}
+            if self.path in dashboard_assets:
+                name,mime=dashboard_assets[self.path];body=(DASHBOARD_DIR/name).read_bytes()
+                self.send_response(200);self.send_header('Content-Type',mime+'; charset=utf-8')
+                self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if self.path=='/':return self.reply(HTML,html=True)
             if self.path=='/console-config':return self.reply({'camera_base':f'http://{args.host}:{args.camera_port}'})
             assets={'/console.css':('console.css','text/css'),'/console.js':('console.js','text/javascript')}
@@ -193,7 +206,7 @@ def main():
                     telemetry=state['telemetry']
                     state.update(connected=True,error='',axes=axes,deadman=deadman,centered=centered(frame),device=controller.device.get_name(),hold_switches=hold_switches,
                                  detail='手柄与树莓派已连接；'+('已使能' if telemetry.get('armed') else '未 ARM'))
-                    state['can_arm']=bool(deadman and centered(frame) and now-last_reply<.2 and state.get('telemetry_age',999)<.3 and telemetry.get('roll_deg') is not None and telemetry.get('level_calibrated') and not state.get('level_pending') and not telemetry.get('armed'))
+                    state['can_arm']=bool(telemetry.get('operating_mode')!='auv' and deadman and centered(frame) and now-last_reply<.2 and state.get('telemetry_age',999)<.3 and telemetry.get('roll_deg') is not None and telemetry.get('level_calibrated') and not state.get('level_pending') and not telemetry.get('armed'))
                 time.sleep(.04)
             except (OSError,ValueError,KeyError,TypeError) as error:
                 if conn:conn.close()

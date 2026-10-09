@@ -37,6 +37,7 @@ CRC 使用 **CRC-16/CCITT-FALSE**：poly `0x1021`、init `0xFFFF`、refin/refout
 | `0x02` | SET_ARMED | Pi → STM32 | 5 |
 | `0x03` | MOTION_TARGET | Pi → STM32 | 20 |
 | `0x04` | ACTUATOR_COMMAND | Pi → STM32 | 9 |
+| `0x09` | SELECT_MODE（双模式固件） | Pi → STM32 | 5 |
 | `0x05` | RC_TARGET | Pi → STM32 | 16 |
 | `0x06` | REMOTE_KILL | Pi → STM32 | 1 |
 | `0x07` | Commissioning pulse（默认禁用） | Pi → STM32 | 7 |
@@ -211,3 +212,11 @@ Payload offset0为uint32 sequence，offset4为uint8显式岸上确认（必须1�
 ### 2026-10-07 PID diagnostic state extension
 
 Type 0x84 now uses 64 payload bytes; the first 61 bytes remain unchanged. Byte 61 is heading state, byte 62 depth state: 0 disabled, 1 disarmed, 2 RC stale, 3 sensor invalid/stale, 4 manual override, 5 locked. Byte 63 is the priority mixer's motion scale quantized to 0..255 (divide by 255). This measures reduction during priority combination only, not earlier motion normalization, subsequent ESC deadband compensation, or measured thrust. PC decoder accepts 49/61/64-byte variants; old firmware has no authoritative state reason.
+
+## 双模式扩展（2026-10-09）
+
+SELECT_MODE `0x09`：5 字节，偏移 0 为 uint32 sequence，偏移 4 为 uint8 mode（0 ROV、1 AUV）。使用现有 CRC 与 ACK；ARM 时返回 UNSAFE，未知模式/非递增序号返回 MALFORMED，固定固件返回 UNSUPPORTED。成功不 ARM，清空旧控制缓存，200 ms 内禁止重新 ARM。切换事务需先确认 DISARM/中立，再确认 ACK 和新 STATUS 模式。
+
+STATUS 长度不变：state_flags bit4 表示支持双模式，bit5 表示当前 AUV（只有 bit4 为 1 才有模式语义；bit5 为 0 表示 ROV）。上电 ROV/DISARM。旧固件没有 bit4，解码为 fixed_profile，不能推断实际固定配置。
+
+双模式 DEPTH 始终采用已有 17 字节格式（序号、深度、有效位、真实传感器序号、样本年龄），原 ROV 解码器兼容扩展。ROV 和 AUV 深度零点语义不同，切换时使旧样本失效。

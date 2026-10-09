@@ -93,6 +93,8 @@ def decode_status(payload):
         return value * (180/math.pi if degrees else 1) if math.isfinite(value) else None
     return {'sequence': struct.unpack_from('<I',payload)[0],
             'level_calibrated': bool(payload[4] & 8),
+            'dual_mode': bool(payload[4] & 16),
+            'operating_mode': ('auv' if payload[4] & 32 else 'rov') if payload[4] & 16 else 'fixed_profile',
             'armed': bool(payload[4] & 1), 'failsafe': bool(payload[4] & 4),
             'error_flags': struct.unpack_from('<I', payload, 5)[0],
             'depth_m': number(13), 'roll_deg': number(17, True),
