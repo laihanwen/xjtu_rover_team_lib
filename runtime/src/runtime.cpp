@@ -366,6 +366,19 @@ class Runtime {
       static_cast<double>(cfg_.front_fps),"MJPG",cfg_.front_source.rfind("file:",0)==0});
     CameraRectifier preview(cfg_.front_preview_rectify,cfg_.front_calibration_width,
         cfg_.front_calibration_height,cfg_.front_camera_matrix,cfg_.front_distortion);
+    // Front metric rectifiers feed grid mapping + absolute pose when
+    // metric_camera_front. Independent of the preview rectifier so metric output
+    // does not depend on front_preview_rectify. Water/air models share the front
+    // capture resolution; K/D come from front_metric, distinct from the preview
+    // front_camera_matrix (a future optimization could reuse the preview frame
+    // only if the two calibrations are proven identical).
+    const bool metric_front=cfg_.traversal.enabled && cfg_.traversal.metric_camera_front;
+    CameraRectifier metric_underwater(metric_front,cfg_.traversal.front_underwater.width,
+        cfg_.traversal.front_underwater.height,cfg_.traversal.front_underwater.camera_matrix,
+        cfg_.traversal.front_underwater.distortion);
+    CameraRectifier metric_surface(metric_front,cfg_.traversal.front_surface.width,
+        cfg_.traversal.front_surface.height,cfg_.traversal.front_surface.camera_matrix,
+        cfg_.traversal.front_surface.distortion);
     while (running) {
       try {
         if (csi && !capture.is_open()) {
@@ -385,6 +398,13 @@ class Runtime {
         last_ready=stamp;
         received=true;
         cv::Mat display=preview.apply(image);
+        cv::Mat metric;
+        bool metric_surface_frame=false;
+        if(metric_front) {
+          {std::lock_guard<std::mutex> lock(state_mutex_);
+           metric_surface_frame=surface_grid_phase(mission_.snapshot().phase);}
+          metric=metric_surface_frame?metric_surface.apply(image):metric_underwater.apply(image);
+        }
         std::vector<std::uint8_t> raw_jpeg;
         if(cfg_.recording_enabled && cfg_.front_preview_rectify) {
           if(csi)raw_jpeg=jpeg;
@@ -397,7 +417,8 @@ class Runtime {
         { std::lock_guard<std::mutex> lock(front_mutex_);
           if(cfg_.recording_enabled)front_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
           front_preview_frame_=display;
-          front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; ++front_sequence_; }
+          front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; ++front_sequence_;
+          front_rectified_frame_=metric; front_surface_frame_=metric_surface_frame; }
         { std::lock_guard<std::mutex> lock(state_mutex_);
           ++front_frames_; front_detail_.clear();
           if (previous>0 && stamp>previous) front_hz_=front_hz_<=0 ? 1.0/(stamp-previous) :
@@ -618,13 +639,28 @@ class Runtime {
         cfg_.camera_height,cfg_.camera_matrix,cfg_.distortion);
     CameraRectifier surface(cfg_.traversal.enabled,cfg_.traversal.surface.width,
         cfg_.traversal.surface.height,cfg_.traversal.surface.camera_matrix,cfg_.traversal.surface.distortion);
-    std::uint64_t seen = 0;
+    // Front metric rectifiers mirror the down pair; front_loop rectifies at
+    // capture time, so these only run on surface/underwater phase transitions.
+    const bool metric_front=cfg_.traversal.enabled && cfg_.traversal.metric_camera_front;
+    CameraRectifier front_underwater(metric_front,cfg_.traversal.front_underwater.width,
+        cfg_.traversal.front_underwater.height,cfg_.traversal.front_underwater.camera_matrix,
+        cfg_.traversal.front_underwater.distortion);
+    CameraRectifier front_surface(metric_front,cfg_.traversal.front_surface.width,
+        cfg_.traversal.front_surface.height,cfg_.traversal.front_surface.camera_matrix,
+        cfg_.traversal.front_surface.distortion);
+    std::uint64_t seen = 0, front_seen = 0;
     std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false;
     while (running) {
       cv::Mat image,cached; double stamp = 0;bool cached_surface=false;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
         if (seen != frame_sequence_) { seen = frame_sequence_; image = frame_;cached=down_rectified_frame_;
           cached_surface=down_surface_frame_;stamp = frame_time_; } }
+      cv::Mat front_image,front_cached;double front_stamp=0;bool front_cached_surface=false;
+      if(metric_front) {
+        { std::lock_guard<std::mutex> lock(front_mutex_);
+          if (front_seen != front_sequence_) { front_seen = front_sequence_; front_image = front_frame_;
+            front_cached=front_rectified_frame_;front_cached_surface=front_surface_frame_;front_stamp=front_time_; } }
+      }
       if (image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
@@ -637,6 +673,15 @@ class Runtime {
       // Reuse capture correction, except when a mission transition changed the model.
       if(!cached.empty() && cached_surface==surface_phase)image=cached;
       else image=surface_phase?surface.apply(image):underwater.apply(image);
+      // Grid mapping + metric pose use the front camera in front-metric mode;
+      // the AprilTag trigger below always stays on the down camera.
+      cv::Mat metric_image;double metric_stamp=stamp;std::uint64_t metric_seq=seen;
+      if(metric_front) {
+        if(front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+        if(!front_cached.empty() && front_cached_surface==surface_phase)metric_image=front_cached;
+        else metric_image=surface_phase?front_surface.apply(front_image):front_underwater.apply(front_image);
+        metric_stamp=front_stamp;metric_seq=front_seen;
+      } else metric_image=image;
       const auto found = tags.detect(image);
       if(phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
         const auto eligible=std::find_if(found.begin(),found.end(),[this](const auto& tag){
@@ -655,13 +700,15 @@ class Runtime {
           mapper.reset();tracker.reset();
         }
       }
-      const auto grid = mapper.process(image);
+      const auto grid = mapper.process(metric_image);
       auv_mapping::MetricGridPose metric;
       if(cfg_.traversal.enabled) {
         double depth=-1;
         {std::lock_guard<std::mutex> lock(state_mutex_);if(depth_sample_fresh(seconds()))depth=depth_sample_.depth_m;}
-        metric=auv_mapping::metric_grid_pose(grid,surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater,
-          image.size(),depth,stamp,seen);
+        metric=auv_mapping::metric_grid_pose(grid,
+          metric_front ? (surface_phase?cfg_.traversal.front_surface:cfg_.traversal.front_underwater)
+                       : (surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater),
+          metric_image.size(),depth,metric_stamp,metric_seq);
         metric.surface_frame=surface_phase;
       }
       std::vector<auv_vision::ConeObservation> cones;
@@ -691,7 +738,7 @@ class Runtime {
         try {
           std::filesystem::create_directories(cfg_.debug_dir);
           const auto filename=cfg_.debug_dir+"/map_"+std::to_string(static_cast<std::uint64_t>(seconds()*1000))+".jpg";
-          if (!cv::imwrite(filename,grid.debug_image.empty() ? image : grid.debug_image))
+          if (!cv::imwrite(filename,grid.debug_image.empty() ? metric_image : grid.debug_image))
             throw std::runtime_error("cannot save grid evidence");
           if(!cv::imwrite(filename+".rectified.jpg",grid.rectified) ||
              (!cone_debug.empty() && !cv::imwrite(filename+".cones.jpg",cone_debug)))
@@ -717,7 +764,7 @@ class Runtime {
       }
       {
         std::lock_guard<std::mutex> lock(video_mutex_);
-        video_frame_ = grid.debug_image.empty() ? image : grid.debug_image;
+        video_frame_ = grid.debug_image.empty() ? metric_image : grid.debug_image;
         ++video_sequence_;
       }
       std::lock_guard<std::mutex> lock(state_mutex_);
@@ -725,7 +772,7 @@ class Runtime {
       if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
-      row_ = grid.camera_row; col_ = grid.camera_col; pose_time_ = stamp;
+      row_ = grid.camera_row; col_ = grid.camera_col; pose_time_ = metric_stamp;
       const double finished=seconds();
       if (processed_time_ > 0 && finished > processed_time_)
         vision_hz_=vision_hz_ <= 0 ? 1.0/(finished-processed_time_) :
@@ -1637,8 +1684,9 @@ class Runtime {
   std::atomic<int> mjpeg_clients_{0};
   std::vector<std::uint8_t> down_jpeg_,front_jpeg_,down_raw_jpeg_,front_raw_jpeg_;
   std::mutex front_mutex_;
-  cv::Mat front_frame_,down_preview_frame_,front_preview_frame_,down_rectified_frame_;
+  cv::Mat front_frame_,down_preview_frame_,front_preview_frame_,down_rectified_frame_,front_rectified_frame_;
   bool down_surface_frame_{}; // guarded by frame_mutex_
+  bool front_surface_frame_{}; // guarded by front_mutex_
   std::atomic<double> front_time_{0};
   std::atomic<std::uint64_t> down_capture_frames_{0};
   std::uint64_t front_frames_{};

@@ -202,3 +202,27 @@ surface_traversal:
   height: 480
   camera_matrix: [] # independently verified surface intrinsics
   distortion_coefficients: []
+
+# 前视度量建图/定位：让前视相机承担九宫格建图与绝对定位（取代下视在
+# BUILD_MAP / 表面重定位 / 遍历中的绝对位姿角色）。当前只加配置与校验，
+# metric_camera_front 尚未被 runtime 消费；verified 保持 false 期间
+# metric_grid_pose 只返回 "metric calibration unverified"，不产生位姿。
+# 仅当 surface_traversal.enabled 同时为 true 时生效并参与校验。
+# camera_to_body 为固定前视俯角 θ0 的 9 值行主序旋转，待实测后填写。
+front_metric:
+  enabled: false
+  underwater:
+    verified: false
+    width: 320
+    height: 240
+    camera_matrix: []
+    distortion_coefficients: []
+  surface:
+    verified: false
+    width: 320
+    height: 240
+    camera_matrix: []
+    distortion_coefficients: []
+  camera_to_body: []   # 固定俯角 θ0，9 值行主序旋转；先按 30° 俯角假设，未实测，勿硬编码旋转矩阵
+  camera_offset_m: []  # 前视相机相对机体原点的 3 值偏移
+  depth_offset_m: []   # 压力传感器相对机体原点偏移（与 localization 一致）

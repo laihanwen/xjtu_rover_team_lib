@@ -9,7 +9,11 @@
 int main(int argc,char** argv) {
   try {
     if(argc!=5){std::cerr<<"usage: auv_surface_replay CONFIG SEGMENT.mjpg SEGMENT.frames.jsonl OUTPUT.jsonl\n";return 2;}
-    auto cfg=load_config(argv[1]);const auto& c=cfg.traversal.surface;
+    auto cfg=load_config(argv[1]);
+    // Front camera carries grid mapping + absolute pose when metric_camera_front;
+    // mirror the runtime selection so offline surface replay analyzes the same
+    // camera. Mission `enabled` is not gated here: this tool only localizes.
+    const auto& c=cfg.traversal.metric_camera_front?cfg.traversal.front_surface:cfg.traversal.surface;
     if(!c.verified)throw std::runtime_error("independent surface calibration required");c.validate();
     for(int i:{1,2,3})if(std::filesystem::weakly_canonical(argv[i])==std::filesystem::weakly_canonical(argv[4]))
       throw std::runtime_error("output must not overwrite replay input");

@@ -12,6 +12,8 @@ A2 入口为 `config/pi-auv-task-one.yaml`：建图后限速上浮、独立表�
 
 A0/A1 新增独立观测入口 `config/pi-auv-observation.yaml`：安全启动、相对原点主动搜索、标签触发单黄色边建图与机载记录。构建、配置和实机标定见 [A0/A1交付说明](../docs/auv-a0-a1-implementation.md)。
 
+`tag_docking` 独立接近任务入口 `config/pi-auv-tag-docking.yaml`：池底 AprilTag 标签悬停（深度测试 → 前视接近 → 下视居中 → 悬停），复用轻量 Runtime 与双摄，不进入九宫格建图或完整比赛状态机。流程、验证与已知测试失败见 [标签接近测试说明](../docs/auv-tag-docking-test.md)。
+
 当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
 
 这个 C++ 进程是当前自动控制主入口，使用 `core/` 中的原生 `auv_core`，不依赖 ROS。ROS 相关功能因性能与设计问题暂时弃用，见 [迁移说明](../docs/lightweight-transition.md)。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。

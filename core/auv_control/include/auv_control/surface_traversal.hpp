@@ -21,6 +21,11 @@ struct SurfaceTraversalConfig {
   double arrival_stable_sec{0.3},entry_margin_cells{0.05},boundary_clearance_m{0};
   double corridor_tolerance_cells{0.2},pose_jump_tolerance_m{0.05},waypoint_timeout_sec{20};
   auv_mapping::MetricGridCalibration underwater,surface;
+  // Front camera can carry grid mapping + metric localization instead of the
+  // down camera. camera_to_body is the fixed tilt angle rotation, left as a
+  // configurable parameter until measured; verified gates keep it inert.
+  bool metric_camera_front{false};
+  auv_mapping::MetricGridCalibration front_underwater,front_surface;
   void validate() const {
     for(double x:{ascent_tolerance_cells,surface_depth_m,depth_tolerance_m,ascent_rate_mps,surface_stable_sec,
       reacquire_timeout_sec,pose_timeout_sec,maximum_speed,gain,arrival_tolerance_cells,arrival_stable_sec,
@@ -28,7 +33,7 @@ struct SurfaceTraversalConfig {
       center_approach_radius_cells,center_stable_sec,center_timeout_sec})
       if(!std::isfinite(x))throw std::invalid_argument("nonfinite A2 setting");
     if(!enabled)return;
-    underwater.validate();surface.validate();
+    underwater.validate();surface.validate();front_underwater.validate();front_surface.validate();
     if(!ascent_verified||!surface_verified||!center_approach_verified||!underwater.verified||!surface.verified||
       center_approach_radius_cells<=0||center_approach_radius_cells>0.4||
       center_approach_radius_cells>0.5-boundary_clearance_m/surface.cell_size_m+1e-6||
@@ -45,6 +50,8 @@ struct SurfaceTraversalConfig {
       std::abs(underwater.cell_size_m-surface.cell_size_m)>1e-6||
       std::abs(underwater.pool_depth_m-surface.pool_depth_m)>1e-6)
       throw std::invalid_argument("A2 requires measured ascent clearance, independent surface calibration and safe limits");
+    if(metric_camera_front && (!front_underwater.verified||!front_surface.verified))
+      throw std::invalid_argument("A2 front metric camera requires verified underwater and surface front calibration");
   }
 };
 

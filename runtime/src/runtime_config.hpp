@@ -157,6 +157,33 @@ static Config load_config(const std::string& path) {
     a.surface.camera_matrix=t["camera_matrix"].as<std::vector<double>>(std::vector<double>{});
     a.surface.distortion=t["distortion_coefficients"].as<std::vector<double>>(std::vector<double>{});
   }
+  if(const auto f=y["front_metric"]) {
+    auto& a=c.traversal;
+    // Front camera may carry grid mapping + metric localization. Cell size and
+    // pool depth are shared with the down calibration: grid and pool are the
+    // same physical objects, never re-declared per camera.
+    a.metric_camera_front=f["enabled"].as<bool>(false);
+    a.front_underwater=a.underwater;
+    a.front_surface=a.surface;
+    a.front_underwater.verified=f["underwater"]["verified"].as<bool>(false);
+    a.front_surface.verified=f["surface"]["verified"].as<bool>(false);
+    a.front_underwater.width=f["underwater"]["width"].as<int>(0);
+    a.front_underwater.height=f["underwater"]["height"].as<int>(0);
+    a.front_underwater.camera_matrix=f["underwater"]["camera_matrix"].as<std::vector<double>>(std::vector<double>{});
+    a.front_underwater.distortion=f["underwater"]["distortion_coefficients"].as<std::vector<double>>(std::vector<double>{});
+    a.front_surface.width=f["surface"]["width"].as<int>(0);
+    a.front_surface.height=f["surface"]["height"].as<int>(0);
+    a.front_surface.camera_matrix=f["surface"]["camera_matrix"].as<std::vector<double>>(std::vector<double>{});
+    a.front_surface.distortion=f["surface"]["distortion_coefficients"].as<std::vector<double>>(std::vector<double>{});
+    // camera_to_body (fixed tilt) and offsets are shared by water/air models:
+    // mounting is fixed; only intrinsics change with refraction.
+    const auto front_to_body=f["camera_to_body"].as<std::vector<double>>(std::vector<double>{});
+    const auto front_offset=f["camera_offset_m"].as<std::vector<double>>(std::vector<double>{});
+    const auto front_depth_offset=f["depth_offset_m"].as<std::vector<double>>(std::vector<double>{});
+    a.front_underwater.camera_to_body=a.front_surface.camera_to_body=front_to_body;
+    a.front_underwater.camera_offset_m=a.front_surface.camera_offset_m=front_offset;
+    a.front_underwater.depth_offset_m=a.front_surface.depth_offset_m=front_depth_offset;
+  }
   c.traversal.validate();
   c.camera = y["camera"]["source"].as<std::string>();
   c.camera_width = y["camera"]["width"].as<int>();
@@ -329,12 +356,23 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("search requires motion, localization, auto_origin, recording and A1/A2 profile");
   if(c.traversal.enabled && (!c.mission.surface_before_visit||!c.search.enabled||!c.grid.single_yellow_edge||
       c.expected_cones!=4||!c.recording_required||!c.front_enabled||
-      c.traversal.surface.width!=c.camera_width||c.traversal.surface.height!=c.camera_height||
-      c.traversal.underwater.width!=c.camera_width||c.traversal.underwater.height!=c.camera_height||
       c.traversal.maximum_speed>c.route.maximum_speed||
       c.traversal.surface_depth_m>=c.search.depth_m||c.localization.plane.depth_zero!=0||
       c.camera_matrix!=c.localization.intrinsics||c.distortion!=c.localization.distortion))
     throw std::runtime_error("A2 requires complete A1, dual recording, matching underwater calibration and measured ascent/surface limits");
+  // The metric calibration must match the capture resolution of the camera that
+  // carries it. Front-metric mode binds the front water/air models to the front
+  // capture resolution; the down-metric default keeps the down capture binding.
+  if(c.traversal.enabled) {
+    if(c.traversal.metric_camera_front) {
+      if(c.traversal.front_underwater.width!=c.front_width||c.traversal.front_underwater.height!=c.front_height||
+         c.traversal.front_surface.width!=c.front_width||c.traversal.front_surface.height!=c.front_height)
+        throw std::runtime_error("A2 front metric camera requires front capture resolution matching the front metric calibration");
+    } else if(c.traversal.underwater.width!=c.camera_width||c.traversal.underwater.height!=c.camera_height||
+               c.traversal.surface.width!=c.camera_width||c.traversal.surface.height!=c.camera_height) {
+      throw std::runtime_error("A2 requires matching underwater calibration resolution");
+    }
+  }
   if(c.traversal.enabled && (c.mission.surface_timeout_sec<=
       (c.search.depth_m-c.traversal.surface_depth_m)/c.traversal.ascent_rate_mps+c.traversal.surface_stable_sec+
       c.traversal.center_timeout_sec+c.traversal.surface_depth_samples*c.traversal.depth_sample_timeout_sec ||
