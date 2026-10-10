@@ -60,3 +60,7 @@ Pi 构建目录：`/home/pi/auv-rectification-validation-baeba2e045`。编译产
 
 最新证据为 `matrix.json`、`resource-samples.json`、`decode.json`、`postflash.json`、`incremental-recheck.log`、`remaining-regression.log` 与 `checkpoint.json`，均在上述电脑证据目录。日志、录像与编译产物不提交源码。主动断流测试仍未执行；长期并发、受控运动、水池闭环与前视测距标定仍待验收。
 
+
+## 后续用户验收确认
+
+2026-10-10 用户确认警报消失、摄像头断流和恢复实际验证完成。保留此前代理脚本被审批拒绝的记录，不将用户验证写成该脚本执行结果。传感器无效标记仍需核查。部署源码对应 `74831dadaf6f4c6b9c5bff42dcf4a451fc7befa5`，后续 A2 未部署。

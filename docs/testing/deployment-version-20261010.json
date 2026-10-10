@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-10",
+  "deployed": {
+    "source_commit": "74831dadaf6f4c6b9c5bff42dcf4a451fc7befa5",
+    "runtime_source_git_blob": "18c43529b143a37e0a522ded33a406cd92931386",
+    "runtime_binary_sha256": "2f406e982310b03463bfa1c8e81969b3d9e15baeb6a557db09347da5fce25c1e",
+    "config_sha256": "0ed67ca4f08e90d212dcf0a06079bbf37a3853b28cead806f936d960bc9a793f",
+    "firmware_profile": "independent_rov",
+    "firmware_tree_git_hash": "ebb6f0b38de128f40f5af7a210f8f7901e23ad1f",
+    "firmware_hex_sha256": "acbf329a412454c478f2e302466e2f9a5a3eb5cbf244ba9fc799675bc5dc3c2d",
+    "runtime_backup": "/var/backups/auv-rectification-20261010/",
+    "firmware_evidence": "build/maintenance/20261010T082200460437Z/",
+    "motion_enabled": false,
+    "auto_arm": false,
+    "runtime_serial_device": ""
+  },
+  "development": {
+    "source_commit": "da74d448d3beec9ebbf0a09c11111b2be7eeddc7",
+    "deployed": false,
+    "full_runtime_cpp_validation": "pending_linux",
+    "a2_dynamic_closed_loop_validation": "pending_linux",
+    "offline_python_geometry": "2_passed",
+    "offline_python_calibration": "1_passed",
+    "rov_python_regression": {
+      "passed": 44,
+      "skipped": 1
+    }
+  },
+  "user_acceptance": {
+    "esc_alarm_cleared": true,
+    "camera_disconnect_recovery_completed": true,
+    "current_rectification_accepted": true
+  },
+  "device_state": "powered_off_by_user_for_offline_development",
+  "notes": "部署哈希为当时记录，设备关闭后没有重新读回；新增任务源码不得视为已部署或已完成水池验收。"
+}

@@ -59,11 +59,14 @@
 | [docs/reviews/rov-manual-trial-20261006.md](reviews/rov-manual-trial-20261006.md) | 验收/复盘证据 |
 | [docs/reviews/rov-staged-repair-20261006.md](reviews/rov-staged-repair-20261006.md) | 验收/复盘证据 |
 | [docs/rov-data-collection.md](rov-data-collection.md) | 当前说明/模块入口 |
+| [docs/testing/front-metric-linux-20261010.md](testing/front-metric-linux-20261010.md) | 当前说明/模块入口 |
 | [docs/testing/p13-gripper.md](testing/p13-gripper.md) | 当前说明/模块入口 |
 | [docs/testing/p14-valve-foundation.md](testing/p14-valve-foundation.md) | 当前说明/模块入口 |
 | [docs/testing/p4-safety.md](testing/p4-safety.md) | 当前说明/模块入口 |
 | [docs/testing/README.md](testing/README.md) | 当前说明/模块入口 |
+| [docs/testing/rov-rectification-pi-20261010.md](testing/rov-rectification-pi-20261010.md) | 当前说明/模块入口 |
 | [docs/testing/strategy.md](testing/strategy.md) | 当前说明/模块入口 |
+| [docs/testing/task-system-offline-20261010.md](testing/task-system-offline-20261010.md) | 当前说明/模块入口 |
 | [docs/testing/task1-apriltag-cones.md](testing/task1-apriltag-cones.md) | 当前说明/模块入口 |
 | [docs/wired-network.md](wired-network.md) | 当前说明/模块入口 |
 | [firmware/stm32/DEVELOPMENT.md](../firmware/stm32/DEVELOPMENT.md) | 当前说明/模块入口 |
