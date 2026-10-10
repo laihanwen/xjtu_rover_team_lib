@@ -14,6 +14,8 @@ A2 入口为 `config/pi-auv-task-one.yaml`：建图后限速上浮、独立表�
 
 A0/A1 新增独立观测入口 `config/pi-auv-observation.yaml`：安全启动、相对原点主动搜索、标签触发单黄色边建图与机载记录。构建、配置和实机标定见 [A0/A1交付说明](../docs/auv-a0-a1-implementation.md)。
 
+`tag_docking` 独立接近任务入口 `config/pi-auv-tag-docking.yaml`：池底 AprilTag 标签悬停（深度测试 → 前视接近 → 下视居中 → 悬停），复用轻量 Runtime 与双摄，不进入九宫格建图或完整比赛状态机。流程、验证范围见 [标签接近测试说明](../docs/auv-tag-docking-test.md)。
+
 当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
 
 这个 C++ 进程是当前自动控制主入口，使用 `core/` 中的原生 `auv_core`，不依赖 ROS。ROS 相关功能因性能与设计问题暂时弃用，见 [迁移说明](../docs/lightweight-transition.md)。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
@@ -96,3 +98,11 @@ STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超�
 
 
 Pi相机专用配置现保存在`runtime/config/pi-rov.yaml`，并随安装复制到配置目录；默认两摄320×240、30fps，MJPEG开启，HLS编码关闭以减轻CPU负担。此文件不会自动覆盖既有运行配置。部署后应先只读测速和检查录制片段，再启用运动。
+
+## 前视九宫格度量定位（PR #6）
+
+`front_metric.enabled` 仅在已启用 A2 的 `surface_traversal.enabled` 下选择前视建图与 PnP；默认关闭。下视仍承担 AprilTag 触发及水下相对里程计，两路帧独立处理。地图证据保存 `camera`、`frame_sequence` 与对应帧的 `steady_sec`；前视机器人格位来自带外参的 PnP，不能使用图像中心代替。
+
+启用需测量固定云台角对应的 `camera_to_body`、相机/深度计偏移，并独立验证前视水下与近水面 K/D、采集分辨率，以及遍历时全网格连续可见性。下视里程计标定仍为 A2 前置。前视模式不要求未使用的下视近水面 PnP 矩阵；该阶段下视预览保持原图，不能当作已矫正的定位输入。未提供动态舵机反馈或前视 PnP/下视光流融合能力。
+
+2026-10-10：Windows MSVC/OpenCV 4.10 便携构建与 13 项 CTest 通过，包括 45° 斜视外参、错误外参拒绝、前视分辨率/标定安全门、原下视回放及标签测试。Pi SSH 超时，最新 `runtime.cpp` 的完整 Linux 编译和仿真仍待验证，PR 暂不合并；没有部署、烧录或实机导航验收。

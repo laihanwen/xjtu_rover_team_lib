@@ -21,6 +21,13 @@ struct SurfaceTraversalConfig {
   double arrival_stable_sec{0.3},entry_margin_cells{0.05},boundary_clearance_m{0};
   double corridor_tolerance_cells{0.2},pose_jump_tolerance_m{0.05},waypoint_timeout_sec{20};
   auv_mapping::MetricGridCalibration underwater,surface;
+  // Front camera can carry grid mapping + metric localization instead of the
+  // down camera. camera_to_body is the fixed tilt angle rotation, left as a
+  // configurable parameter until measured; verified gates keep it inert.
+  bool metric_camera_front{false};
+  auv_mapping::MetricGridCalibration front_underwater,front_surface;
+  const auv_mapping::MetricGridCalibration& water_model() const { return metric_camera_front?front_underwater:underwater; }
+  const auv_mapping::MetricGridCalibration& surface_model() const { return metric_camera_front?front_surface:surface; }
   void validate() const {
     for(double x:{ascent_tolerance_cells,surface_depth_m,depth_tolerance_m,ascent_rate_mps,surface_stable_sec,
       reacquire_timeout_sec,pose_timeout_sec,maximum_speed,gain,arrival_tolerance_cells,arrival_stable_sec,
@@ -28,22 +35,23 @@ struct SurfaceTraversalConfig {
       center_approach_radius_cells,center_stable_sec,center_timeout_sec})
       if(!std::isfinite(x))throw std::invalid_argument("nonfinite A2 setting");
     if(!enabled)return;
-    underwater.validate();surface.validate();
-    if(!ascent_verified||!surface_verified||!center_approach_verified||!underwater.verified||!surface.verified||
+    const auto& water=water_model();const auto& air=surface_model();
+    water.validate();air.validate();
+    if(!ascent_verified||!surface_verified||!center_approach_verified||!water.verified||!air.verified||
       center_approach_radius_cells<=0||center_approach_radius_cells>0.4||
-      center_approach_radius_cells>0.5-boundary_clearance_m/surface.cell_size_m+1e-6||
+      center_approach_radius_cells>0.5-boundary_clearance_m/air.cell_size_m+1e-6||
       center_stable_sec<=0||center_timeout_sec<=0||ascent_row<0||ascent_row>2||
       ascent_col<0||ascent_col>2||ascent_tolerance_cells<=0||ascent_tolerance_cells>=0.4||
-      surface_depth_m<0||surface_depth_m>=surface.pool_depth_m||depth_tolerance_m<=0||
+      surface_depth_m<0||surface_depth_m>=air.pool_depth_m||depth_tolerance_m<=0||
       ascent_rate_mps<=0||ascent_rate_mps>0.1||surface_stable_sec<=0||reacquire_timeout_sec<=0||reacquire_frames<2||
       surface_depth_samples<2||depth_sample_timeout_sec<=0||depth_sample_timeout_sec>3||
       pose_timeout_sec<=0||maximum_speed<=0||maximum_speed>0.2||gain<=0||arrival_tolerance_cells<=0||
       arrival_tolerance_cells>=0.3||arrival_stable_sec<=0||entry_margin_cells<=0||entry_margin_cells>=0.2||
-      boundary_clearance_m<=0||boundary_clearance_m>=surface.cell_size_m*0.4||
+      boundary_clearance_m<=0||boundary_clearance_m>=air.cell_size_m*0.4||
       corridor_tolerance_cells<=0||corridor_tolerance_cells>=0.4||
-      pose_jump_tolerance_m<=0||pose_jump_tolerance_m>=surface.cell_size_m*0.25||waypoint_timeout_sec<=0||
-      std::abs(underwater.cell_size_m-surface.cell_size_m)>1e-6||
-      std::abs(underwater.pool_depth_m-surface.pool_depth_m)>1e-6)
+      pose_jump_tolerance_m<=0||pose_jump_tolerance_m>=air.cell_size_m*0.25||waypoint_timeout_sec<=0||
+      std::abs(water.cell_size_m-air.cell_size_m)>1e-6||
+      std::abs(water.pool_depth_m-air.pool_depth_m)>1e-6)
       throw std::invalid_argument("A2 requires measured ascent clearance, independent surface calibration and safe limits");
   }
 };
@@ -72,7 +80,7 @@ class CenterApproach {
         out.complete=p.stamp-stable_>=c_.center_stable_sec;
       }else stable_=-1;
     }
-    const double x=dc*c_.underwater.cell_size_m*c_.gain,y=dr*c_.underwater.cell_size_m*c_.gain;
+    const double x=dc*c_.water_model().cell_size_m*c_.gain,y=dr*c_.water_model().cell_size_m*c_.gain;
     out.surge=p.body_from_grid[0]*x+p.body_from_grid[1]*y;
     out.sway=p.body_from_grid[3]*x+p.body_from_grid[4]*y;
     const double speed=std::hypot(out.surge,out.sway);
@@ -157,7 +165,7 @@ class SurfaceRouteExecutor {
     if(cv::norm(cv::Mat(rotation*rotation.t()-cv::Matx33d::eye()))>1e-3||std::abs(cv::determinant(rotation)-1)>1e-3) {
       failed_=true;return fail("invalid grid rotation");
     }
-    const double margin=c_.boundary_clearance_m/c_.surface.cell_size_m;
+    const double margin=c_.boundary_clearance_m/c_.surface_model().cell_size_m;
     if(pose.row<margin||pose.row>3-margin||pose.col<margin||pose.col>3-margin) {
       failed_=true;return fail("measured body exceeds field clearance");
     }
@@ -175,7 +183,7 @@ class SurfaceRouteExecutor {
         }
       }
       if(sequence_ && (pose.stamp<=last_stamp_ ||
-        std::hypot(pose.row-last_row_,pose.col-last_col_)*c_.surface.cell_size_m>
+        std::hypot(pose.row-last_row_,pose.col-last_col_)*c_.surface_model().cell_size_m>
         c_.maximum_speed*(pose.stamp-last_stamp_)+c_.pose_jump_tolerance_m)) {
         failed_=true;return fail("surface pose discontinuity or implausible speed");
       }
@@ -237,7 +245,7 @@ class SurfaceRouteExecutor {
       out.detail="holding waypoint arrival band for fresh observation confirmation";
       return out;
     }
-    const double ex=dc*c_.surface.cell_size_m*c_.gain,ey=dr*c_.surface.cell_size_m*c_.gain;
+    const double ex=dc*c_.surface_model().cell_size_m*c_.gain,ey=dr*c_.surface_model().cell_size_m*c_.gain;
     out.surge=pose.body_from_grid[0]*ex+pose.body_from_grid[1]*ey;
     out.sway=pose.body_from_grid[3]*ex+pose.body_from_grid[4]*ey;
     const double norm=std::hypot(out.surge,out.sway);

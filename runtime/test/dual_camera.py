@@ -24,13 +24,14 @@ import os, pathlib, sys, time
 root=pathlib.Path(__file__).parent
 (root/'child.pid').write_text(str(os.getpid()))
 frame=(root/'front.jpg').read_bytes()
+fps=int(sys.argv[sys.argv.index('--framerate')+1])
 if (root/'stall').exists():
     time.sleep(20)
 else:
     while True:
         sys.stdout.buffer.write(frame[:5]); sys.stdout.buffer.flush()
         sys.stdout.buffer.write(frame[5:]); sys.stdout.buffer.flush()
-        time.sleep(0.067)
+        time.sleep(1/fps)
 ''')
         fake.chmod(0o755)
         config = pathlib.Path('runtime/test/runtime_fixture.yaml').read_text()
@@ -46,6 +47,12 @@ else:
             config = config.replace(old, new)
         config = config.replace('/dev/v4l/by-id/REPLACE_WITH_FRONT_USB_CAMERA', 'csi:1')
         config = config.replace('camera_front:\n  enabled: false', 'camera_front:\n  enabled: true')
+        # CSI deliberately runs slower than the file camera. Exercise both
+        # directions rather than relying on two streams with equal cadence.
+        config = config.replace('fps: 30', 'fps: 5' if csi_down else 'fps: 30', 1)
+        if not csi_down:
+            before, after = config.split('camera_front:', 1)
+            config = before + 'camera_front:' + after.replace('fps: 30', 'fps: 5', 1)
         if csi_down:
             config=config.replace(f'file:{root / "down.avi"}', 'csi:0').replace('source: csi:1', f'source: file:{root / "down.avi"}')
         (root / 'runtime.yaml').write_text(config)

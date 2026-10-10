@@ -16,4 +16,17 @@ int main(){
   require(cv::countNonZero(warp.valid_mask())>raw.total()/2);
   bool rejected=false;try{warp.apply(cv::Mat(480,640,CV_8UC3));}catch(const std::exception&){rejected=true;}
   require(rejected);std::cout<<"raw preservation, pixel correction and dimension guard passed\n";
+  // Switching models must always remap the preserved raw frame: feeding the
+  // previous phase's corrected image through the next model distorts it twice.
+  const std::vector<double> surface_k{270,0,155,0,265,118,0,0,1},surface_d{-.15,.03,0,.01,0};
+  CameraRectifier surface(true,320,240,surface_k,surface_d);
+  for(bool near_surface:{false,true,false,true}) {
+    const auto actual=near_surface?surface.apply(raw):warp.apply(raw);
+    const auto& model_k=near_surface?surface_k:k;
+    const auto& model_d=near_surface?surface_d:d;
+    cv::undistort(raw,reference,cv::Mat(3,3,CV_64F,const_cast<double*>(model_k.data())),cv::Mat(model_d));
+    require(cv::norm(actual,reference,cv::NORM_INF)<=1);
+    require(cv::norm(raw,original,cv::NORM_INF)==0);
+  }
+  require(cv::norm(surface.apply(corrected),surface.apply(raw),cv::NORM_INF)>1);
 }

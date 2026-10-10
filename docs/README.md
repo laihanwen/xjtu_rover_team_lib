@@ -15,6 +15,7 @@ ROS 相关功能目前因性能不足和设计问题暂时弃用。当前自动�
 - [A0/A1实现、标定与验收](auv-a0-a1-implementation.md)
 - [A2任务一闭环、标定与验收](auv-a2-implementation.md)
 - [建图与遍历待办清单](auv-mapping-traversal-todo.md)
+- [池底 AprilTag 接近测试](auv-tag-docking-test.md)
 - [轻量定位首版](localization.md)
 - [ROV当前操作](../tools/rov/README.md)
 - [维护与部署](../tools/rov/MAINTENANCE.md)

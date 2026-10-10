@@ -49,6 +49,9 @@ if(BUILD_TESTING)
     execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
       RESULT_VARIABLE AUV_CALIBRATION_YAML OUTPUT_QUIET ERROR_QUIET)
     if(AUV_CALIBRATION_YAML EQUAL 0)
+      add_test(NAME front_metric_streams
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/front_metric_streams.py $<TARGET_FILE:auv_runtime>)
+      set_tests_properties(front_metric_streams PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 40)
       add_test(NAME tag_docking_simulation
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/tag_docking_simulation.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(tag_docking_simulation PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
