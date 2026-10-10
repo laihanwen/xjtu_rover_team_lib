@@ -17,6 +17,7 @@
 | [docs/auv-a2-implementation.md](auv-a2-implementation.md) | 当前说明/模块入口 |
 | [docs/auv-completeness-20261007.md](auv-completeness-20261007.md) | 当前说明/模块入口 |
 | [docs/auv-development-boundary.md](auv-development-boundary.md) | 当前说明/模块入口 |
+| [docs/auv-mapping-traversal-todo.md](auv-mapping-traversal-todo.md) | 当前说明/模块入口 |
 | [docs/auv-monitor-debug.md](auv-monitor-debug.md) | 当前说明/模块入口 |
 | [docs/auv-tag-docking-test.md](auv-tag-docking-test.md) | 当前说明/模块入口 |
 | [docs/calibration/20261008/front-video.md](calibration/20261008/front-video.md) | 标定证据 |
