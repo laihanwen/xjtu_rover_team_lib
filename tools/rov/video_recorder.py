@@ -93,10 +93,31 @@ class DatasetRecorder:
     def __init__(self,base_url,directory,fps=30,segment_seconds=60,min_free_bytes=512*1024*1024):
         self.base_url=base_url.rstrip('/');self.directory=Path(directory).resolve()
         self.fps=fps;self.segment_seconds=segment_seconds;self.min_free_bytes=min_free_bytes
+        self.preview_modes={'down':'default','front':'default'}
         self.control_lock=threading.Lock();self.lock=threading.Lock();self.stop_event=threading.Event();self.threads=[]
         self.info={'active':False,'session':'','directory':str(self.directory),'error':'','cameras':{}}
     def status(self):
         with self.lock:return json.loads(json.dumps(self.info))
+    def preview_status(self):
+        with urlopen(self.base_url+'/api/status',timeout=2) as response:
+            calibration=json.load(response).get('camera_calibration',{})
+        return {'modes':dict(self.preview_modes),'calibration':calibration,
+                'locked':self.status()['active'] or any(t.is_alive() for t in self.threads)}
+    def set_preview(self,role,mode):
+        if role not in ('down','front') or mode not in ('raw','default'):
+            raise ValueError('无效的摄像头或图像空间')
+        with self.control_lock:
+            state=self.preview_status()
+            if state['locked']:raise ValueError('请结束录制并等待保存完成后切换矫正')
+            if not state['calibration'].get('raw_preview_available'):
+                raise ValueError('摄像头服务需更新后才能切换原图')
+            if mode=='default' and not state['calibration'].get(role,{}).get('preview_rectified'):
+                raise ValueError('此相机尚未配置预览矫正')
+            self.preview_modes[role]=mode
+            return self.preview_status()
+    def camera_url(self,role,extension):
+        suffix='.raw' if self.preview_modes[role]=='raw' else ''
+        return self.base_url+'/api/camera/'+role+suffix+'.'+extension
     def start(self):
         with self.control_lock:
             try:
@@ -121,6 +142,14 @@ class DatasetRecorder:
         # The MJPEG endpoints may now be corrected; preserve their K/zero D to
         # prevent offline consumers from correcting the recorded pixels twice.
         manifest['camera_calibration']=state.get('camera_calibration',{})
+        manifest['preview_modes']=dict(self.preview_modes)
+        for role,mode in self.preview_modes.items():
+            if mode=='raw':
+                if not manifest['camera_calibration'].get('raw_preview_available'):
+                    raise ValueError('摄像头服务不支持原图录制')
+                model=manifest['camera_calibration'].get(role,{})
+                model['preview_rectified']=False
+                model['preview_distortion_coefficients']=model.get('raw_distortion_coefficients',[])
         (self.root/'session.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
         self.stop_event.clear()
         with self.lock:self.info.update(active=True,session=session,error='',directory=str(self.root),cameras={k:{'frames':0,'error':''} for k in sources})
@@ -143,7 +172,7 @@ class DatasetRecorder:
                 try:
                     if not poll_fallback and response is None:
                         try:
-                            response=urlopen(self.base_url+'/api/camera/'+role+'.mjpeg',timeout=1)
+                            response=urlopen(self.camera_url(role,'mjpeg'),timeout=1)
                             if response.headers.get_content_type()!='multipart/x-mixed-replace':
                                 raise ValueError('invalid MJPEG stream type')
                             boundary=response.headers.get_param('boundary')
@@ -154,7 +183,7 @@ class DatasetRecorder:
                             if e.code not in (404,501):raise
                             poll_fallback=True
                     if poll_fallback:
-                        with urlopen(self.base_url+'/api/camera/'+role+'.jpg',timeout=1) as snapshot:
+                        with urlopen(self.camera_url(role,'jpg'),timeout=1) as snapshot:
                             jpeg=snapshot.read(8*1024*1024+1)
                             stamp=snapshot.headers.get('X-Frame-Time-Monotonic')
                             actual=snapshot.headers.get('X-Camera-Source')

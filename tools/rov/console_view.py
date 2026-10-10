@@ -32,7 +32,7 @@ def main():
                 return self.respond(403,b'{"error":"invalid origin"}','application/json')
             self.proxy()
         def proxy(self):
-            allowed=('/state','/logs','/recording') if self.command=='GET' else ('/action','/recording')
+            allowed=('/state','/logs','/recording','/preview') if self.command=='GET' else ('/action','/recording','/preview')
             if self.path not in allowed:
                 return self.respond(404,b'{}','application/json')
             try:

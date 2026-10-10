@@ -24,11 +24,12 @@ class RecorderTests(unittest.TestCase):
   class Handler(BaseHTTPRequestHandler):
    def do_GET(self):
     visits.append(self.path)
+    path=self.path.replace('.raw.','.')
     if self.path=='/api/status':
-     b=json.dumps({'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True,'camera_calibration':{'down':{'preview_rectified':True,'preview_distortion_coefficients':[0,0,0,0,0]}}}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
-    elif self.path in ('/api/camera/down.jpg','/api/camera/front.jpg'):
+     b=json.dumps({'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True,'camera_calibration':{'raw_preview_available':True,'down':{'preview_rectified':True,'raw_distortion_coefficients':[.1,.2,0,0,0],'preview_distortion_coefficients':[0,0,0,0,0]}}}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
+    elif path in ('/api/camera/down.jpg','/api/camera/front.jpg'):
      self.send_response(200);self.send_header('X-Camera-Source','csi:0' if '/down.' in self.path else '/dev/v4l/by-id/usb');self.send_header('X-Frame-Time-Monotonic',str(1 if duplicate else time.monotonic()));self.end_headers();self.wfile.write(JPEG)
-    elif stream and self.path in ('/api/camera/down.mjpeg','/api/camera/front.mjpeg'):
+    elif stream and path in ('/api/camera/down.mjpeg','/api/camera/front.mjpeg'):
      self.send_response(200);self.send_header('Content-Type','multipart/x-mixed-replace; boundary=auvframe');self.end_headers()
      try:
       for _ in range(90):
@@ -60,6 +61,28 @@ class RecorderTests(unittest.TestCase):
    self.assertEqual(metadata['camera_calibration']['down']['preview_distortion_coefficients'],[0,0,0,0,0])
    self.assertTrue(all(p in ('/api/status','/api/camera/down.jpg','/api/camera/front.jpg','/api/camera/down.mjpeg','/api/camera/front.mjpeg') for p in visits))
    for p in files:self.assertIn(b'idx1',p.read_bytes())
+ def test_raw_selection_metadata_and_recording_lock(self):
+  url,visits=self.serve(stream=True)
+  with tempfile.TemporaryDirectory() as d:
+   r=DatasetRecorder(url,d,min_free_bytes=0)
+   r.set_preview('down','raw');r.start()
+   try:
+    with self.assertRaises(ValueError):r.set_preview('down','default')
+    time.sleep(.2)
+   finally:r.close()
+   self.assertIn('/api/camera/down.raw.mjpeg',visits)
+   self.assertIn('/api/camera/front.mjpeg',visits)
+   manifest=json.loads((Path(r.status()['directory'])/'session.json').read_text())
+   self.assertFalse(manifest['camera_calibration']['down']['preview_rectified'])
+   self.assertEqual(manifest['camera_calibration']['down']['preview_distortion_coefficients'],[.1,.2,0,0,0])
+   self.assertEqual(r.status()['error'],'')
+   r.set_preview('down','default')
+ def test_unconfigured_rectification_and_invalid_selection_rejected(self):
+  url,_=self.serve()
+  with tempfile.TemporaryDirectory() as d:
+   r=DatasetRecorder(url,d)
+   for role,mode in [('front','default'),('wrong','raw'),('down','bad')]:
+    with self.assertRaises(ValueError):r.set_preview(role,mode)
  def test_stream_uses_one_connection_per_camera_and_measures_fps(self):
   url,visits=self.serve(stream=True)
   with tempfile.TemporaryDirectory() as d:

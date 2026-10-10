@@ -120,7 +120,7 @@ def main(binary):
                 status = json.loads(request(socket, 'status'))
                 if status['origin_ready'] and status['recording_ready'] and status['tag_docking']['front_metric_valid']:
                     break
-                assert not status['fault'], status
+                assert not status['fault'], (status, (Path(status['recording_directory'])/'events.ndjson').read_text()[-12000:])
                 time.sleep(.1)
             else:
                 raise AssertionError(f'preflight failed: {status}')
@@ -138,7 +138,7 @@ def main(binary):
             deadline = time.monotonic()+15
             while time.monotonic() < deadline:
                 status = json.loads(request(socket, 'status')); phases.add(status['phase'])
-                assert not status['fault'], status
+                assert not status['fault'], (status, (Path(status['recording_directory'])/'events.ndjson').read_text()[-12000:])
                 if status['phase'] == 'HOVER' and status['tag_docking']['completion_evidence_saved'] and state['armed']:
                     break
                 time.sleep(.04)

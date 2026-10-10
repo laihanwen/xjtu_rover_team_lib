@@ -118,6 +118,9 @@ def main():
             if self.path=='/localization':
                 with lock:value=dict(localization_state)
                 return self.reply(value)
+            if self.path=='/preview':
+                try:return self.reply(recorder.preview_status())
+                except (OSError,ValueError):return self.reply({'error':'摄像头服务不可用'},502)
             if self.path=='/recording':return self.reply(recorder.status())
             if self.path=='/collection':return self.reply(collection.status())
             if self.path=='/collection/export':
@@ -139,7 +142,7 @@ def main():
                 snapshot=dict(state)
             self.reply(snapshot)
         def do_POST(self):
-            if self.path not in ('/action','/recording','/localization','/collection') or self.headers.get('Origin')!=f'http://127.0.0.1:{args.web_port}':
+            if self.path not in ('/action','/recording','/localization','/collection','/preview') or self.headers.get('Origin')!=f'http://127.0.0.1:{args.web_port}':
                 return self.reply({'error':'invalid origin'},403)
             try:
                 size=int(self.headers.get('Content-Length',0))
@@ -147,6 +150,9 @@ def main():
                 request=json.loads(self.rfile.read(size)); action=request['action']
                 if args.observe_only and self.path in ('/action','/localization'):
                     return self.reply({'error':'当前为只读采集模式，不连接 ROV 控制桥或发送控制命令'},403)
+                if self.path=='/preview':
+                    if action!='set':raise ValueError('action')
+                    return self.reply(recorder.set_preview(request.get('camera'),request.get('mode')))
                 if self.path=='/collection':
                     if action not in ('start','mark','stop'):raise ValueError('action')
                     return self.reply(collection.start(request) if action=='start' else collection.mark(request) if action=='mark' else collection.stop())

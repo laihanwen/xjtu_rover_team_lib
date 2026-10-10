@@ -334,7 +334,7 @@ class Runtime {
         cv::Mat corrected=surface_frame?surface.apply(image):underwater.apply(image);
         cv::Mat display=cfg_.down_preview_rectify?corrected:image;
         std::vector<std::uint8_t> raw_jpeg;
-        if(cfg_.recording_enabled && cfg_.down_preview_rectify) {
+        if(cfg_.down_preview_rectify) {
           if(csi)raw_jpeg=jpeg;
           else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
             throw std::runtime_error("raw down JPEG encode failed");
@@ -343,7 +343,7 @@ class Runtime {
             !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
           throw std::runtime_error("down JPEG encode failed");
         { std::lock_guard<std::mutex> lock(frame_mutex_);
-          if(cfg_.recording_enabled)down_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
+          down_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
           down_jpeg_=std::move(jpeg);
           down_preview_frame_=display;
           down_rectified_frame_=corrected;down_surface_frame_=surface_frame;
@@ -407,7 +407,7 @@ class Runtime {
           metric=metric_surface_frame?metric_surface.apply(image):metric_underwater.apply(image);
         }
         std::vector<std::uint8_t> raw_jpeg;
-        if(cfg_.recording_enabled && cfg_.front_preview_rectify) {
+        if(cfg_.front_preview_rectify) {
           if(csi)raw_jpeg=jpeg;
           else if(!cv::imencode(".jpg",image,raw_jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
             throw std::runtime_error("raw front JPEG encode failed");
@@ -416,7 +416,7 @@ class Runtime {
             !cv::imencode(".jpg",display,jpeg,{cv::IMWRITE_JPEG_QUALITY,70}))
           throw std::runtime_error("front JPEG encode failed");
         { std::lock_guard<std::mutex> lock(front_mutex_);
-          if(cfg_.recording_enabled)front_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
+          front_raw_jpeg_=raw_jpeg.empty()?jpeg:std::move(raw_jpeg);
           front_preview_frame_=display;
           front_frame_=image; front_jpeg_=std::move(jpeg); front_time_=stamp; ++front_sequence_;
           front_rectified_frame_=metric; front_surface_frame_=metric_surface_frame; }
@@ -438,7 +438,7 @@ class Runtime {
   void localization_loop() {
     std::uint64_t seen=0; double last=0;
     while(running){
-      const double now=seconds();
+      double now=seconds();
       if(now-last < localization_->period()) {std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
       last=now;cv::Mat image;double stamp=0;bool corrected=false,surface_frame=false;
       const bool matching=cfg_.camera_matrix==cfg_.localization.intrinsics &&
@@ -462,6 +462,9 @@ class Runtime {
             const double degrees=180/std::acos(-1);
             sensor["roll_deg"]=status_.roll*degrees;sensor["pitch_deg"]=status_.pitch*degrees;sensor["yaw_deg"]=status_.yaw*degrees;
           }
+          // Validate against a clock sampled after acquiring frame and telemetry.
+          // A pre-lock clock can make freshly received samples look like the future.
+          now=seconds();
           localization_->process(image,stamp,now,sensor,corrected);
           if(cfg_.auto_origin && !localization_->has_origin()) {
             bool permitted=false;double yaw=0;
@@ -549,8 +552,18 @@ class Runtime {
       if(arm_gate_ready(now))request_arm_locked("autonomous tag docking");else set_fault_locked("tag docking ARM gate rejected");
     }
     if(!fault_.empty())docking_.fail(fault_);
+    const bool ready=dock_ready(now);
+    if(docking_.active() && !ready) {
+      std::ostringstream detail;
+      detail << "safe_status=" << safe_status(now) << " pressure_fresh=" << depth_sample_fresh(now)
+             << " recording_ready=" << recording_ready(now) << " log_degraded=" << log_degraded_
+             << " down_age_s=" << now-frame_time_.load() << " front_age_s=" << now-front_time_.load()
+             << " vision_age_s=" << now-processed_time_ << " roll_rad=" << status_.roll
+             << " pitch_rad=" << status_.pitch << " localization=" << localization_->json(now);
+      event("TAG_DOCK_GATE_REJECTED",detail.str());
+    }
     const auto output=docking_.step(now,depth_sample_.depth_m,depth_sample_.sensor_sequence,
-      armed_requested_&&arm_ack_&&status_.armed,dock_ready(now),pose,dock_front_,dock_down_);
+      armed_requested_&&arm_ack_&&status_.armed,ready,pose,dock_front_,dock_down_);
     motion_={};
     if(docking_.active()&&fault_.empty()) {
       motion_.depth=hold_depth_=static_cast<float>(output.depth);motion_.yaw=hold_yaw_;
@@ -958,9 +971,9 @@ class Runtime {
     int missed_deadlines=0;
     while (running) {
       next += std::chrono::milliseconds(50);
-      const auto now = seconds();
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
+        const auto now = seconds();
         if (Clock::now() > next + std::chrono::milliseconds(100)) {
           if (++missed_deadlines >= 3) {
             set_fault_locked("control loop deadline repeatedly missed");
@@ -1242,7 +1255,7 @@ class Runtime {
       out << "]}";
     };
     out.precision(17);
-    out << "{\"down\":";
+    out << "{\"raw_preview_available\":true,\"down\":";
     if(surface_frame) {
       const auto& model=cfg_.traversal.surface;
       camera(cfg_.down_preview_rectify,model.width,model.height,"surface-traversal",
@@ -1561,41 +1574,45 @@ class Runtime {
       res.set_content(command("status"),"application/json");
       res.set_header("Cache-Control","no-store");
     });
-    auto cached=[this](bool front,std::vector<std::uint8_t>& jpeg,double& stamp) {
-      if(front) { std::lock_guard<std::mutex> lock(front_mutex_); jpeg=front_jpeg_; stamp=front_time_.load(); }
-      else { std::lock_guard<std::mutex> lock(frame_mutex_); jpeg=down_jpeg_; stamp=frame_time_.load(); }
+    auto cached=[this](bool front,bool raw,std::vector<std::uint8_t>& jpeg,double& stamp) {
+      if(front) { std::lock_guard<std::mutex> lock(front_mutex_); jpeg=raw?front_raw_jpeg_:front_jpeg_; stamp=front_time_.load(); }
+      else { std::lock_guard<std::mutex> lock(frame_mutex_); jpeg=raw?down_raw_jpeg_:down_jpeg_; stamp=frame_time_.load(); }
       return !jpeg.empty() && stamp>0 && seconds()-stamp<=cfg_.frame_timeout;
     };
-    auto snapshot=[this,cached](bool front,httplib::Response& res) {
+    auto snapshot=[this,cached](bool front,bool raw,httplib::Response& res) {
       std::vector<std::uint8_t> jpeg;
       double stamp;
-      if(!cached(front,jpeg,stamp)) { res.status=503; return; }
+      if(!cached(front,raw,jpeg,stamp)) { res.status=503; return; }
       res.set_content(reinterpret_cast<const char*>(jpeg.data()),jpeg.size(),"image/jpeg");
       res.set_header("Cache-Control","no-store");
       res.set_header("X-Frame-Time-Monotonic",std::to_string(stamp));
       res.set_header("X-Camera-Source",front ? cfg_.front_source : cfg_.camera);
+      res.set_header("X-Image-Space",(!raw && (front?cfg_.front_preview_rectify:cfg_.down_preview_rectify))?"rectified":"raw");
     };
-    server.Get("/api/camera/down.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(false,res);});
-    server.Get("/api/camera/front.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(true,res);});
+    server.Get("/api/camera/down.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(false,false,res);});
+    server.Get("/api/camera/front.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(true,false,res);});
+    server.Get("/api/camera/down.raw.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(false,true,res);});
+    server.Get("/api/camera/front.raw.jpg",[snapshot](const httplib::Request&,httplib::Response& res){snapshot(true,true,res);});
     server.new_task_queue=[] { return new httplib::ThreadPool(8); };
     server.set_write_timeout(2,0);
     server.set_tcp_nodelay(true);
-    auto stream=[this,cached](bool front,httplib::Response& res) {
+    auto stream=[this,cached](bool front,bool raw,httplib::Response& res) {
       /* Reserve worker capacity for status and control requests. */
       if (mjpeg_clients_.fetch_add(1)>=4) {
         --mjpeg_clients_; res.status=429; return;
       }
       res.set_header("Cache-Control","no-store");
       res.set_chunked_content_provider("multipart/x-mixed-replace; boundary=auvframe",
-        [this,cached,front,last=-1.0,delivered=seconds()](size_t,httplib::DataSink& sink) mutable {
+        [this,cached,front,raw,last=-1.0,delivered=seconds()](size_t,httplib::DataSink& sink) mutable {
           while (running && sink.is_writable()) {
             std::vector<std::uint8_t> jpeg;
             double stamp;
-            if (cached(front,jpeg,stamp) && stamp!=last) {
+            if (cached(front,raw,jpeg,stamp) && stamp!=last) {
               last=stamp; delivered=seconds();
               const auto header=std::string("--auvframe\r\nContent-Type: image/jpeg\r\nContent-Length: ")+
                 std::to_string(jpeg.size())+"\r\nX-Frame-Time-Monotonic: "+std::to_string(stamp)+
-                "\r\nX-Camera-Source: "+(front ? cfg_.front_source : cfg_.camera)+"\r\n\r\n";
+                "\r\nX-Camera-Source: "+(front ? cfg_.front_source : cfg_.camera)+
+                "\r\nX-Image-Space: "+((!raw && (front?cfg_.front_preview_rectify:cfg_.down_preview_rectify))?"rectified":"raw")+"\r\n\r\n";
               std::string part;
               part.reserve(header.size()+jpeg.size()+2);
               part.append(header);
@@ -1609,8 +1626,10 @@ class Runtime {
           return false;
         },[this](bool) { --mjpeg_clients_; });
     };
-    server.Get("/api/camera/down.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(false,res);});
-    server.Get("/api/camera/front.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(true,res);});
+    server.Get("/api/camera/down.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(false,false,res);});
+    server.Get("/api/camera/front.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(true,false,res);});
+    server.Get("/api/camera/down.raw.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(false,true,res);});
+    server.Get("/api/camera/front.raw.mjpeg",[stream](const httplib::Request&,httplib::Response& res){stream(true,true,res);});
     server.Get("/",[this](const httplib::Request&,httplib::Response& res){
       std::ifstream in(cfg_.web_assets+"/index.html");
       if (!in) { res.status=503; return; }
