@@ -33,7 +33,7 @@ struct Config {
   double startup_delay{5.0}, startup_timeout{30.0}, startup_stable{1.0};
   int camera_width{640}, camera_height{480};
   double camera_fps{30.0};
-  std::string camera_pixel_format{"MJPG"}, apriltag_family{"tag36h11"};
+  std::string camera_pixel_format{"MJPG"}, apriltag_family{"tag36h11"}, apriltag_camera{"down"};
   int baud{}, expected_cones{4};
   double status_timeout{0.5}, frame_timeout{0.5}, pose_timeout{0.5}, control_watchdog_timeout{0.25};
   double actuator_status_timeout{0.5};
@@ -217,6 +217,10 @@ static Config load_config(const std::string& path) {
   c.expected_cones = y["vision"]["expected_cones"].as<int>();
   c.apriltag_family = y["vision"]["apriltag_family"].as<std::string>();
   c.tag_stable_frames=y["vision"]["apriltag_stable_frames"].as<int>(3);
+  c.apriltag_camera=y["vision"]["apriltag_camera"].as<std::string>("down");
+  if((c.apriltag_camera!="down" && c.apriltag_camera!="front") ||
+      (c.apriltag_camera=="front" && !c.front_enabled))
+    throw std::runtime_error("AprilTag camera must be down or an enabled front camera");
   if(y["vision"]["apriltag_ids"])c.apriltag_ids=y["vision"]["apriltag_ids"].as<std::vector<int>>();
   if(c.tag_stable_frames<=0)throw std::runtime_error("invalid tag confirmation count");
   c.grid.single_yellow_edge=y["vision"]["single_yellow_edge"].as<bool>(false);

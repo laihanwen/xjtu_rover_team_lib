@@ -1,0 +1,207 @@
+"""Full Runtime closed loop with synthetic cameras and a virtual MCU PTY only.
+
+Images are projected from the simulated body position; motion is integrated
+only from decoded Runtime UART targets, never from the planned waypoint list.
+The synthetic rig is nadir for deterministic grid coverage, not real-rig FOV.
+"""
+import json
+import os
+from pathlib import Path
+import pty
+import select
+import signal
+import struct
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+import cv2
+import numpy as np
+import yaml
+from offline_replay import crc, frame, request
+from startup import wait_for_socket
+from tag_docking_simulation import video
+
+
+def run(binary, missing_surface=False):
+    cv2.setNumThreads(1)
+    master, slave = pty.openpty()
+    stop = threading.Event()
+    state = dict(armed=False, depth=.4, row=1.5, col=1.5, vx=0., vy=0., target=.4)
+    lock = threading.Lock()
+    phases, targets, snapshots = [], [], []
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        video(root/'down.avi', (160,120))
+        texture = np.full((900,900,3),210,np.uint8)
+        cv2.rectangle(texture,(3,3),(896,896),(0,0,0),12)
+        for p in (300,600):
+            cv2.line(texture,(p,0),(p,899),(0,0,0),10)
+            cv2.line(texture,(0,p),(899,p),(0,0,0),10)
+        cv2.line(texture,(0,891),(899,891),(0,255,255),18)
+        for x,y in ((150,150),(750,150)):
+            cv2.circle(texture,(x,y),60,(0,80,255),-1)
+        for x,y in ((150,750),(750,750)):
+            cv2.rectangle(texture,(x-60,y-60),(x+60,y+60),(0,80,255),-1)
+        # Tag is observed by the same front stream that later maps the grid.
+        texture[345:555,345:555]=255
+        marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,180)
+        texture[360:540,360:540]=cv2.cvtColor(marker,cv2.COLOR_GRAY2BGR)
+        fake = root/'rpicam-vid'
+        fake.write_text('''#!/usr/bin/python3
+import pathlib,sys,time
+root=pathlib.Path(__file__).parent
+while True:
+ try:
+  sys.stdout.buffer.write((root/'front.jpg').read_bytes());sys.stdout.buffer.flush()
+ except FileNotFoundError:pass
+ time.sleep(.05)
+''')
+        fake.chmod(0o755)
+        cfg = yaml.safe_load(Path('runtime/config/pi-auv-task-one.yaml').read_text())
+        kd = [250,0,160,0,250,120,0,0,1]
+        rotation = [0,1,0,1,0,0,0,0,-1]
+        cfg['camera'].update(source=f'file:{root}/down.avi',fps=15,camera_matrix=kd,distortion_coefficients=[0]*5)
+        cfg['camera_front'].update(source='csi:1',width=640,height=480,fps=20,
+            calibration_width=640,calibration_height=480,camera_matrix=[550,0,320,0,550,240,0,0,1],distortion_coefficients=[0]*5)
+        cfg['serial']['device'] = os.ttyname(slave)
+        cfg['control']['socket'] = str(root/'control.sock')
+        cfg['logging'].update(events=str(root/'events.ndjson'),debug_dir=str(root/'evidence'))
+        cfg['recording'].update(directory=str(root/'runs'),minimum_free_bytes=1024)
+        cfg['web']['enabled'] = cfg['video']['enabled'] = False
+        cfg['vision'].update(white_grid_edges=False,apriltag_family='tag16h5',apriltag_ids=[18])
+        cfg['motion'].update(motion_commands_enabled=True,directions_calibrated=True,limits_calibrated=True,maximum_speed=.2)
+        cfg['localization'].update(camera_matrix=kd,distortion=[0]*5,camera_to_body=rotation,
+            camera_offset_m=[0]*3,depth_offset_m=[0]*3,imu_signs=[1]*3,imu_offsets_deg=[0]*3,
+            pool_depth_m=3.3,calibration_verified=True)
+        cfg['observation_search'].update(enabled=True,corridor_calibrated=True,maximum_radius_m=2,
+            waypoints_m=[[1.,0]],depth_target_m=.4,waypoint_timeout_sec=30,maximum_speed=.02)
+        cfg['surface_traversal'].update(enabled=True,ascent_clearance_verified=True,center_approach_verified=True,
+            center_approach_radius_cells=.3,surface_localization_verified=True,ascent_cell=[1,1],cell_size_m=.5,
+            boundary_clearance_m=.05,depth_target_m=.3,ascent_rate_mps=.1,surface_stable_sec=.2,
+            center_stable_sec=.15,reacquire_frames=3,reacquire_timeout_sec=3,maximum_speed=.2,
+            position_gain=1.,arrival_stable_sec=.15,pose_timeout_sec=.8,height_tolerance_m=.2,
+            minimum_grid_confidence=.65)
+        cfg['front_metric'].update(enabled=True,camera_to_body=rotation,camera_offset_m=[0]*3,depth_offset_m=[0]*3)
+        for phase,fx in [('underwater',550),('surface',500)]:
+            cfg['front_metric'][phase].update(verified=True,width=640,height=480,
+                camera_matrix=[fx,0,320,0,fx,240,0,0,1],distortion_coefficients=[0]*5)
+        path = root/'config.yaml';path.write_text(yaml.safe_dump(cfg))
+        surface = threading.Event()
+        def render():
+            while not stop.is_set():
+                with lock:depth,row,col=state['depth'],state['row'],state['col']
+                fx=500 if surface.is_set() else 550
+                scale=fx/(3.3-depth)
+                points=np.float32([[320+scale*(x-col*.5),240+scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),points)
+                image=cv2.warpPerspective(texture,h,(640,480),borderValue=(110,110,110))
+                if surface.is_set() and missing_surface:image[:]=110
+                tmp=root/'front.tmp';tmp.write_bytes(cv2.imencode('.jpg',image)[1].tobytes());tmp.replace(root/'front.jpg')
+                time.sleep(.05)
+        def mcu():
+            pending=bytearray();sequence=0;last=time.monotonic()
+            while not stop.is_set():
+                try:
+                    now=time.monotonic();dt=min(now-last,.1);last=now;sequence+=1
+                    with lock:
+                        if state['armed']:
+                            state['row']+=state['vx']*dt/.5;state['col']+=state['vy']*dt/.5
+                            state['depth']+=np.clip(state['target']-state['depth'],-dt*.15,dt*.15)
+                        armed,depth=state['armed'],state['depth']
+                    os.write(master,frame(0x80,struct.pack('<IBIfffffB',sequence,int(armed),0,12.,depth,0.,0.,0.,0)))
+                    os.write(master,frame(0x82,struct.pack('<IfBII',sequence,depth,1,sequence,0)))
+                    if select.select([master],[],[],.03)[0]:pending.extend(os.read(master,8192))
+                    while len(pending)>=7:
+                        if pending[:2]!=b'\xaa\x55':del pending[0];continue
+                        size=7+pending[4]
+                        if len(pending)<size:break
+                        packet=bytes(pending[:size]);del pending[:size]
+                        if crc(packet[2:-2])!=struct.unpack('<H',packet[-2:])[0]:continue
+                        kind,data=packet[3],packet[5:-2]
+                        if kind==2:
+                            with lock:state['armed']=bool(data[4])
+                            os.write(master,frame(0x7f,bytes([2,0])+data[:4]))
+                        elif kind==3:
+                            target=struct.unpack('<Iffff',data);targets.append(target)
+                            with lock:state.update(vx=target[1],vy=target[2],target=target[3])
+                except OSError:return
+        workers=[threading.Thread(target=f,daemon=True) for f in (render,mcu)]
+        for worker in workers:worker.start()
+        env=dict(os.environ,PATH=str(root)+':'+os.environ['PATH'])
+        errors=(root/'stderr').open('w')
+        proc=subprocess.Popen([binary,str(path)],env=env,stdout=subprocess.DEVNULL,stderr=errors)
+        try:
+            try:
+                wait_for_socket(proc,root/'control.sock',timeout=15)
+            except AssertionError as error:
+                raise AssertionError((root/'stderr').read_text()) from error
+            def status():
+                value=json.loads(request(str(root/'control.sock'),'status'));snapshots.append(value)
+                if not phases or phases[-1]!=value['phase']:phases.append(value['phase'])
+                return value
+            deadline=time.monotonic()+8
+            while True:
+                s=status()
+                if s['origin_ready'] and s['recording_ready'] and s['safe_status']:break
+                assert time.monotonic()<deadline,s
+                time.sleep(.05)
+            assert request(str(root/'control.sock'),'start').startswith('OK')
+            armed=False;deadline=time.monotonic()+75;blocked_until=None
+            while time.monotonic()<deadline:
+                s=status()
+                if s['arm_gate_ready'] and not armed:
+                    assert request(str(root/'control.sock'),'arm SAFE_TO_ARM').startswith('OK');armed=True
+                if s['phase']=='RELOCALIZE_SURFACE':
+                    if blocked_until is None:blocked_until=time.monotonic()+.35
+                    # For .35 s after ascent the stream still emits underwater
+                    # geometry. No old pose may authorize surface traversal.
+                    if time.monotonic()<blocked_until:
+                        assert not s['surface_pose_ready'] and not s['surface_grid_valid'],s
+                        assert s['cmd_vx']==s['cmd_vy']==0,s
+                    else:surface.set()
+                if s['surface_grid_valid']:
+                    assert s['metric_pose_surface_frame'],s
+                    assert s['metric_pose_stamp_sec']>s['surface_reacquire_start_sec'],s
+                if s['phase'] in ('COMPLETE','FAULT'):break
+                time.sleep(.04)
+            expected='FAULT' if missing_surface else 'COMPLETE'
+            assert s['phase']==expected,{'status':s,'phases':phases,'stderr':(root/'stderr').read_text()}
+            # DISARM and event writes run on separate threads. Wait for the
+            # actual virtual MCU acknowledgement and recorder flush, rather
+            # than equating a state-machine transition with completed I/O.
+            deadline=time.monotonic()+2
+            while s['armed']:
+                assert time.monotonic()<deadline,s
+                time.sleep(.03);s=status()
+            event_path=Path(s['recording_directory'])/'events.ndjson'
+            while True:
+                events=[json.loads(line) for line in event_path.read_text().splitlines()]
+                if missing_surface or any(e.get('event')=='A2_COMPLETE' for e in events):break
+                assert time.monotonic()<deadline,events
+                time.sleep(.03)
+            assert any(e.get('event')=='APRILTAG_FOUND' and 'camera=front' in e.get('detail','') for e in events),events
+            visits=[e for e in events if e.get('event')=='CONE_VISITED']
+            if not missing_surface:
+                assert all(p in phases for p in ['BUILD_MAP','SURFACE_FOR_CONES','RELOCALIZE_SURFACE','VISIT_CONES','COMPLETE']),phases
+                assert len(visits)==4 and len({e['detail'].split(' frame=')[0] for e in visits})==4,visits
+                assert 'A2_COMPLETE' in {e.get('event') for e in events}
+            else:
+                assert 'VISIT_CONES' not in phases and not visits,phases
+            assert all(abs(t[1])<=.20001 and abs(t[2])<=.20001 for t in targets)
+            output=os.environ.get('AUV_SIM_EVIDENCE_DIR')
+            if output:
+                out=Path(output);out.mkdir(parents=True,exist_ok=True)
+                (out/('missing-surface.json' if missing_surface else 'closed-loop.json')).write_text(json.dumps(
+                    dict(phases=phases,final=s,visits=visits,snapshots=snapshots,events=events,targets=targets),indent=2))
+            print(json.dumps(dict(scenario='missing_surface' if missing_surface else 'closed_loop',phases=phases,visits=len(visits))))
+        finally:
+            proc.send_signal(signal.SIGTERM);proc.wait(timeout=5);stop.set()
+            for worker in workers:worker.join(timeout=2)
+            errors.close();os.close(master);os.close(slave)
+
+
+if __name__=='__main__':
+    run(sys.argv[1]);run(sys.argv[1],missing_surface=True)

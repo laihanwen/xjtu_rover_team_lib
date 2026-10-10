@@ -16,7 +16,11 @@ int main(int argc,char** argv){try{
   auto rejects=[&](){write();try{load_config(temp.string());return false;}catch(const std::exception&){return true;}};
   require(c.down_preview_rectify && c.front_preview_rectify && c.camera_width==320 &&
       c.camera_matrix==c.localization.intrinsics && c.distortion==c.localization.distortion);
-  require(c.front_calibration_quality=="provisional_unstable_intrinsics");
+  require(c.front_calibration_quality=="user_verified_20261010");
+  require(c.apriltag_camera=="down");
+  y["vision"]["apriltag_camera"]="side";require(rejects());
+  y["vision"]["apriltag_camera"]="front";y["camera_front"]["enabled"]=false;require(rejects());
+  y=YAML::LoadFile(base.string());
   y["camera"]["width"]=640;require(rejects());
   y=YAML::LoadFile(base.string());y["camera_front"]["camera_matrix"]=YAML::Load("[1,2]");require(rejects());
   y=YAML::LoadFile(base.string());y["camera_front"]["distortion_coefficients"]=YAML::Load("[.nan,0,0,0,0]");require(rejects());
@@ -39,7 +43,7 @@ int main(int argc,char** argv){try{
   y["camera"]["distortion_coefficients"]=YAML::Load("[0,0,0,0,0]");write();
   c=load_config(temp.string());require(c.search.enabled); // No unrelated grid-route gains required in A1.
   const auto a2base=std::filesystem::path(argv[1])/"runtime/config/pi-auv-task-one.yaml";
-  c=load_config(a2base.string());require(c.mission.surface_before_visit&&!c.traversal.enabled&&!c.motion_enabled);
+  c=load_config(a2base.string());require(c.mission.surface_before_visit&&!c.traversal.enabled&&!c.motion_enabled&&c.apriltag_camera=="front");
   y["mission"]["profile"]="a2_task_one";require(rejects()); // A1 motion cannot bypass surface commissioning.
   auto l=y["localization"];
   l["camera_matrix"]=YAML::Load("[250,0,320,0,250,240,0,0,1]");

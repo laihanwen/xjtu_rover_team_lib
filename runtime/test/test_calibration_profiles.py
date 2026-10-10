@@ -54,7 +54,7 @@ class CalibrationProfiles(unittest.TestCase):
                 self.assertFalse(cfg['motion']['motion_commands_enabled'])
                 self.assertFalse(cfg['operation']['auto_arm'])
                 self.assertTrue(cfg['camera_front']['enabled'])
-                self.assertEqual(cfg['camera_front']['calibration_quality'], 'provisional_unstable_intrinsics')
+                self.assertEqual(cfg['camera_front']['calibration_quality'], 'user_verified_20261010')
 
 
 if __name__ == '__main__':

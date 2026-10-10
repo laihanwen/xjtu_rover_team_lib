@@ -49,6 +49,9 @@ if(BUILD_TESTING)
     execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
       RESULT_VARIABLE AUV_CALIBRATION_YAML OUTPUT_QUIET ERROR_QUIET)
     if(AUV_CALIBRATION_YAML EQUAL 0)
+      add_test(NAME a2_closed_loop
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py $<TARGET_FILE:auv_runtime>)
+      set_tests_properties(a2_closed_loop PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 120)
       add_test(NAME front_metric_streams
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/front_metric_streams.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(front_metric_streams PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 40)
@@ -57,6 +60,8 @@ if(BUILD_TESTING)
       set_tests_properties(tag_docking_simulation PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
       add_test(NAME calibration_profiles
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_calibration_profiles.py)
+      add_test(NAME camera_mounting_geometry
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_mounting_geometry.py)
     endif()
     add_test(NAME dual_camera
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/dual_camera.py $<TARGET_FILE:auv_runtime>)
