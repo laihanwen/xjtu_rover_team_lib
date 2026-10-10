@@ -2,15 +2,21 @@
 
 更新：2026-10-10。按执行顺序排列；完成源码、编译或推送不代表已部署或实机验收。
 
-[PR #6](https://github.com/laihanwen/xjtu_rover_team_lib/pull/6) 的审查修复已在 Ubuntu 完成完整 Runtime 验证并合入本次主线提交。软件检查与剩余实机边界见 [Linux 验证记录](testing/front-metric-linux-20261010.md)。
+[PR #6](https://github.com/laihanwen/xjtu_rover_team_lib/pull/6) 的审查修复已在 Ubuntu 完成完整 Runtime 验证并于 2026-10-10 合入主线 `446e96a`。本地 `main` 已同步该版本。软件检查与剩余实机边界见 [Linux 验证记录](testing/front-metric-linux-20261010.md)。
 
 ## 软件验证与合并
 
 - [x] 审查并修复 PR #6，推送修复代码。
 - [x] 完成 PR 修复版本的 Windows 便携构建及 13 项 CTest。
-- [ ] 恢复树莓派连接，核对当前代码、配置和服务版本。
-- [x] 完成 Linux 验证：编译完整 Runtime（包含 HTTP），运行完整 CTest 与 PTY 仿真。
-- [x] 检查双摄不同帧率、断流和阶段切换时的行为，通过后合并 PR #6（模拟采集、组件阶段切换及代码审查；实机仍待验收）。
+- [x] 完成 Linux 验证：编译完整 Runtime（包含 HTTP），运行 22/22 CTest 与 PTY 仿真（Ubuntu 验证记录，非本次重新运行）。
+- [x] 完成双摄不同帧率、断流、恢复的模拟回归，以及阶段矫正组件测试与代码审查。
+- [x] 合并 PR #6，并同步本地与远程主线。
+
+## 下一步软件与设备核验
+
+- [ ] 恢复树莓派连接，核对当前提交号、配置、独立 ROV/AUV 服务版本、UART 归属及双摄设备来源。
+- [ ] 补充完整 Runtime 的动态闭环模拟：水下建图 → 上浮 → 前视重定位 → 四锥遍历，验证阶段切换不会复用旧位姿。
+- [ ] 按部署授权更新 Pi 软件并核验运行版本；保持 DISARM、运动关闭，不将主线同步视作已部署。
 
 ## 标定与真实素材验证
 
