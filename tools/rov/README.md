@@ -1,10 +1,10 @@
 # ROV 操作与开发手册
 
-更新：2026-10-11。ROV 使用独立 Copy_cup 固件与原控制桥；双模式已弃用。普通日志每秒记录接收缓存，驾驶台日志区可打开 `/log-viewer`；采集助手不发送运动命令。见 [日志分析](../../docs/log-analysis.md)、[数据采集](../../docs/rov-data-collection.md)及[当前状态](../../docs/project-status.md)。
+更新：2026-10-11。ROV 使用独立 Copy_cup 固件与原控制桥；双模式已弃用。普通日志每秒记录接收缓存，驾驶台日志区可打开 `/log-viewer`。见 [日志分析](../../docs/log-analysis.md)及[当前状态](../../docs/project-status.md)。
 
-10月10日最后验证：Pi 下视640×480原图，前视320×240矫正。现有320×240矫正已获用户确认；高清下视不套旧内参，度量定位关闭。录像保存实际图像空间与标定元数据。见 [高清记录](../../docs/testing/rov-hd-down-20261010.md)。
+10月11日最新状态：Pi 双摄均为640×480矫正；前视显示效果已获用户确认，度量定位仍关闭。详见 [本次标定](../../docs/calibration/20261011/README.md)。录像保存实际图像空间与标定元数据。见 [高清记录](../../docs/testing/rov-hd-down-20261010.md)。
 
-首选双击 `Flash-And-Start-Rov.cmd` 检查、编译、备份烧录、校验并打开采集驾驶台。仅启动可用 `Start-RovTest.ps1`；采集助手位于 `/#collection-panel`。见 [一键说明](../../docs/one-click-flash-console.md)。
+首选双击 `Flash-And-Start-Rov.cmd` 确认中立、编译、备份烧录、校验并打开驾驶台。仅启动可用 `Start-RovTest.ps1`。见 [一键说明](../../docs/one-click-flash-console.md)。
 
 历史控制参数说明最初基于 2026-10-07 源码。设备实际版本需检查服务与部署报告，不能根据此文件推断已烧录。历史合并说明保存在 [LEGACY_NOTES.md](LEGACY_NOTES.md)，其中旧参数不作为操作依据。
 

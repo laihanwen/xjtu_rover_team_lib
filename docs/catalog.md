@@ -59,7 +59,6 @@
 | [docs/reviews/rov-controller-pid-20261006.md](reviews/rov-controller-pid-20261006.md) | 标定/验收证据 |
 | [docs/reviews/rov-manual-trial-20261006.md](reviews/rov-manual-trial-20261006.md) | 标定/验收证据 |
 | [docs/reviews/rov-staged-repair-20261006.md](reviews/rov-staged-repair-20261006.md) | 标定/验收证据 |
-| [docs/rov-data-collection.md](rov-data-collection.md) | 当前说明/模块入口 |
 | [docs/testing/README.md](testing/README.md) | 标定/验收证据 |
 | [docs/testing/front-metric-linux-20261010.md](testing/front-metric-linux-20261010.md) | 标定/验收证据 |
 | [docs/testing/local-grid-association-20261010.md](testing/local-grid-association-20261010.md) | 标定/验收证据 |
@@ -115,3 +114,7 @@
 
 | [任务一当日采集与验收](testing/task-one-day-plan-20261011.md) | 2026-10-11 最少连续采集与进入条件 |
 | [局部 Runtime 开发记录](testing/local-runtime-development-20261011.md) | 接入源码、离线入口；未编译/回归 |
+
+| [docs/calibration/20261011/README.md](calibration/20261011/README.md) | 标定/维护证据 |
+
+| [docs/reports/20261011/one-click-rov-flash.md](reports/20261011/one-click-rov-flash.md) | 标定/维护证据 |

@@ -27,7 +27,7 @@ try {
     $taskState = $null
     try { $taskState = Invoke-RestMethod "$taskUrl/state" -TimeoutSec 2 } catch {}
     if (!$taskState) {
-        $env:PYTHONPATH = Join-Path $taskRoot 'build/joystick-deps'
+        $env:PYTHONPATH = (@((Join-Path $taskRoot 'build/joystick-deps'), $taskOldPythonPath) | Where-Object { $_ }) -join [IO.Path]::PathSeparator
         $env:SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS = '1'
         $taskLogs = Join-Path $taskRoot ('build/rov-test/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
         New-Item -ItemType Directory -Force $taskLogs | Out-Null
