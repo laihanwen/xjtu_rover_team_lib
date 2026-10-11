@@ -1,84 +1,20 @@
-# 任务一：AprilTag 与交通锥遍历验收
+# 任务一：原生系统验收
 
-本流程只覆盖任务一：识别 AprilTag、建立九宫格语义地图、识别四个交通锥、规划路线并
-逐格访问。第一次验收必须按“视觉 → dry-run → 拆桨运动 → 固定水槽”顺序推进。
+更新：2026-10-11。流程覆盖标签识别 → 局部观测建图 → 上浮 → 新阶段重定位 → 四锥无重复访问 → 观测确认离开九宫格。旧 ROS launch/topic 流程不再用于当前系统。
 
-## 实机前配置
+## 配置与前置
 
-1. 在 `cameras.yaml` 填写稳定的下视相机 `/dev/v4l/by-id/...` 路径。
-2. 在水下完成相机标定，填写 `down_camera_calibration.yaml` 并设置
-   `calibration_configured: true`。
-3. 在 `planning.yaml` 填写真实起始格，不能保留 `-1/-1`。
-4. 用水下录像调整 `mapping.yaml` 和 `cones.yaml`；默认要求稳定识别四个锥。
-5. 保持 `control.yaml` 的 `publish_motion_commands: false`。
+使用 [Runtime 手册](../../runtime/README.md)中的原生构建、回放和配置入口。独立 AUV 固件配匹配服务；默认运动与自动 ARM 关闭。核对相机尺寸、图像空间、K/D、阶段外参及验证标记，不因预览效果确认而开启导航。
 
-## 第一阶段：视觉与规划 dry-run
+现场规格沿用 tag16h5 / ID18 / 黑边 138 mm、格距 820 mm、池深 1.4 m，最大作业深度 1.2 m。四锥摆放、黄边方向和出口由本次观测确定，不用模板补地图。
 
-```fish
-source /opt/ros/lyrical/setup.fish
-source /home/hanwen/auv/install/setup.fish
-ros2 launch auv_bringup system.launch.py \
-  start_stm32_bridge:=true \
-  start_cameras:=true start_apriltag:=true \
-  start_mapping:=true start_cones:=true start_planning:=true \
-  start_mission:=true start_route_executor:=true
-```
+## 验收顺序与通过标准
 
-执行器默认不会发布运动命令。检查：
+1. 真实录像回放：标签解码、黄边方向、管节点关联及四锥类别/格位/轮廓与人工真值一致；遮挡与画外保持 unknown。
+2. 隔离动态模拟：地图冻结、上浮、重定位、遍历阶段连续切换；阶段切换清空旧锚点，重新等待新帧；失效和歧义不能推动任务。
+3. 无动力联调：版本/串口所有权正确，方向、归零口径、中立输出、急停、看门狗及传感器失效保护通过。
+4. 受控水池：逐阶段再完整任务，实际到位确认四锥访问，不重复进入已访问锥节点，出口离开由观测确认，全程满足深度及净空限制。
 
-```fish
-ros2 topic echo /apriltag/detections
-ros2 topic echo /semantic_map
-ros2 topic echo /mapping/grid_pose
-ros2 topic echo /planning/route
-ros2 topic echo /planning/execution_state
-```
+四锥访问后结束不算完整任务一；一次成功不算重复稳定性验收。完整外框模拟不能替代局部路径，运动授权不能由编译结果推断。
 
-验收要求：
-
-- 指定 AprilTag 连续可见且没有明显误检；
-- `/semantic_map.complete=true` 前已经稳定检测到四个锥；
-- 四个锥的 row/col 和圆/方分类正确；
-- `/mapping/grid_pose` 连续、有效，移动相机时方向符合实际；
-- `/planning/route` 有效、相邻格连续且访问所有目标；
-- `/planning/execution_state` 带 `dry-run:` 前缀；
-- dry-run 期间不存在 route executor 的 `/cmd_vel` 发布者。
-
-## 第二阶段：拆桨方向与故障测试
-
-断开推进器动力或拆除全部桨叶，固定整机并准备物理断电。先用
-`ros2 topic info /cmd_vel -v` 确认只有预期执行器发布运动目标。然后显式启动：
-
-```fish
-ros2 launch auv_bringup system.launch.py \
-  start_stm32_bridge:=true \
-  start_cameras:=true start_apriltag:=true \
-  start_mapping:=true start_cones:=true start_planning:=true \
-  start_mission:=true start_route_executor:=true \
-  enable_route_motion:=true
-```
-
-Mission 到达 `VISIT_CONES` 后仍需人工显式 ARM。逐项确认：
-
-1. row/col 误差分别只产生预期 surge/sway 方向；方向错误时只修改 `control.yaml` 的
-   四个映射系数，不能交换电机线来掩盖软件坐标错误。
-2. 速度绝对值不超过 `maximum_speed`。
-3. 深度与航向目标在开始运动时锁定，不随遥测漂移。
-4. 遮住九宫格或停止相机后，0.5 秒内输出归零并请求 DISARM。
-5. 停止 STM32 状态、注入 leak/error、拔掉网线时均归零并 DISARM。
-6. 到达目标中心需连续满足容差，随后发布 `/planning/visited_cell`。
-7. 四个目标完成后 Mission 进入 `COMPLETE` 并请求 DISARM。
-
-## 第三阶段：固定水槽与低速系留
-
-只有拆桨测试全部记录通过后才进入固定水槽。先将 `maximum_speed` 降到现场负责人批准的
-最小值，验证单轴方向、定位稳定性、失联停止和四目标 visited 顺序。固定水槽通过后，
-才允许在安全系留下进行低速自由遍历。
-
-建议记录以下 topics：
-
-```fish
-ros2 bag record /camera/down/image_raw /apriltag/detections /cones/detections \
-  /semantic_map /mapping/grid_pose /planning/route /planning/execution_state \
-  /planning/visited_cell /mission/state /cmd_vel /cmd_depth /cmd_yaw /stm32/status
-```
+保存证据按[测试策略](strategy.md)执行。开发缺口见[待办](../auv-mapping-traversal-todo.md)，采集方法见[采集清单](next-data-collection-20261010.md)。

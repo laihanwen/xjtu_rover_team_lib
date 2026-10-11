@@ -1,23 +1,14 @@
-# 测试与验收
+# 测试与验收导航
 
-本目录用于整理任务级验收、风险检查和现场测试记录，覆盖从安全门到任务闭环的关键验证。
+更新：2026-10-11。日期记录保存当次事实，当前缺口以[待办](../auv-mapping-traversal-todo.md)为准。
 
-## 目录内容
+## 当前流程
 
-- [strategy.md](./strategy.md) — 总体测试策略
-- [p4-safety.md](./p4-safety.md) — heartbeat / failsafe 验收
-- [task1-apriltag-cones.md](./task1-apriltag-cones.md) — 任务一 AprilTag 与交通锥遍历验收
-- [p13-gripper.md](./p13-gripper.md) — P13 单舵机夹爪验收
-- [p14-valve-foundation.md](./p14-valve-foundation.md) — P14 转盘视觉基础验收
+- [原生测试策略](strategy.md)与[任务一验收](task1-apriltag-cones.md)。
+- [连续素材采集](next-data-collection-20261010.md)与[素材验证流程](mapping-validation-procedure-20261010.md)。
+- [局部 Runtime 开发及回归边界](local-runtime-development-20261011.md)与[版本对应关系](pi-regression-version-20261011.json)。
+- [双摄帧率诊断](camera-performance-analysis-20261011.md)。
 
-## 验收顺序
+## 历史与后续任务参考
 
-1. 先完成安全门与 heartbeat 测试；
-2. 再进行底层视觉与地图记录验证；
-3. 最后执行任务一或后续任务闭环。
-
-## 关键原则
-
-- 首次实机测试必须断开推力或固定推进器。
-- 所有验收文件都应该保留结果、风险和后续动作项。
-- 只有在确认安全门和基础能力后，才进入更高风险的运动闭环。
+[P4 安全](p4-safety.md)、[P13 夹爪](p13-gripper.md)、[P14 转盘](p14-valve-foundation.md)包含历史设计或专项验收参考；其中 ROS 操作不作为轻量系统启动命令。其余日期报告按[索引](../catalog.md)检索，不能从历史通过记录推断新源码、当前设备或水池闭环已验收。

@@ -14,10 +14,10 @@ def main():
    if not target or re.match(r'^[a-zA-Z]+:',target):continue
    if not(file.parent/target).exists():broken.append(f'{file.relative_to(ROOT)}:{s[:m.start()].count(chr(10))+1}: {target}')
  if a.write_index:
-  lines=['# 全仓库文档索引','', '更新：2026-10-10。此索引覆盖 Git 管理及待提交的 Markdown 文件；部署和验收记录保留当时事实，不代表当前设备状态。','', '| 文档 | 类别 |','|---|---|']
+  lines=['# 全仓库文档索引','', '更新：2026-10-11。此索引覆盖 Git 管理及待提交的 Markdown 文件；部署和验收记录保留当时事实，不代表当前设备状态。','', '| 文档 | 类别 |','|---|---|']
   for file in paths:
    if file==ROOT/'docs/catalog.md':continue
-   rel=file.relative_to(ROOT).as_posix();kind='历史归档' if '/archive/'in rel or rel.startswith('legacy/')else '验收/复盘证据' if '/reports/'in rel or '/reviews/'in rel or '/deployment/'in rel else '标定证据' if '/calibration/'in rel else '当前说明/模块入口'
+   rel=file.relative_to(ROOT).as_posix();kind='历史归档' if '/archive/'in rel or rel.startswith('legacy/')else '验收/复盘证据' if '/reports/'in rel or '/reviews/'in rel or '/deployment/'in rel or ('/testing/'in rel and re.search(r'20[0-9]{6}',rel)) or rel=='docs/auv-completeness-20261007.md' else '标定证据' if '/calibration/'in rel else '当前说明/模块入口'
    lines.append(f'| [{rel}]({os.path.relpath(file,ROOT/"docs").replace(chr(92),"/")}) | {kind} |')
   (ROOT/'docs/catalog.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
  print(f'Checked {len(paths)} Markdown files; {len(broken)} missing local link targets')
