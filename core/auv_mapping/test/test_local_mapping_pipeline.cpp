@@ -1,0 +1,49 @@
+#include "auv_mapping/local_mapping_pipeline.hpp"
+#include "auv_mapping/local_pose_fusion.hpp"
+#include <stdexcept>
+#include <limits>
+using namespace auv_mapping;
+static void check(bool v,const char* reason){if(!v)throw std::runtime_error(reason);}
+int main() {
+  MetricGridCalibration c;c.verified=true;c.cell_size_m=.5;c.pool_depth_m=1.4;
+  c.width=320;c.height=240;c.camera_matrix={150,0,160,0,150,120,0,0,1};
+  c.distortion={0,0,0,0,0};c.camera_to_body={1,0,0,0,-1,0,0,0,-1};
+  c.camera_offset_m=c.depth_offset_m={0,0,0};
+  PlaneSample sensor;sensor.stamp=1;sensor.depth=.4;
+  cv::Mat image(240,320,CV_8UC3,cv::Scalar(70,70,70));
+  auto pixel=[](double x,double y){return cv::Point(int(std::lround(160+150*(x-.75))),int(std::lround(120+150*(1.2-y))));};
+  for(int i=0;i<4;++i) {
+    cv::line(image,pixel(i*.5,0),pixel(i*.5,1.5),{255,255,255},5);
+    cv::line(image,pixel(0,i*.5),pixel(1.5,i*.5),i==3?cv::Scalar(0,255,255):cv::Scalar(255,255,255),5);
+  }
+  // Top row is outside the image: no complete outer rectangle is available.
+  LocalMappingPipeline pipeline({});
+  auto found=pipeline.process(image,c,sensor,1,1,0);
+  check(found.geometry.valid,"cropped yellow boundary topology must resolve");
+  check(found.pose.valid,"local landmark PnP must resolve");
+  check(std::abs(found.pose.row-2.4)<.08&&std::abs(found.pose.col-1.5)<.08,"metric local body position");
+  c.verified=false;
+  check(!pipeline.process(image,c,sensor,2,1,0).pose.valid,"unverified model cannot navigate");
+  c.verified=true;
+  cv::Mat missing(image.size(),CV_8U,cv::Scalar(0));
+  check(!pipeline.process(image,c,sensor,3,1,0,missing).geometry.valid,"invisible remap cannot produce landmarks");
+  LocalPoseFusion fusion;fusion.reset(1,0);
+  auv_control::ObservationPose odom{true,true,1,1,0,0,0};
+  auto p=found.pose;
+  auto anchored=fusion.update(p,odom,1,1,.5,.2);
+  check(anchored.valid&&anchored.sequence,"absolute anchor");
+  odom.stamp=1.1;odom.x=.01;
+  auto propagated=fusion.update({},odom,1.1,1,.5,.2);
+  check(propagated.valid&&!propagated.landmark_observation&&!propagated.semantic_match,"odometry cannot reacquire by itself");
+  check(propagated.sequence>anchored.sequence,"fusion sequence is independent of camera sequence");
+  check(fusion.update({},odom,1.1,1,.5,.2).sequence==propagated.sequence,"cached odometry is not a new observation");
+  odom.stamp=2.1;
+  check(!fusion.update({},odom,2.1,1,.5,.2).valid,"absolute drift budget expires");
+  fusion.reset(2,3);
+  check(!fusion.update(p,odom,3,2,.5,.2).valid,"old-stage absolute pose cannot anchor");
+  p.stamp=3.1;odom.stamp=3.1;
+  check(fusion.update(p,odom,3.1,2,.5,.2).valid,"new-stage anchor allowed");
+  auto conflict=p;conflict.stamp=3.2;conflict.row+=1;
+  check(!fusion.update(conflict,odom,3.2,2,.5,.2).valid,"landmark jump rejected");
+  check(!fusion.update({},odom,3.2,2,.5,.2).valid,"rejected correction cannot revive old anchor");
+}

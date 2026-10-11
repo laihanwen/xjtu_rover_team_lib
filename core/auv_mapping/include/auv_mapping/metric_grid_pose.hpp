@@ -1,6 +1,7 @@
 #pragma once
 #include "auv_mapping/grid_mapper.hpp"
 #include <opencv2/calib3d.hpp>
+#include <opencv2/imgproc.hpp>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -32,25 +33,36 @@ struct MetricGridCalibration {
   }
 };
 struct MetricGridPose {
-  bool valid{false},surface_frame{false},semantic_match{false};std::string reason{"unavailable"};
+  bool valid{false},surface_frame{false},semantic_match{false},landmark_observation{true};std::string reason{"unavailable"};
   std::uint64_t sequence{0};double stamp{0},row{0},col{0},reprojection_px{0};
   std::array<double,9> body_from_grid{}; // columns: column, row, plane normal
 };
 // Corners must come from a single-yellow-edge mapper, in canonical TL/TR/BR/BL
 // order. Input image is already undistorted using this calibration's intrinsics.
-inline MetricGridPose metric_grid_pose(const GridResult& grid,const MetricGridCalibration& c,
+inline MetricGridPose metric_landmark_pose(const std::vector<cv::Point3d>& world,
+  const std::vector<cv::Point2f>& pixels,const MetricGridCalibration& c,
   const cv::Size& size,double corrected_sensor_depth,double stamp,std::uint64_t sequence) {
   MetricGridPose out;out.stamp=stamp;out.sequence=sequence;
   if(!c.verified){out.reason="metric calibration unverified";return out;}
   c.validate();
-  if(size.width!=c.width||size.height!=c.height||!grid.geometry_valid||!grid.stable||!grid.orientation_valid||
-    grid.yellow_edge<0||grid.confidence<c.minimum_confidence||!std::isfinite(corrected_sensor_depth)||
+  if(size.width!=c.width||size.height!=c.height||world.size()<4||world.size()!=pixels.size()||
+    !std::isfinite(corrected_sensor_depth)||
     corrected_sensor_depth<0||corrected_sensor_depth>=c.pool_depth_m||!std::isfinite(stamp)||!sequence) {
     out.reason="grid, resolution or depth invalid";return out;
   }
-  const double extent=3*c.cell_size_m;
-  const std::vector<cv::Point3d> world{{0,0,0},{extent,0,0},{extent,extent,0},{0,extent,0}};
-  const std::vector<cv::Point2f> pixels(grid.corners.begin(),grid.corners.end());
+  std::vector<cv::Point2f> planar;
+  for(std::size_t i=0;i<world.size();++i) {
+    const auto& p=world[i];
+    if(!std::isfinite(p.x)||!std::isfinite(p.y)||p.z!=0||
+       !std::isfinite(pixels[i].x)||!std::isfinite(pixels[i].y)) {
+      out.reason="nonfinite or nonplanar landmarks";return out;
+    }
+    planar.emplace_back(float(p.x),float(p.y));
+  }
+  std::vector<cv::Point2f> hull;cv::convexHull(planar,hull);
+  if(hull.size()<3||cv::contourArea(hull)<.1*c.cell_size_m*c.cell_size_m) {
+    out.reason="collinear or insufficient landmark baseline";return out;
+  }
   const cv::Matx33d k(c.camera_matrix.data()), rcb(c.camera_to_body.data());
   cv::Mat rvec,tvec;
   if(!cv::solvePnP(world,pixels,k,cv::noArray(),rvec,tvec,false,cv::SOLVEPNP_ITERATIVE)) {
@@ -63,8 +75,8 @@ inline MetricGridPose metric_grid_pose(const GridResult& grid,const MetricGridCa
     out.reason="grid behind camera";return out;
   }
   std::vector<cv::Point2d> projected;cv::projectPoints(world,rvec,tvec,k,cv::noArray(),projected);
-  double error=0;for(std::size_t i=0;i<4;++i)error+=std::pow(cv::norm(projected[i]-cv::Point2d(pixels[i])),2);
-  out.reprojection_px=std::sqrt(error/4);
+  double error=0;for(std::size_t i=0;i<pixels.size();++i)error+=std::pow(cv::norm(projected[i]-cv::Point2d(pixels[i])),2);
+  out.reprojection_px=std::sqrt(error/pixels.size());
   const cv::Vec3d offset(c.camera_offset_m.data());
   const cv::Vec3d body_in_grid=-rgc.t()*(t+rcb.t()*offset);
   const cv::Matx33d rbg=rcb*rgc;
@@ -82,4 +94,15 @@ inline MetricGridPose metric_grid_pose(const GridResult& grid,const MetricGridCa
   std::copy(rbg.val,rbg.val+9,out.body_from_grid.begin());
   out.valid=true;out.reason="fresh absolute yellow-bottom grid pose";return out;
 }
+inline MetricGridPose metric_grid_pose(const GridResult& grid,const MetricGridCalibration& c,
+  const cv::Size& size,double depth,double stamp,std::uint64_t sequence) {
+  if(!grid.geometry_valid||!grid.stable||!grid.orientation_valid||grid.yellow_edge<0||
+      grid.confidence<c.minimum_confidence) {
+    MetricGridPose out;out.stamp=stamp;out.sequence=sequence;out.reason="grid geometry or orientation invalid";return out;
+  }
+  const double extent=3*c.cell_size_m;
+  return metric_landmark_pose({{0,0,0},{extent,0,0},{extent,extent,0},{0,extent,0}},
+    std::vector<cv::Point2f>(grid.corners.begin(),grid.corners.end()),c,size,depth,stamp,sequence);
+}
+
 }

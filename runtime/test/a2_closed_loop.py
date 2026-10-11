@@ -22,7 +22,6 @@ import numpy as np
 import yaml
 from offline_replay import crc, frame, request
 from startup import wait_for_socket
-from tag_docking_simulation import video
 
 
 def run(binary, missing_surface=False):
@@ -34,28 +33,31 @@ def run(binary, missing_surface=False):
     phases, targets, snapshots = [], [], []
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        video(root/'down.avi', (160,120))
         texture = np.full((900,900,3),210,np.uint8)
-        cv2.rectangle(texture,(3,3),(896,896),(0,0,0),12)
+        cv2.rectangle(texture,(3,3),(896,896),(0,0,0),30)
         for p in (300,600):
-            cv2.line(texture,(p,0),(p,899),(0,0,0),10)
-            cv2.line(texture,(0,p),(899,p),(0,0,0),10)
-        cv2.line(texture,(0,891),(899,891),(0,255,255),18)
+            cv2.line(texture,(p,0),(p,899),(0,0,0),30)
+            cv2.line(texture,(0,p),(899,p),(0,0,0),30)
+        # Keep the synthetic direction strip >=5 pixels at the farthest camera
+        # view. A 2-pixel strip aliased away under the unchanged 5x5 kernel.
+        cv2.line(texture,(0,880),(899,880),(0,255,255),48)
         for x,y in ((150,150),(750,150)):
             cv2.circle(texture,(x,y),60,(0,80,255),-1)
         for x,y in ((150,750),(750,750)):
             cv2.rectangle(texture,(x-60,y-60),(x+60,y+60),(0,80,255),-1)
         # Tag is observed by the same front stream that later maps the grid.
-        texture[345:555,345:555]=255
-        marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,180)
-        texture[360:540,360:540]=cv2.cvtColor(marker,cv2.COLOR_GRAY2BGR)
+        texture[315:585,315:585]=255
+        marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,240)
+        texture[330:570,330:570]=cv2.cvtColor(marker,cv2.COLOR_GRAY2BGR)
         fake = root/'rpicam-vid'
         fake.write_text('''#!/usr/bin/python3
 import pathlib,sys,time
 root=pathlib.Path(__file__).parent
+camera=sys.argv[sys.argv.index('--camera')+1]
+name='down.jpg' if camera=='0' else 'front.jpg'
 while True:
  try:
-  sys.stdout.buffer.write((root/'front.jpg').read_bytes());sys.stdout.buffer.flush()
+  sys.stdout.buffer.write((root/name).read_bytes());sys.stdout.buffer.flush()
  except FileNotFoundError:pass
  time.sleep(.05)
 ''')
@@ -63,9 +65,9 @@ while True:
         cfg = yaml.safe_load(Path('runtime/config/pi-auv-task-one.yaml').read_text())
         kd = [250,0,160,0,250,120,0,0,1]
         rotation = [0,1,0,1,0,0,0,0,-1]
-        cfg['camera'].update(source=f'file:{root}/down.avi',fps=15,camera_matrix=kd,distortion_coefficients=[0]*5)
-        cfg['camera_front'].update(source='csi:1',width=640,height=480,fps=20,
-            calibration_width=640,calibration_height=480,camera_matrix=[550,0,320,0,550,240,0,0,1],distortion_coefficients=[0]*5)
+        cfg['camera'].update(source='csi:0',fps=20,camera_matrix=kd,distortion_coefficients=[0]*5)
+        cfg['camera_front'].update(source='csi:1',width=320,height=240,fps=20,
+            calibration_width=320,calibration_height=240,camera_matrix=[130,0,160,0,130,120,0,0,1],distortion_coefficients=[0]*5)
         cfg['serial']['device'] = os.ttyname(slave)
         cfg['control']['socket'] = str(root/'control.sock')
         cfg['logging'].update(events=str(root/'events.ndjson'),debug_dir=str(root/'evidence'))
@@ -75,7 +77,7 @@ while True:
         cfg['motion'].update(motion_commands_enabled=True,directions_calibrated=True,limits_calibrated=True,maximum_speed=.2)
         cfg['localization'].update(camera_matrix=kd,distortion=[0]*5,camera_to_body=rotation,
             camera_offset_m=[0]*3,depth_offset_m=[0]*3,imu_signs=[1]*3,imu_offsets_deg=[0]*3,
-            pool_depth_m=3.3,calibration_verified=True)
+            pool_depth_m=1.4,calibration_verified=True)
         cfg['observation_search'].update(enabled=True,corridor_calibrated=True,maximum_radius_m=2,
             waypoints_m=[[1.,0]],depth_target_m=.4,waypoint_timeout_sec=30,maximum_speed=.02)
         cfg['surface_traversal'].update(enabled=True,ascent_clearance_verified=True,center_approach_verified=True,
@@ -85,21 +87,28 @@ while True:
             position_gain=1.,arrival_stable_sec=.15,pose_timeout_sec=.8,height_tolerance_m=.2,
             minimum_grid_confidence=.65)
         cfg['front_metric'].update(enabled=True,camera_to_body=rotation,camera_offset_m=[0]*3,depth_offset_m=[0]*3)
-        for phase,fx in [('underwater',550),('surface',500)]:
-            cfg['front_metric'][phase].update(verified=True,width=640,height=480,
-                camera_matrix=[fx,0,320,0,fx,240,0,0,1],distortion_coefficients=[0]*5)
+        for phase,fx in [('underwater',130),('surface',90)]:
+            cfg['front_metric'][phase].update(verified=True,width=320,height=240,
+                camera_matrix=[fx,0,160,0,fx,120,0,0,1],distortion_coefficients=[0]*5)
         path = root/'config.yaml';path.write_text(yaml.safe_dump(cfg))
         surface = threading.Event()
         def render():
             while not stop.is_set():
                 with lock:depth,row,col=state['depth'],state['row'],state['col']
-                fx=500 if surface.is_set() else 550
-                scale=fx/(3.3-depth)
-                points=np.float32([[320+scale*(x-col*.5),240+scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                fx=90 if surface.is_set() else 130
+                scale=fx/(1.4-depth)
+                points=np.float32([[160+scale*(x-col*.5),120+scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
                 h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),points)
-                image=cv2.warpPerspective(texture,h,(640,480),borderValue=(110,110,110))
+                image=cv2.warpPerspective(texture,h,(320,240),borderValue=(110,110,110))
                 if surface.is_set() and missing_surface:image[:]=110
                 tmp=root/'front.tmp';tmp.write_bytes(cv2.imencode('.jpg',image)[1].tobytes());tmp.replace(root/'front.jpg')
+                # Both synthetic cameras observe the SAME integrated motion.
+                # A static down video previously hid actual traversal motion.
+                down_scale=250/(1.4-depth)
+                down_points=np.float32([[160+down_scale*(x-col*.5),120+down_scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                down_h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),down_points)
+                down_image=cv2.warpPerspective(texture,down_h,(320,240),borderValue=(110,110,110))
+                tmp=root/'down.tmp';tmp.write_bytes(cv2.imencode('.jpg',down_image)[1].tobytes());tmp.replace(root/'down.jpg')
                 time.sleep(.05)
         def mcu():
             pending=bytearray();sequence=0;last=time.monotonic()
@@ -153,7 +162,11 @@ while True:
             while time.monotonic()<deadline:
                 s=status()
                 if s['arm_gate_ready'] and not armed:
-                    assert request(str(root/'control.sock'),'arm SAFE_TO_ARM').startswith('OK');armed=True
+                    # The status snapshot does not reserve the safety gate;
+                    # fresh telemetry/pose must still pass at request time.
+                    response=request(str(root/'control.sock'),'arm SAFE_TO_ARM')
+                    assert response.startswith(('OK','ERR')),response
+                    armed=response.startswith('OK')
                 if s['phase']=='RELOCALIZE_SURFACE':
                     if blocked_until is None:blocked_until=time.monotonic()+.35
                     # For .35 s after ascent the stream still emits underwater
@@ -198,6 +211,24 @@ while True:
                     dict(phases=phases,final=s,visits=visits,snapshots=snapshots,events=events,targets=targets),indent=2))
             print(json.dumps(dict(scenario='missing_surface' if missing_surface else 'closed_loop',phases=phases,visits=len(visits))))
         finally:
+            # Preserve diagnostics even when an assertion interrupts the run.
+            # Temporary videos and virtual serial devices are not evidence of
+            # real-rig navigation; keep phase/status data explicitly synthetic.
+            output=os.environ.get('AUV_SIM_EVIDENCE_DIR')
+            if output:
+                out=Path(output);out.mkdir(parents=True,exist_ok=True)
+                prefix='missing-surface' if missing_surface else 'closed-loop'
+                (out/(prefix+'-diagnostics.json')).write_text(json.dumps(
+                    dict(synthetic=True,phases=phases,snapshots=snapshots,targets=targets),indent=2))
+                errors.flush()
+                (out/(prefix+'-stderr.log')).write_text((root/'stderr').read_text())
+                with lock:final_body=dict(state)
+                (out/(prefix+'-body.json')).write_text(json.dumps(final_body,indent=2))
+                (out/(prefix+'-config.yaml')).write_bytes(path.read_bytes())
+                for name in ['front.jpg','down.jpg']:
+                    if (root/name).exists():(out/(prefix+'-'+name)).write_bytes((root/name).read_bytes())
+                for event_file in (root/'runs').glob('*/events.ndjson'):
+                    (out/(prefix+'-events.ndjson')).write_bytes(event_file.read_bytes())
             proc.send_signal(signal.SIGTERM);proc.wait(timeout=5);stop.set()
             for worker in workers:worker.join(timeout=2)
             errors.close();os.close(master);os.close(slave)

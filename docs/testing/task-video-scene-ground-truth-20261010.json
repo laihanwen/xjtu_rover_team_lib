@@ -1,0 +1,17 @@
+{
+  "source": "用户于 2026-10-10 确认本次录像场地的四锥位置",
+  "scope": "仅本次素材；不作为比赛默认地图或自动观测结果",
+  "coordinates": {
+    "order": "row,column",
+    "index_base": 1,
+    "orientation": "沿用标注表约定：黄边朝下，左上为 (1,1)"
+  },
+  "cones": [
+    {"row": 3, "column": 1, "class": "circle_cone"},
+    {"row": 2, "column": 1, "class": "circle_cone"},
+    {"row": 3, "column": 2, "class": "square_cone"},
+    {"row": 3, "column": 3, "class": "square_cone"}
+  ],
+  "not_provided": ["逐帧锥体轮廓", "底座轮廓", "逐帧外框角点像素坐标"],
+  "usage": "用于离线识别结果对比；不可填补遮挡、不可见格或替代自动地图"
+}

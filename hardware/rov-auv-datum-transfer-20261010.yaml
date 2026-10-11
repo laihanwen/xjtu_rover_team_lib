@@ -1,0 +1,27 @@
+confirmation_source: user_rov_validation_20261010
+status: partial_numeric_transfer
+imu:
+  order: [roll, pitch, yaw]
+  body_axes: [forward, left, up]
+  runtime_signs:
+    roll: 1
+    pitch: 1
+    yaw: null # 已确认 ROV 验证通过，但未找到数值转换记录
+  runtime_additional_offsets_deg: [0, 0, 0]
+  reference_owner: stm32_MDK_ARM_imu
+  roll_pitch_reference: explicit_level_request_RAM_reset_on_reboot
+  yaw_reference: first_valid_IMU_frame
+  control_feedback_yaw_sign: -1 # 控制反馈倍率，不是定位坐标符号
+depth:
+  units: metres
+  positive_direction: down
+  rov_telemetry: M10_gauge_without_AuvLink_zero_subtraction
+  auv_telemetry: M10_gauge_minus_AUV_DEPTH_ZERO_M
+  zero_subtraction_owner: auv_firmware
+  runtime_additional_zero_m: 0
+  measured_surface_gauge_zero_m: null # 不从岸上 -0.25 m 读数推断
+  firmware_zero_calibrated_in_current_source: false
+  pool_depth_m: 1.4 # 用户 2026-10-10 确认
+safety:
+  localization_verified: false
+  motion_enabled: false

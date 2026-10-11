@@ -59,13 +59,13 @@ def main():
     if known.exists():client.load_host_keys(str(known))
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        client.connect(a.host,username=a.user,password=password,timeout=10,auth_timeout=10,banner_timeout=10)
+        client.connect(a.host,username=a.user,password=password,timeout=10,auth_timeout=10,banner_timeout=10,allow_agent=password is None,look_for_keys=password is None)
         client.save_host_keys(str(known))
         # Only these source helpers are uploaded; measured Pi configurations stay in place.
         remote_dir='/tmp/auv-one-click-tools'
         remote(client,'mkdir -p '+remote_dir+'/auv '+remote_dir+'/rov',logs/'ssh.log')
         with client.open_sftp() as ftp:
-            for source,target in [('tools/auv/switch_mode.py','auv/switch_mode.py'),('tools/rov/trial_protocol.py','rov/trial_protocol.py')]:
+            for source,target in [('tools/rov/trial_protocol.py','rov/trial_protocol.py')]:
                 ftp.put(str(ROOT/source),remote_dir+'/'+target)
         if a.stage=='prepare':
             script='import sys\nsys.path.insert(0,'+repr(remote_dir+'/rov')+')\nDEVICE='+repr(a.device)+'\n'+PREPARE

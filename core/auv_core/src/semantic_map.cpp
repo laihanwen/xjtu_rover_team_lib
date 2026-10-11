@@ -2,6 +2,20 @@
 #include <algorithm>
 
 namespace auv_core {
+SemanticMap fuse_local_semantic_map(const auv_mapping::LocalMapAccumulator& observations,
+    const std::array<bool,9>& visited,int expected_cones) {
+  SemanticMap result;result.grid.rows=result.grid.cols=3;result.visited=visited;
+  result.complete=observations.complete(expected_cones);result.grid.complete=result.complete;
+  for(int i=0;i<9;++i){
+    const auto type=observations.cells()[static_cast<std::size_t>(i)].type;
+    const char* name="unknown";
+    if(type==auv_mapping::LocalCellClass::empty)name="empty";
+    if(type==auv_mapping::LocalCellClass::circle){name="circle_cone";++result.cone_count;}
+    if(type==auv_mapping::LocalCellClass::square){name="square_cone";++result.cone_count;}
+    result.grid.cells.push_back({{static_cast<std::int8_t>(i/3),static_cast<std::int8_t>(i%3),name},visited[static_cast<std::size_t>(i)]});
+  }
+  return result;
+}
 SemanticMap fuse_semantic_map(const auv_mapping::GridResult& geometry,
     const std::vector<auv_vision::ConeObservation>& cones, bool cones_stable,
     const std::array<bool, 9>& visited, int expected_cones) {

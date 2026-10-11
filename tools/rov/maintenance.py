@@ -123,7 +123,8 @@ def pi(args, output, deploy=False):
     # First connection pins the key; later key changes are rejected.
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(args.host, username=args.user, password=password, timeout=10,
-                   auth_timeout=10, banner_timeout=10)
+                   auth_timeout=10, banner_timeout=10,
+                   allow_agent=password is None, look_for_keys=password is None)
     client.save_host_keys(str(known))
     try:
         if deploy:
@@ -164,6 +165,8 @@ while True:
             raise
         time.sleep(0.5)
 """
+        health_check = health_check.replace('http://192.168.137.150:8080',
+                                           f'http://{args.host}:8080')
         remote(client, "systemctl is-active auv-runtime auv-rov && "
                "systemctl show auv-runtime auv-rov -p ExecStart -p ActiveEnterTimestamp && "
                "python3 -c " + shlex.quote(health_check), output / 'check.log')

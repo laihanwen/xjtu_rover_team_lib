@@ -1,8 +1,9 @@
-# 用户 2026-10-10 确认；原点为用户测量采用的机体原点。
+# 用户 2026-10-10 确认；原点为机体正中心。
 body_frame:
   x: forward_front_camera
   y: left
   z: up
+  origin: geometric_body_center
   units: metres
 optical_frame:
   x: image_right
@@ -15,9 +16,12 @@ front:
 down:
   position_m: [0.09, 0.01, -0.06]
   depression_deg: 90
-  camera_to_body: [0, -1, 0, -1, 0, 0, 0, 0, -1]
-rotation_convention: upright_front_zero_yaw_roll_and_down_image_top_forward
+  camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, -1]
+rotation_convention: upright_front_zero_yaw_roll_and_down_image_right_forward
 # 位置与俯角为现场确认；矩阵按上述安装约定推导，不是新的 PnP 标定结果。
 confirmation_source: user_20261010
 rectification_acceptance: user_verified_current_scheme
 material_directory: 'C:/Users/21670/Desktop/标定板/素材'
+depth_sensor:
+  position_m: [-0.16, 0.02, -0.05]
+  confirmation_source: user_20261010

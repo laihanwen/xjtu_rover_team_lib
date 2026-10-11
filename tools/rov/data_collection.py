@@ -7,7 +7,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-KINDS = {'depth', 'front_calibration', 'camera_handover', 'installation', 'motion_response'}
+KINDS = {'depth', 'front_calibration', 'camera_handover', 'installation', 'motion_response',
+         'local_grid', 'cone_contours', 'continuous_mapping', 'ascent_visibility', 'tag_difficult'}
 
 
 def metadata(value):

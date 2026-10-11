@@ -24,7 +24,9 @@ class MountingGeometry(unittest.TestCase):
             if role=='front':
                 self.assertGreater(optical_forward[0],0)
                 self.assertAlmostEqual(-optical_forward[2]/optical_forward[0],1)
-            else:np.testing.assert_allclose(optical_forward,[0,0,-1])
+            else:
+                np.testing.assert_allclose(optical_forward,[0,0,-1])
+                np.testing.assert_allclose(rcb[:,0],[1,0,0]) # image right is body forward
             k=np.array(config[section]['camera_matrix']).reshape(3,3)
             camera_from_grid=rcb.T@body_from_grid
             for body in [np.array([.75,.75,-2.]),np.array([.55,1.1,-1.8])]:
@@ -48,6 +50,7 @@ class MountingGeometry(unittest.TestCase):
             self.assertFalse(cfg['operation']['auto_arm'])
             self.assertEqual(cfg['camera_front']['calibration_quality'],'user_verified_20261010')
             np.testing.assert_allclose(cfg['localization']['camera_offset_m'],[.09,.01,-.06])
+            np.testing.assert_allclose(cfg['localization']['depth_offset_m'],[-.16,.02,-.05])
 
 
 if __name__=='__main__':unittest.main()

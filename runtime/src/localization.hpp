@@ -1,6 +1,7 @@
 #pragma once
 #include "camera_rectifier.hpp"
 #include "auv_mapping/plane_odometry.hpp"
+#include "auv_mapping/metric_grid_pose.hpp"
 #include "auv_control/observation_search.hpp"
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -41,15 +42,37 @@ class Localization {
  explicit Localization(Settings cfg):cfg_(std::move(cfg)){}
  double period()const{return 1/cfg_.hz;}bool enabled()const{return cfg_.enabled;}
  auv_control::ObservationPose snapshot(double now)const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return {valid_ && now>=stamp_ && now-stamp_<=.3,continuous_,session_,stamp_,x_,y_,yaw_};
+  // Control must never wait for optical flow. Only completed samples publish
+  // here; their original timestamp retains the existing freshness boundary.
+  std::lock_guard<std::mutex> lock(published_mutex_);
+  auto pose=published_pose_;
+  pose.valid=pose.valid && std::isfinite(now) && now>=pose.stamp && now-pose.stamp<=.3;
+  return pose;
+ }
+ // A new phase starts a new relative odometry session. It needs two new
+ // frames and an independent new-phase landmark anchor before grid fusion.
+ // This does not change the MCU depth zero or accept a stationary origin.
+ void begin_tracking_phase(const auv_mapping::MetricGridCalibration& c) {
+  c.validate();if(!c.verified)throw std::runtime_error("phase odometry calibration unverified");
+  std::lock_guard<std::mutex> lock(mutex_);PublishOnExit publication{*this};
+  cfg_.width=c.width;cfg_.height=c.height;cfg_.intrinsics=c.camera_matrix;cfg_.distortion=c.distortion;
+  cfg_.rotation=c.camera_to_body;cfg_.camera_offset=c.camera_offset_m;cfg_.depth_offset=c.depth_offset_m;
+  std::copy(c.camera_to_body.begin(),c.camera_to_body.end(),cfg_.plane.camera_to_body.begin());
+  std::copy(c.camera_offset_m.begin(),c.camera_offset_m.end(),cfg_.plane.camera_offset.begin());
+  std::copy(c.depth_offset_m.begin(),c.depth_offset_m.end(),cfg_.plane.depth_offset.begin());
+  cfg_.plane.pool_depth=c.pool_depth_m;cfg_.plane.verified=c.verified;
+  rectifier_.reset();gray_.release();points_.clear();history_.clear();
+  x_=y_=0;valid_=ready_=false;stationary_since_=0;++session_;continuous_=true;
+  reason_="new_phase_wait_fresh_relative_frames";
  }
  bool has_origin()const {std::lock_guard<std::mutex> lock(mutex_);return session_!=0;}
- void unavailable(const std::string& reason){std::lock_guard<std::mutex> lock(mutex_);fail(reason);}
+ void unavailable(const std::string& reason){std::lock_guard<std::mutex> lock(mutex_);fail(reason);publish_pose();}
  // Called by a dedicated worker with shared capture image (never opens another camera).
  void process(const cv::Mat& image,double stamp,double now,const YAML::Node& supplied=YAML::Node(),bool image_rectified=false){
   std::lock_guard<std::mutex> lock(mutex_);
-  if(!std::isfinite(stamp)||!std::isfinite(now)){stamp_=0;fail("invalid_timestamp");return;}stamp_=stamp;
+  PublishOnExit publication{*this};
+  if(!std::isfinite(stamp)||!std::isfinite(now)){stamp_=0;fail("invalid_timestamp");return;}
+  stamp_=stamp;valid_=false; // exceptions cannot republish old coordinates with a new valid timestamp
   if(!cfg_.enabled){fail("disabled");return;}
   if(!ready_config()){fail("calibration_required");return;}
   if(image.cols!=cfg_.width||image.rows!=cfg_.height){fail("calibration_resolution_mismatch");return;}
@@ -88,10 +111,17 @@ class Localization {
   if(gray_.empty()){reason_="ready_set_origin";valid_=false;previous_=sample;gray_=gray.clone();points_=points;return;}
   if(stamp-previous_.stamp<=0||stamp-previous_.stamp>.3){fail("frame_time_gap");return;}
   std::vector<cv::Point2f> next,back;std::vector<unsigned char> status,back_status;std::vector<float> error,back_error;
-  cv::calcOpticalFlowPyrLK(gray_,gray,points_,next,status,error,cv::Size(21,21),3);
-  cv::calcOpticalFlowPyrLK(gray,gray_,next,back,back_status,back_error,cv::Size(21,21),3);
   std::vector<cv::Point2f> a,b;
-  for(std::size_t i=0;i<points_.size();++i)if(status[i]&&back_status[i]&&cv::norm(points_[i]-back[i])<1&&next[i].x>=0&&next[i].y>=0&&next[i].x<gray.cols&&next[i].y<gray.rows&&rectifier_->valid_mask().at<unsigned char>(static_cast<int>(next[i].y),static_cast<int>(next[i].x))){a.push_back(points_[i]);b.push_back(next[i]);}
+  if(cv::norm(gray_,gray,cv::NORM_INF)==0) {
+    // Exact pixel equality gives identity correspondences. Still run the
+    // timestamp, telemetry, plane geometry and residual checks below; never
+    // equate equal pixels with zero body motion or a new absolute position.
+    a=points_;b=points_;
+  } else {
+    cv::calcOpticalFlowPyrLK(gray_,gray,points_,next,status,error,cv::Size(21,21),3);
+    cv::calcOpticalFlowPyrLK(gray,gray_,next,back,back_status,back_error,cv::Size(21,21),3);
+    for(std::size_t i=0;i<points_.size();++i)if(status[i]&&back_status[i]&&cv::norm(points_[i]-back[i])<1&&next[i].x>=0&&next[i].y>=0&&next[i].x<gray.cols&&next[i].y<gray.rows&&rectifier_->valid_mask().at<unsigned char>(static_cast<int>(next[i].y),static_cast<int>(next[i].x))){a.push_back(points_[i]);b.push_back(next[i]);}
+  }
   if(a.size()<30){fail("tracking_lost");return;}
   cv::Mat mask;auto homography=cv::findHomography(a,b,cv::RANSAC,2,mask);if(homography.empty()){fail("plane_fit_failed");return;}
   cv::Mat k(3,3,CV_64F,cfg_.intrinsics.data());std::vector<cv::Point2f> na,nb;
@@ -111,6 +141,7 @@ class Localization {
  }
  bool reset(double now){
   std::lock_guard<std::mutex> lock(mutex_);
+  PublishOnExit publication{*this};
   if(!ready_||armed_||!stationary_since_||now-stationary_since_<2||now-ready_time_>.3||history_.size()<10||history_.back().stamp-history_.front().stamp<2)return false;
   const auto& last=history_.back();for(const auto& s:history_)if(std::abs(s.roll-last.roll)>.01||std::abs(s.pitch-last.pitch)>.01||std::abs(std::remainder(s.yaw-last.yaw,2*std::acos(-1)))>.01||std::abs(s.depth-last.depth)>.03)return false;
   origin_yaw_=last.yaw;previous_=last;x_=y_=yaw_=0;++session_;continuous_=true;valid_=false;reason_="origin_set_wait_next_frame";return true;
@@ -126,6 +157,13 @@ class Localization {
    <<",\"uncertainty_m\":null,\"reason\":\""<<(stamp_&&!fresh?"image_stale":reason_)<<"\"}";return s.str();
  }
  private:
+ void publish_pose(){
+  std::lock_guard<std::mutex> lock(published_mutex_);
+  published_pose_={valid_,continuous_,session_,stamp_,x_,y_,yaw_};
+ }
+ struct PublishOnExit {Localization& owner;~PublishOnExit(){owner.publish_pose();}};
+ mutable std::mutex published_mutex_;
+ auv_control::ObservationPose published_pose_{};
  bool ready_config()const{
   if(cfg_.width<=0||cfg_.height<=0||cfg_.intrinsics.size()!=9||cfg_.camera_offset.size()!=3||cfg_.depth_offset.size()!=3||cfg_.imu_signs.size()!=3||cfg_.imu_offsets.size()!=3||cfg_.distortion.empty()||!auv_mapping::calibration_valid(cfg_.plane))return false;
   if(cfg_.intrinsics[0]<=0||cfg_.intrinsics[4]<=0)return false;

@@ -52,10 +52,10 @@ vision:
   grid_dark_value_max: 95
   yellow_edge_minimum_support: 0.45
   yellow_edge_margin: 0.20
-  apriltag_ids: [] # TODO: official allowed ID(s); empty means any family member
+  apriltag_ids: [18] # 用户确认比赛沿用现场验证规格
   apriltag_camera: front # 前视先发现标签；ROV 与其他旧配置默认 down
   apriltag_stable_frames: 3
-  apriltag_family: tag36h11
+  apriltag_family: tag16h5
   grid_stable_frames: 3
   cone_minimum_confidence: 0.72
   cone_history_size: 5
@@ -127,13 +127,13 @@ localization:
   height: 240
   camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
   distortion: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
-  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, -1] # 下视图像右侧为机体前方
   camera_offset_m: [0.09, 0.01, -0.06]  # user measured, metres; camera orientation is a separate field
-  depth_offset_m: []  # pressure sensor position relative to body origin
-  imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
-  imu_offsets_deg: []
-  pool_depth_m: 0
-  depth_zero_m: 0
+  depth_offset_m: [-0.16, 0.02, -0.05]  # user-confirmed body-frame metres
+  imu_signs: []  # roll/pitch 已实测 +1；yaw 数值映射待取证，不能填完整三元组
+  imu_offsets_deg: [0, 0, 0] # MCU 已扣水平参考和首帧 yaw 原点，不重复扣除
+  pool_depth_m: 1.4 # 用户确认实际水深，m；作业上限仍独立配置
+  depth_zero_m: 0 # AUV 固件先扣 AUV_DEPTH_ZERO_M；定位不重复扣零，非实测零点值
   calibration_verified: false
 
 # Onboard recording starts at process launch; no PC streaming client is needed.
@@ -177,7 +177,7 @@ surface_traversal:
   surface_localization_verified: false
   ascent_cell: [-1, -1] # measured row,col; yellow edge is map bottom
   ascent_tolerance_cells: 0.15
-  cell_size_m: 0 # measured; no rule dimension guessed
+  cell_size_m: 0.82 # 图纸接头中心格距，用户确认现场一致
   depth_target_m: 0 # TODO: confirmed surface/shallow-water rule and measured datum
   depth_tolerance_m: 0.05
   ascent_rate_mps: 0.03
@@ -226,4 +226,15 @@ front_metric:
     distortion_coefficients: []
   camera_to_body: [0, -0.7071067811865476, 0.7071067811865476, -1, 0, 0, 0, -0.7071067811865476, -0.7071067811865476] # 前视 45°，安装约定见 hardware/camera-mounting-20261010.yaml
   camera_offset_m: [0.15, 0.03, 0.02]  # 用户实测，m
-  depth_offset_m: []   # 压力传感器相对机体原点偏移（与 localization 一致）
+  depth_offset_m: [-0.16, 0.02, -0.05]   # 用户确认；与 localization 一致，单位 m
+
+# Experimental local topology / map accumulation / bounded down odometry.
+# Keep disabled until the new C++ replay and full Runtime regression pass.
+local_mapping:
+  enabled: false
+  navigation_verified: false
+  odometry_budget_sec: 1.0
+  empty_floor:
+    verified: false
+    # hsv_lower / hsv_upper must come from labeled visible-floor samples.
+    minimum_support: 0.95

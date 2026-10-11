@@ -145,6 +145,11 @@ def main(binary, autonomous=False):
                         break
                     time.sleep(.02)
                 assert snapshot['phase'] == 'FAULT' and not state['armed'], snapshot
+                # Acknowledged DISARM and gripper delivery are separate UART
+                # messages. Wait for the actual virtual MCU observation.
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline and (not gripper_messages or gripper_messages[-1] != (1, 0.0)):
+                    time.sleep(.02)
                 assert gripper_messages and gripper_messages[-1] == (1, 0.0)
                 assert (root / 'control.sock.autonomous-started').exists()
                 proc.send_signal(signal.SIGTERM)

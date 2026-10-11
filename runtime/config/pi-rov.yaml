@@ -114,9 +114,9 @@ localization:
   height: 240
   camera_matrix: [413.2923092526209, 0.0, 159.53937104149475, 0.0, 418.54172784620357, 95.11590719479291, 0.0, 0.0, 1.0]
   distortion: [0.674561075946785, -0.7099226358925659, -0.07017894158087441, 0.0008090055501311443, -0.07124098219367185]
-  camera_to_body: []  # 9 row-major values: optical frame to X-forward/Y-left/Z-up
+  camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, -1] # 下视图像右侧为机体前方
   camera_offset_m: [0.09, 0.01, -0.06]  # user measured, metres; camera orientation is a separate field
-  depth_offset_m: []  # pressure sensor position relative to body origin
+  depth_offset_m: [-0.16, 0.02, -0.05]  # user-confirmed body-frame metres
   imu_signs: []  # measured roll/pitch/yaw conversion, each +1 or -1
   imu_offsets_deg: []
   pool_depth_m: 0

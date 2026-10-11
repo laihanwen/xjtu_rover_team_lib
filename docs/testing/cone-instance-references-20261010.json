@@ -1,0 +1,14 @@
+{
+  "source": "用户确认前视78秒左后方方锥、右前方圆锥",
+  "video": "前.mp4",
+  "frame": 2340,
+  "image_width": 1440,
+  "image_height": 1080,
+  "image_space": "already_rectified_display_video",
+  "regions_are": "人工选取的实例包围区域，非精确轮廓、非自动定位输出",
+  "instances": [
+    {"id": "left_back", "class": "square_cone", "region_xywh": [320, 260, 300, 430], "global_cell": null},
+    {"id": "right_front", "class": "circle_cone", "region_xywh": [610, 200, 350, 610], "global_cell": null}
+  ],
+  "usage": "比较同实例条纹分裂及整体形状；不按已知布局补全格位"
+}

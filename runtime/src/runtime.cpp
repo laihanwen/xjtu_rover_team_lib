@@ -7,6 +7,8 @@
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
 #include "auv_mapping/grid_mapper.hpp"
+#include "auv_mapping/local_mapping_pipeline.hpp"
+#include "auv_mapping/local_pose_fusion.hpp"
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
@@ -92,6 +94,7 @@ class Runtime {
   explicit Runtime(Config cfg) : cfg_(std::move(cfg)), mission_(cfg_.mission),
     route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search),
     ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal),docking_(cfg_.docking) {
+    cv::setNumThreads(cfg_.opencv_threads);
     (void)auv_vision::AprilTagDetector(cfg_.apriltag_family);
     (void)auv_mapping::GridMapper(cfg_.grid);
     (void)auv_vision::ConeDetector(cfg_.cone);
@@ -259,6 +262,7 @@ class Runtime {
     out<<"{\"run_id\":\""<<run_id_<<"\",\"control_steady_sec\":"<<now
       <<",\"phase\":\""<<auv_mission::mission_phase_name(mission_.snapshot().phase)<<"\",\"source\":\""<<source
       <<"\",\"frame_sequence\":"<<metric_pose_.sequence<<",\"frame_steady_sec\":"<<metric_pose_.stamp
+      <<",\"landmark_observation\":"<<(metric_pose_.landmark_observation?"true":"false")
       <<",\"grid_valid\":"<<(metric_pose_.valid?"true":"false")<<",\"grid_row\":"<<json_number(metric_pose_.row)
       <<",\"grid_col\":"<<json_number(metric_pose_.col)<<",\"reprojection_px\":"<<json_number(metric_pose_.reprojection_px)
       <<",\"grid_reason\":\""<<json_escape(metric_pose_.reason)<<"\",\"underwater_valid\":"<<(local.valid?"true":"false")
@@ -349,6 +353,11 @@ class Runtime {
           down_rectified_frame_=corrected;down_surface_frame_=surface_frame;
           frame_=image; frame_time_=last_ready; ++frame_sequence_; ++down_capture_frames_;
         }
+        // File replay has no hardware frame clock. Match the configured rate,
+        // as front_loop already does, rather than saturating CPU with decode,
+        // rectification and JPEG work. Live camera reads remain unchanged.
+        if(!csi && !camera.is_live())
+          std::this_thread::sleep_for(std::chrono::duration<double>(1.0/cfg_.camera_fps));
       } catch(const std::exception& e) {
         capture.close(); camera.close(); fault(std::string("down camera: ")+e.what());
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -436,12 +445,12 @@ class Runtime {
     }
   }
   void localization_loop() {
-    std::uint64_t seen=0; double last=0;
+    std::uint64_t seen=0; double last=0;bool odometry_surface=false;
     while(running){
       double now=seconds();
       if(now-last < localization_->period()) {std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
       last=now;cv::Mat image;double stamp=0;bool corrected=false,surface_frame=false;
-      const bool matching=cfg_.camera_matrix==cfg_.localization.intrinsics &&
+      const bool matching=!cfg_.local_mapping_enabled && cfg_.camera_matrix==cfg_.localization.intrinsics &&
           cfg_.distortion==cfg_.localization.distortion && !cfg_.camera_matrix.empty();
       {std::lock_guard<std::mutex> lock(frame_mutex_);
        if(seen!=frame_sequence_){seen=frame_sequence_;image=matching?down_rectified_frame_:frame_;
@@ -451,7 +460,11 @@ class Runtime {
           bool surface_phase=false;
           {std::lock_guard<std::mutex> lock(state_mutex_);
            surface_phase=cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase);}
-          if(surface_frame || surface_phase) {
+          if(cfg_.local_mapping_enabled&&surface_phase!=odometry_surface) {
+            localization_->begin_tracking_phase(surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater);
+            odometry_surface=surface_phase;
+          }
+          if(!cfg_.local_mapping_enabled&&(surface_frame || surface_phase)) {
             localization_->unavailable("surface_phase_use_grid_pose");continue;
           }
           YAML::Node sensor;
@@ -647,6 +660,11 @@ class Runtime {
     if(cfg_.mission_profile=="tag_docking"){dock_vision_loop();return;}
     auv_vision::AprilTagDetector tags(cfg_.apriltag_family);
     auv_mapping::GridMapper mapper(cfg_.grid);
+    auv_mapping::LocalMappingPipeline local_pipeline(cfg_.cone,cfg_.grid,cfg_.local_floor);
+    auv_mapping::LocalMapAccumulator local_map;
+    auv_mapping::LocalPoseFusion local_fusion;
+    std::uint64_t local_epoch=1;double local_boundary=0;
+    local_map.reset(local_epoch,"yellow_bottom_pipe_centres");local_fusion.reset(local_epoch,0);
     auv_vision::ConeDetector detector(cfg_.cone);
     auv_vision::ConeTracker tracker(cfg_.tracker);
     CameraRectifier underwater(!cfg_.camera_matrix.empty(),cfg_.camera_width,
@@ -681,12 +699,18 @@ class Runtime {
       if (image.empty() && front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
-      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;mapper.reset();tracker.reset();}
+      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;mapper.reset();tracker.reset();
+        ++local_epoch;local_boundary=seconds();local_map.reset(local_epoch,"yellow_bottom_pipe_centres");
+        local_fusion.reset(local_epoch,local_boundary);}
       auv_mission::MissionPhase phase;
       bool triggered=false;
       {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
       const bool surface_phase=cfg_.traversal.enabled && surface_grid_phase(phase);
-      if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;}
+      if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;
+        ++local_epoch;local_boundary=seconds();
+        if(!local_map.begin_stage(local_epoch,local_boundary,"yellow_bottom_pipe_centres"))
+          throw std::runtime_error("local map stage transition rejected");
+        local_fusion.reset(local_epoch,local_boundary);}
       // Camera streams are independent: front mapping must not wait for down frames.
       if(!image.empty()) {
         const bool down_surface=surface_phase && !metric_front;
@@ -731,7 +755,7 @@ class Runtime {
         metric_stamp=front_stamp;metric_seq=front_seen;
       } else metric_image=image;
       if(metric_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
-      const auto grid = mapper.process(metric_image);
+      auto grid = mapper.process(metric_image);
       auv_mapping::MetricGridPose metric;
       if(cfg_.traversal.enabled) {
         double depth=-1;
@@ -742,13 +766,69 @@ class Runtime {
           metric_image.size(),depth,metric_stamp,metric_seq);
         metric.surface_frame=surface_phase;
       }
+      auv_mapping::LocalMappingResult local_result;
+      bool local_sample_valid=false;
+      if(cfg_.local_mapping_enabled) {
+        auv_mapping::PlaneSample sensor;bool sensor_valid=false;
+        {std::lock_guard<std::mutex> lock(state_mutex_);
+          sensor.stamp=metric_stamp;
+          sensor_valid=safe_status(seconds())&&depth_sample_fresh(seconds())&&
+            std::abs(status_time_-metric_stamp)<=.15&&metric_stamp>=local_boundary;
+          sensor.depth=depth_sample_.depth_m;
+          sensor.roll=cfg_.localization.imu_signs[0]*status_.roll+cfg_.localization.imu_offsets[0]*CV_PI/180;
+          sensor.pitch=cfg_.localization.imu_signs[1]*status_.pitch+cfg_.localization.imu_offsets[1]*CV_PI/180;
+          sensor.yaw=cfg_.localization.imu_signs[2]*status_.yaw+cfg_.localization.imu_offsets[2]*CV_PI/180;
+        }
+        if(sensor_valid) {
+          const auto& calibration=metric_front?(surface_phase?cfg_.traversal.front_surface:cfg_.traversal.front_underwater):
+            (surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater);
+          local_result=local_pipeline.process(metric_image,calibration,sensor,metric_seq,local_epoch,metric_front?1:0,
+            metric_front?(surface_phase?front_surface.valid_mask():front_underwater.valid_mask()):
+                         (surface_phase?surface.valid_mask():underwater.valid_mask()),local_fusion.snapshot(metric_stamp));
+          local_sample_valid=local_result.pose.valid;
+          if(local_sample_valid) {
+            metric=local_result.pose;
+            if(triggered&&phase==auv_mission::MissionPhase::kBuildMap) {
+              std::string reason;
+              if(!local_map.update(local_result.observation,seconds(),reason))
+                event("LOCAL_MAP_REJECT",reason);
+            }
+            grid.rectified=local_result.geometry.rectified;grid.debug_image=local_result.geometry.debug;
+          }
+        }
+        // A conflicting association invalidates the anchor, rather than
+        // propagating through a newly observed contradictory landmark.
+        if(sensor_valid&&!local_result.geometry.valid&&local_result.geometry.association.reason=="topology or yellow-edge conflict")
+          local_fusion.reset(local_epoch,local_boundary);
+        metric=local_fusion.update(metric,localization_->snapshot(seconds()),seconds(),local_epoch,
+          cfg_.traversal.water_model().cell_size_m,cfg_.traversal.maximum_speed,cfg_.local_odometry_budget);
+        metric.surface_frame=surface_phase;
+        if(local_sample_valid&&surface_phase) {
+          bool match=false,conflict=false;
+          {std::lock_guard<std::mutex> lock(state_mutex_);
+            for(const auto& cell:local_result.observation.cells) {
+              if(cell.type!=auv_mapping::LocalCellClass::circle&&cell.type!=auv_mapping::LocalCellClass::square)continue;
+              const auto expected=cell.type==auv_mapping::LocalCellClass::circle?"circle_cone":"square_cone";
+              const int id=cell.row*3+cell.col;
+              if(map_.complete&&static_cast<std::size_t>(id)<map_.grid.cells.size()) {
+                if(map_.grid.cells[id].cell.object_type==expected)match=true;else conflict=true;
+              }
+            }
+          }
+          metric.semantic_match=match&&!conflict;
+          if(conflict){metric.valid=false;metric.reason="local cone identity conflicts with frozen map";local_fusion.reset(local_epoch,local_boundary);}
+        }
+        event("LOCAL_GRID","camera="+std::string(metric_front?"front":"down")+" frame="+std::to_string(metric_seq)+
+          " epoch="+std::to_string(local_epoch)+" nodes="+std::to_string(local_result.geometry.nodes.size())+
+          " hypotheses="+std::to_string(local_result.geometry.association.hypotheses.size())+" reason="+metric.reason);
+      }
       std::vector<auv_vision::ConeObservation> cones;
       cv::Mat cone_debug;
       if (triggered && phase==auv_mission::MissionPhase::kBuildMap && grid.stable && !grid.rectified.empty()) {
         const auto detection=detector.process(grid.rectified);
         cones=tracker.update(detection.observations);cone_debug=detection.debug_image;
       } else if(phase==auv_mission::MissionPhase::kBuildMap) tracker.reset();
-      if(surface_phase && phase==auv_mission::MissionPhase::kRelocalizeSurface && metric.valid) {
+      if(!cfg_.local_mapping_enabled && surface_phase && phase==auv_mission::MissionPhase::kRelocalizeSurface && metric.valid) {
         const auto observed=detector.process(grid.rectified);
         std::lock_guard<std::mutex> lock(state_mutex_);
         unsigned matched=0;bool consistent=map_.complete && observed.observations.size()==4;
@@ -763,9 +843,11 @@ class Runtime {
       }
       std::array<bool,9> visited;
       { std::lock_guard<std::mutex> lock(state_mutex_); visited = visited_; }
-      auto map = auv_core::fuse_semantic_map(grid, cones, tracker.ready(), visited, cfg_.expected_cones);
-      map.complete=map.grid.complete=map.complete && triggered && phase==auv_mission::MissionPhase::kBuildMap;
-      if (map.complete && !map_image_saved_.exchange(true)) {
+      auto map = cfg_.local_mapping_enabled ? auv_core::fuse_local_semantic_map(local_map,visited,cfg_.expected_cones) :
+        auv_core::fuse_semantic_map(grid, cones, tracker.ready(), visited, cfg_.expected_cones);
+      map.complete=map.grid.complete=map.complete && triggered && phase==auv_mission::MissionPhase::kBuildMap &&
+        (!cfg_.local_mapping_enabled||local_sample_valid);
+      if (map.complete && (!cfg_.local_mapping_enabled||local_sample_valid) && !map_image_saved_.exchange(true)) {
         try {
           std::filesystem::create_directories(cfg_.debug_dir);
           const auto filename=cfg_.debug_dir+"/map_"+std::to_string(static_cast<std::uint64_t>(seconds()*1000))+".jpg";
@@ -778,12 +860,26 @@ class Runtime {
           artifact<<"{\"run_id\":\""<<run_id_<<"\",\"steady_sec\":"<<metric_stamp
             <<",\"camera\":\""<<(metric_front?"front":"down")<<"\",\"frame_sequence\":"<<metric_seq
             <<",\"rows\":3,\"cols\":3,\"bottom_edge\":\""<<(cfg_.grid.single_yellow_edge?"yellow":"legacy_yellow_frame")<<"\",\"orientation_valid\":"
-            <<(grid.orientation_valid?"true":"false")<<",\"confidence\":"<<grid.confidence<<",\"corners\":[";
-          for(std::size_t i=0;i<grid.corners.size();++i){if(i)artifact<<',';artifact<<'['<<grid.corners[i].x<<','<<grid.corners[i].y<<']';}
+            <<((cfg_.local_mapping_enabled?local_result.geometry.valid:grid.orientation_valid)?"true":"false")<<",\"confidence\":"<<(cfg_.local_mapping_enabled?0.0:grid.confidence)<<",\"corners\":[";
+          for(std::size_t i=0;!cfg_.local_mapping_enabled&&i<grid.corners.size();++i){if(i)artifact<<',';artifact<<'['<<grid.corners[i].x<<','<<grid.corners[i].y<<']';}
+          artifact<<"],\"geometry_source\":\""<<(cfg_.local_mapping_enabled?"local_pipe_nodes":"complete_outer_corners")<<"\",\"local_nodes\":[";
+          if(cfg_.local_mapping_enabled)for(std::size_t i=0;i<local_result.geometry.pixels.size();++i) {
+            if(i)artifact<<',';const auto p=local_result.geometry.pixels[i];
+            const auto n=local_result.geometry.association.hypotheses[0].nodes[i];
+            artifact<<"{\"row\":"<<n[0]<<",\"col\":"<<n[1]<<",\"pixel\":["<<p.x<<','<<p.y<<"]}";
+          }
           artifact<<"],\"cells\":[";
           for(std::size_t i=0;i<map.grid.cells.size();++i){if(i)artifact<<',';
             const auto& c=map.grid.cells[i].cell;artifact<<"{\"row\":"<<static_cast<int>(c.row)<<",\"col\":"
-              <<static_cast<int>(c.col)<<",\"object\":\""<<c.object_type<<"\"}";}
+              <<static_cast<int>(c.col)<<",\"object\":\""<<c.object_type<<"\"";
+            if(cfg_.local_mapping_enabled) {
+              const auto& evidence=local_map.cells()[i];
+              artifact<<",\"evidence_stamp\":"<<evidence.stamp<<",\"camera\":"<<evidence.camera
+                <<",\"source_sequence\":"<<evidence.sequence<<",\"contour_frame\":\""<<evidence.contour_frame<<"\",\"contour\":[";
+              for(std::size_t j=0;j<evidence.contour.size();++j){if(j)artifact<<',';artifact<<'['<<evidence.contour[j][0]<<','<<evidence.contour[j][1]<<']';}
+              artifact<<']';
+            }
+            artifact<<'}';}
           artifact<<"],\"cones\":[";
           for(std::size_t i=0;i<cones.size();++i){if(i)artifact<<',';const auto& c=cones[i];
             artifact<<"{\"row\":"<<c.row<<",\"col\":"<<c.col<<",\"shape\":\""<<auv_vision::cone_shape_name(c.shape)
@@ -808,7 +904,7 @@ class Runtime {
       if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
-      if(metric_front) {
+      if(metric_front||cfg_.local_mapping_enabled) {
         pose_valid_=metric.valid;row_=metric.row;col_=metric.col;
       } else { row_=grid.camera_row;col_=grid.camera_col; }
       pose_time_=metric_stamp;
@@ -1051,7 +1147,7 @@ class Runtime {
         }
         if(cfg_.traversal.enabled && fault_.empty()) {
           if(phase==auv_mission::MissionPhase::kRelocalizeSurface) {
-            const bool ready=surface_grid_fresh(now) && metric_pose_.semantic_match &&
+            const bool ready=surface_grid_fresh(now) && metric_pose_.landmark_observation && metric_pose_.semantic_match &&
               std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)<=cfg_.traversal.depth_tolerance_m;
             if(!ready)surface_pose_votes_=0;
             else if(metric_pose_.sequence!=surface_vote_sequence_) {

@@ -1,0 +1,35 @@
+{
+  "baseline_commit": "ca6576da937918a46c286f5f18049d301bd8466b",
+  "uncommitted_source": true,
+  "deployed": false,
+  "hardware_armed_by_tests": false,
+  "runtime_sha256": "c033861e7c6d5972922c74b360a04adf5c36596c914258e74fea846372c79de3",
+  "source_manifest_sha256": "a1d66c4a3348fafcf743d692521cc824f3124e50cbd7125c01b77ba8c7c9cd83",
+  "source_archive_sha256": "e0793260450d8f34434da77733de0e2221769f0861e4dca73d96f99091bc0d01",
+  "remote_directory": "/home/pi/auv-full-regression-20261010-202704",
+  "full_ctest": {
+    "total": 25,
+    "passed": 24,
+    "failed": [
+      "a2_closed_loop"
+    ]
+  },
+  "latest_targeted_ctest": {
+    "total": 3,
+    "passed": [
+      "local_grid_association",
+      "a0_localization_origin"
+    ],
+    "failed": [
+      "a2_closed_loop"
+    ]
+  },
+  "current_configured_ctest_total": 26,
+  "environment": {
+    "opencv": "4.10.0",
+    "compiler": "GCC 14.2",
+    "throttled": "0x50005",
+    "temperature_c": 58.4
+  },
+  "evidence_directory": "build/task-video-review/full-regression"
+}

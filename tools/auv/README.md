@@ -10,7 +10,7 @@
 | Start-Tag-Test.cmd | 启动匹配 Runtime 服务待命 | 不自动开始任务或 ARM |
 | Tag-Test.ps1 -Action task | 门控通过后请求任务 WAIT_ARM | 仍需显式 ARM，不能绕过未标定门 |
 | review_manual_task.py | 离线视频标签可见性和日志证据复盘 | 不套用未知图像空间 K/D，不控制设备 |
-| Flash-And-Console.ps1 | 兼容的一键入口，目前构建独立 ROV | 见一键说明，不能按目录名误认为 AUV 烧录 |
+| Flash-And-Console.ps1 | 兼容转发到 tools/rov/Flash-And-Start-Rov.ps1 | 见一键说明，不能按目录名误认为 AUV 烧录 |
 | switch_mode.py | 已停用的历史命令 | 拒绝执行会话交接 |
 
 操作依据：[标签入口](../../docs/one-click-tag-test.md)、[一键 ROV](../../docs/one-click-flash-console.md)、[人工复盘](../../docs/reports/20261010/manual-task-review-20261010.md)。

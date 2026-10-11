@@ -34,6 +34,21 @@ int main() {
   cone.shape = auv_vision::ConeShape::kCircle; cone.row = 0; cone.col = 1; cone.confidence = 0.9F;
   auto map = auv_core::fuse_semantic_map(grid,{cone},true,{},1);
   require(map.complete && map.grid.cells[1].cell.object_type == "circle_cone");
+  auv_mapping::LocalMapAccumulator local;
+  local.reset(1,"observed-grid");
+  auto partial=auv_core::fuse_local_semantic_map(local,{},4);
+  require(!partial.complete && partial.cone_count==0 && partial.grid.cells[0].cell.object_type=="unknown");
+  auv_mapping::LocalMapObservation sample;
+  sample.epoch=1;sample.grid_frame="observed-grid";sample.association_unique=true;
+  for(int row=0;row<3;++row)for(int col=0;col<3;++col)
+    sample.cells.push_back({row,col,row==2?auv_mapping::LocalCellClass::square:
+      row==1&&col==0?auv_mapping::LocalCellClass::circle:auv_mapping::LocalCellClass::empty,true,.9,{}});
+  std::string reason;
+  for(int n=1;n<=3;++n){sample.sequence=n;sample.stamp=.1*n;require(local.update(sample,sample.stamp,reason));}
+  std::array<bool,9> local_visited{};local_visited[6]=true;
+  auto accumulated=auv_core::fuse_local_semantic_map(local,local_visited,4);
+  require(accumulated.complete && accumulated.grid.complete && accumulated.cone_count==4);
+  require(accumulated.grid.cells[6].cell.object_type=="square_cone" && accumulated.visited[6]);
   auv_planning::GridPlanner planner;
   auto plan = planner.plan(map.grid,{0,0,"unknown"});
   require(plan.valid && !plan.targets.empty());

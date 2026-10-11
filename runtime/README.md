@@ -1,6 +1,6 @@
 # 树莓派轻量 Runtime
 
-> 2026-10-10 更新：用户确认现有双摄矫正可行，无需重复标定板采集。前视俯角 45°、下视垂直及安装位置已记录；历史前视显示限制按最新确认更新。导航连续可见性、深度偏移和完整闭环仍需独立验收。Pi 当前关闭，新 A2 源码未部署，完整 Linux 回归待执行。
+> 2026-10-11：当前轻量 Runtime 路线、完整回归失败边界与部署事实见 [项目状态](../docs/project-status.md)。10月10日 ROV 下视已切640×480原图，前视保留320×240矫正；新 A2 尚未部署。
 
 更新：2026-10-10。独立 AUV 监视台不再提供 ROV 切换；日志分析入口为 `/dashboard/logs.html`，支持本地导入机载事件和帧索引。完整任务仍须标定和水池验收。最新软件验证与历史部署见 [当前状态](../docs/project-status.md)。
 
@@ -18,7 +18,7 @@ A0/A1 新增独立观测入口 `config/pi-auv-observation.yaml`：安全启动�
 
 `tag_docking` 独立接近任务入口 `config/pi-auv-tag-docking.yaml`：池底 AprilTag 标签悬停（深度测试 → 前视接近 → 下视居中 → 悬停），复用轻量 Runtime 与双摄，不进入九宫格建图或完整比赛状态机。流程、验证范围见 [标签接近测试说明](../docs/auv-tag-docking-test.md)。
 
-当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。最新视频优化尚未完成实机部署，目标帧率不等于实测。
+当前部署/验证状态见 [项目状态](../docs/project-status.md)，ROV共存与串口归属见 [系统架构](../docs/architecture/system.md)。ROV 模式使用 `config/pi-rov.yaml`：CSI下视、USB前视，Runtime串口为空、运动关闭；由独立auv-rov桥控制STM32。双摄短时录制已验证；高清下视使用 config/pi-rov-hd-raw.yaml 的原图方案，度量定位关闭，目标帧率不等于长期实测。
 
 这个 C++ 进程是当前自动控制主入口，使用 `core/` 中的原生 `auv_core`，不依赖 ROS。ROS 相关功能因性能与设计问题暂时弃用，见 [迁移说明](../docs/lightweight-transition.md)。它仅实现第一阶段任务：AprilTag、3×3 网格、锥形物分类、路径规划和网格遍历。STM32 继续负责姿态/深度 PID、混合器控制以及硬件心跳故障保护。
 
@@ -55,7 +55,7 @@ ctest --test-dir build-lightweight --output-on-failure
 
 两路独立采集，只保留最新帧；CSI 使用有界 MJPEG 缓冲、超时读取、进程重启和退出清理，避免CSI堵塞拖住USB前视或控制；下视过期仍触发原有任务视觉保护。USB 使用 V4L2 单帧缓冲。默认网页双路MJPEG独立预览；HLS兼容预览固定节奏直接取采集最新帧，两路共用一个 H.264 编码器，输出 640×240，左侧CSI下视、右侧USB前视。超过帧时限的画面置黑。
 
-CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相机进程。服务等待 `network-online.target` 后启动，避免开机静态 IP 尚未就绪导致网页绑定失败。实际 Pi 的硬件编码存在后续 HLS 分段缺少 SPS/PPS 的问题，当前部署显式选择 `libx264`、`ultrafast`、单线程、15 fps；硬件编码 HLS 尚未验收，不能只凭 HTTP 200 判定视频可播放。软件编码添加关键帧参数头，机制参考 [FFmpeg bitstream filter 文档](https://ffmpeg.org/ffmpeg-bitstream-filters.html#dump_005fextra)，实机需通过后续分段独立解码检查。
+CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相机进程。服务等待 `network-online.target` 后启动，避免开机静态 IP 尚未就绪导致网页绑定失败。实际 Pi 的硬件编码存在后续 HLS 分段缺少 SPS/PPS 的问题，历史部署曾选择 `libx264`、`ultrafast`、单线程、15 fps；当前 ROV 已关闭 HLS，使用连续 MJPEG；硬件编码 HLS 尚未验收，不能只凭 HTTP 200 判定视频可播放。软件编码添加关键帧参数头，机制参考 [FFmpeg bitstream filter 文档](https://ffmpeg.org/ffmpeg-bitstream-filters.html#dump_005fextra)，实机需通过后续分段独立解码检查。
 
 只读接口 `/api/camera/down.jpg` 和 `/api/camera/front.jpg` 返回各自最新 JPEG；过期时返回 HTTP 503。`/api/status` 增加 `down_capture_frames`、`front_frames`、`front_hz`、`front_camera_age_sec`、`front_degraded` 和 `front_detail`。采集帧率、视觉处理帧率与视频输出帧率分别统计，不能相互代替。
 
@@ -92,7 +92,7 @@ STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超�
 
 `/api/camera/down.mjpeg`、`/api/camera/front.mjpeg`提供multipart长连接；每帧包含Content-Length、X-Frame-Time-Monotonic、X-Camera-Source。CSI直接复用rpicam MJPEG字节；USB采集后只编码一次。JPEG快照接口同样复用缓存。图像和时间标记在同一把锁中发布，时间是Pi收到/解码该帧时的单调时钟，不是相机硬件曝光时间，不代表硬件同步双摄。
 
-`/api/status`新增down_hz、video_enabled；down_hz/front_hz为采集间隔估计，vision_hz仅为识别处理速度。PC录制显示received_fps，且按来源时间戳去重，不把重复帧计作新采集帧。目标30fps和实际稳定帧率应分别核对。原有HLS历史实测配置仍为15fps软件编码，本次模板调整尚未部署；不能把本地模板或模拟测试结果当作实机测量。
+`/api/status`新增down_hz、video_enabled；down_hz/front_hz为采集间隔估计，vision_hz仅为识别处理速度。PC录制显示received_fps，且按来源时间戳去重，不把重复帧计作新采集帧。目标30fps和实际稳定帧率应分别核对。原有HLS历史实测配置仍为15fps软件编码，这段为历史说明；最新高清下视实际尺寸与短时接收验证见 [高清记录](../docs/testing/rov-hd-down-20261010.md)，不将其视作长期性能验收。
 
 长连接实现使用cpp-httplib的[chunked content provider](https://github.com/yhirose/cpp-httplib#chunked-transfer-encoding)，整帧一次写入并启用TCP_NODELAY。最多4条流、8个HTTP工作线程，慢客户端只读取最新缓存，写入超时2秒；不占用控制循环或视觉处理线程。无新帧2秒关闭流，网页下一秒尝试重连；录制读取失败重连并保留已有视频，持续失败停止并收尾。树莓派资源紧张而不需要HLS时可将video.enabled设为false，MJPEG与录像仍可用；保持web.enabled为true。
 
@@ -108,3 +108,8 @@ Pi相机专用配置现保存在`runtime/config/pi-rov.yaml`，并随安装复�
 启用需测量固定云台角对应的 `camera_to_body`、相机/深度计偏移，并独立验证前视水下与近水面 K/D、采集分辨率，以及遍历时全网格连续可见性。下视里程计标定仍为 A2 前置。前视模式不要求未使用的下视近水面 PnP 矩阵；该阶段下视预览保持原图，不能当作已矫正的定位输入。未提供动态舵机反馈或前视 PnP/下视光流融合能力。
 
 2026-10-10：Windows MSVC/OpenCV 4.10 便携构建与 13 项 CTest 通过，包括 45° 斜视外参、错误外参拒绝、前视分辨率/标定安全门、原下视回放及标签测试。Pi SSH 超时，最新 `runtime.cpp` 的完整 Linux 编译和仿真仍待验证，PR 暂不合并；没有部署、烧录或实机导航验收。
+
+
+## 2026-10-11 局部观测开发入口
+
+任务一新增局部管网拓扑、地图累积、局部 PnP 与短时下视里程计融合接入源码，默认 `local_mapping.enabled: false`。新增 `auv_local_mapping_replay` 文件回放目标；未完成 C++ 编译和动态回归，按用户要求暂不测试，不作为实机部署版本。配置、图像空间、帧级遥测格式和未完成边界见[开发记录](../docs/testing/local-runtime-development-20261011.md)。

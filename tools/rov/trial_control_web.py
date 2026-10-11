@@ -204,7 +204,11 @@ def main():
             controller_ok=False
             try:
                 frame=controller.read()
-                if frame is None:raise ValueError('手柄未连接')
+                # Keep telemetry available during manual data collection without a joystick.
+                # The neutral fallback never carries permission or an operator action.
+                controller_ok = frame is not None
+                if frame is None:
+                    frame=bytes([0xa5,127,127,127,127,127,0,2,0,0,0])
                 with lock: selected_speed=operator['speed']
                 frame=bytearray(frame);frame[6]=selected_speed
                 frame=manual_frame(frame)
@@ -216,16 +220,15 @@ def main():
                         'selector_axis': mapping['servo_select_axis'], 'dial_axis': mapping['dial_axis'],
                         'main_placeholder': True, 'position_feedback': False}
                 hold_switches={'SA':bool(frame[8]),'SD':bool(frame[9])}
-                axes=[controller.device.get_axis(i) for i in mapping['motion_axes']]
-                physical_deadman=controller.device.get_axis(mapping.get('deadman_axis',mapping['servo_select_axis']))>=.5
-                controller_ok=True
+                axes=[controller.device.get_axis(i) for i in mapping['motion_axes']] if controller_ok else []
+                physical_deadman=controller_ok and controller.device.get_axis(mapping.get('deadman_axis',mapping['servo_select_axis']))>=.5
                 with lock:
-                    state.update(controller_connected=True,axes=axes,centered=centered(frame),
-                                 device=controller.device.get_name(),hold_switches=hold_switches,
-                                 detail='手柄已识别；等待树莓派遥测')
+                    state.update(controller_connected=controller_ok,axes=axes,centered=centered(frame),
+                                 device=controller.device.get_name() if controller_ok else '',hold_switches=hold_switches,
+                                 detail='等待树莓派遥测')
                 with lock:
                     live=now-operator['last_poll']<=.8
-                    action=operator['action'];operator['action']=None
+                    action=operator['action'] if controller_ok else None;operator['action']=None
                 deadman=physical_deadman and live
                 if conn is None:
                     conn=socket.create_connection((args.host,args.port),timeout=.2)
@@ -252,8 +255,8 @@ def main():
                 elif last_reply and now-last_reply>.5:raise OSError('遥测网络超时')
                 with lock:
                     telemetry=state['telemetry']
-                    state.update(connected=True,error='',axes=axes,deadman=deadman,centered=centered(frame),device=controller.device.get_name(),hold_switches=hold_switches,
-                                 detail='手柄与树莓派已连接；'+('已使能' if telemetry.get('armed') else '未 ARM'))
+                    state.update(connected=True,error='',axes=axes,deadman=deadman,centered=centered(frame),device=controller.device.get_name() if controller_ok else '',hold_switches=hold_switches,
+                                 detail=('手柄与树莓派已连接；' if controller_ok else '无手柄采集；中立输出；')+('已使能' if telemetry.get('armed') else '未 ARM'))
                     state['can_arm']=bool(telemetry.get('operating_mode')!='auv' and deadman and centered(frame) and now-last_reply<.2 and state.get('telemetry_age',999)<.3 and telemetry.get('roll_deg') is not None and telemetry.get('level_calibrated') and not state.get('level_pending') and not telemetry.get('armed'))
                 time.sleep(.04)
             except (OSError,ValueError,KeyError,TypeError) as error:

@@ -4,6 +4,7 @@
 #include "auv_control/route_executor.hpp"
 #include "auv_control/surface_traversal.hpp"
 #include "auv_mapping/grid_mapper.hpp"
+#include "auv_mapping/local_mapping_pipeline.hpp"
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_vision/cone_detector.hpp"
@@ -22,7 +23,7 @@ struct Config {
   double recording_segment{60};
   std::uint64_t recording_reserve{256*1024*1024};
   std::vector<int> apriltag_ids;
-  int tag_stable_frames{3};
+  int tag_stable_frames{3},opencv_threads{1};
   Localization::Settings localization;
   std::string camera, serial, socket, log, debug_dir;
   bool front_enabled{};
@@ -40,6 +41,9 @@ struct Config {
   bool motion_enabled{}, directions_calibrated{}, limits_calibrated{};
   auv_control::RouteExecutorConfig route;
   auv_mapping::GridMapperConfig grid;
+  auv_mapping::LocalFloorModel local_floor;
+  bool local_mapping_enabled{false},local_mapping_verified{false};
+  double local_odometry_budget{1.0};
   auv_vision::ConeDetectorConfig cone;
   auv_vision::ConeTrackerConfig tracker;
   auv_mission::MissionFsmConfig mission;
@@ -223,6 +227,22 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("AprilTag camera must be down or an enabled front camera");
   if(y["vision"]["apriltag_ids"])c.apriltag_ids=y["vision"]["apriltag_ids"].as<std::vector<int>>();
   if(c.tag_stable_frames<=0)throw std::runtime_error("invalid tag confirmation count");
+  if(const auto local=y["local_mapping"]) {
+    c.local_mapping_enabled=local["enabled"].as<bool>(false);
+    c.local_mapping_verified=local["navigation_verified"].as<bool>(false);
+    c.local_odometry_budget=local["odometry_budget_sec"].as<double>(1.0);
+    if(const auto floor=local["empty_floor"])c.local_floor.verified=floor["verified"].as<bool>(false);
+    if(c.local_floor.verified) {
+      const auto lower=local["empty_floor"]["hsv_lower"].as<std::vector<double>>();
+      const auto upper=local["empty_floor"]["hsv_upper"].as<std::vector<double>>();
+      if(lower.size()!=3||upper.size()!=3)throw std::runtime_error("local empty floor requires three HSV bounds");
+      for(int i=0;i<3;++i){c.local_floor.lower[i]=lower[i];c.local_floor.upper[i]=upper[i];}
+      c.local_floor.minimum_support=local["empty_floor"]["minimum_support"].as<double>(.95);
+      c.local_floor.validate();
+    }
+  }
+  c.opencv_threads=y["vision"]["opencv_threads"].as<int>(1);
+  if(c.opencv_threads<1||c.opencv_threads>4)throw std::runtime_error("OpenCV worker count must be 1..4");
   c.grid.single_yellow_edge=y["vision"]["single_yellow_edge"].as<bool>(false);
   c.grid.white_grid_edges=y["vision"]["white_grid_edges"].as<bool>(false);
   c.grid.white_s_max=y["vision"]["white_s_max"].as<double>(60);
@@ -439,5 +459,11 @@ static Config load_config(const std::string& path) {
   for (auto value : c.distortion) if (!std::isfinite(value)) throw std::runtime_error("distortion contains NaN or infinity");
   if (!c.camera_matrix.empty() && (c.camera_matrix[0] <= 0 || c.camera_matrix[4] <= 0))
     throw std::runtime_error("camera focal lengths must be positive");
+  if(c.local_mapping_enabled && (!c.traversal.enabled||!c.grid.white_grid_edges||
+      c.localization.imu_signs.size()!=3||c.localization.imu_offsets.size()!=3||
+      !c.traversal.surface.verified||!std::isfinite(c.local_odometry_budget)||
+      c.local_odometry_budget<=0||c.local_odometry_budget>2||
+      (c.motion_enabled&&(!c.local_mapping_verified||!c.local_floor.verified))))
+    throw std::runtime_error("local mapping requires verified phase geometry, IMU conversion and navigation gate");
   return c;
 }

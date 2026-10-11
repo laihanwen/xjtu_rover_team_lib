@@ -1,5 +1,20 @@
 # 重复编译、烧录和部署
 
+## 独立 ROV 一键烧录与采集驾驶台
+
+双击 `Flash-And-Start-Rov.cmd`。自动查找项目 Python 环境和已保存的 Pi 凭据，检查依赖、树莓派服务、驾驶台 ARM/录像/采样状态；输入 `YES` 确认当前实机安全条件后，编译本地最新独立 ROV 源码、备份并烧录 STM32、完整读回校验，启动或复用驾驶台并检查桥接连接，打开采集助手。默认地址 `pi@192.168.137.150`、网页端口 `8767`。
+
+```powershell
+# 仅检查，不烧录或启动
+./tools/rov/Flash-And-Start-Rov.ps1 -CheckOnly
+# 正常一键入口（交互安全确认）
+./tools/rov/Flash-And-Start-Rov.ps1
+```
+
+`-Python`、`-PiHost`、`-PiUser`、`-WebPort`、`-Keil`、`-Probe`、`-Pack` 可覆盖环境。`-SafetyConfirmed` 仅用于操作者已核实此刻安全条件的调用，不能作为永久免确认设置。脚本不自动拉取远程仓库、不部署尚未验收的 AUV Runtime、不自动 ARM、水平校准或开始录像。Pi 必须已有匹配的独立 ROV 桥及摄像头服务；检查失败会在烧录前停止。
+
+固件与备份/校验日志在 `build/maintenance/`；驾驶台日志在 `build/rov-test/`，双摄录像和采样在 `data/rov-recordings/`，遥测及诊断日志在 `logs/rov/`。烧录后先岸上放平并显式水平校准，再按需要使用手柄。数据采集可无手柄进行，此时输出中立、安全许可关闭。
+
 ## 一键启动水下测试
 
 双击本目录 `Start-RovTest.cmd`，或在仓库根目录运行 `./tools/rov/Start-RovTest.ps1`。脚本启动驾驶台并打开浏览器，默认开启10Hz诊断日志；已有驾驶台时复用，不创建第二个控制器。显示手柄、树莓派链路、水平校准和ARM状态。日志保存到 `logs/rov`，启动错误保存到 `build/rov-test/<时间>/`。

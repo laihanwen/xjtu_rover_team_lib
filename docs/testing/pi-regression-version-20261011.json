@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-11",
+  "base_commit": "ca6576da937918a46c286f5f18049d301bd8466b",
+  "working_tree_dirty": true,
+  "deployment": false,
+  "hardware_motion": false,
+  "remote_build": "/home/pi/auv-full-regression-20261010-202704",
+  "runtime_sha256": "3e2d281067d2d7e7097214d9b26224bf8b959571b0d2d434f88fffcdee80983d",
+  "opencv": "4.10.0",
+  "tests": {
+    "core_targeted": "4/4",
+    "first_full": "26/27",
+    "a2_rerun": "1/1",
+    "aggregate": "同一二进制分批覆盖27项，不是单次全量27/27"
+  },
+  "camera_service_restored": true,
+  "rov_bridge_unchanged": true,
+  "local_runtime_closed_loop_verified": false,
+  "evidence_sha256": {
+    "source-hashes.json": "a2f892c86d0dba8f5980698efac235b3b6bbab79a3853f34d61630425af4f8c3",
+    "ctest-core-20261011.log": "66eb361485a13f471dd315fcae34cdf5af239d656bebe7233458fcd921ee4020",
+    "ctest-full-first-20261011.log": "f56f34aa4397ab33c6212e3005f96ed1b19113feb3b92ada424554bbb4aa9621",
+    "ctest-targeted.log": "8e09a4623cc95c0e494c7188044c226b9d748a0fd7cd3c3aa880a3eaec975f6f",
+    "evidence-first-20261011.tar.gz": "411bdfbaaf5fdcc92a3b56fc445c6b450212e0a359eb34a27a05b1ea4b23a2d2",
+    "evidence.tar.gz": "3cf52e7bb6202f002d130c944523e688d25fad8c7b0cea841ccc3244e0ff5efe",
+    "camera-start.log": "62d2873b610490a1751a9bc15daa2c3b43929c6d0cd4f62177d0ff29d121bc0c",
+    "resource-isolated-20261011.log": "7013b10c00232281b046a9e9c9e0568d780cdacfe304b3703a9558422e6c2df4",
+    "resource-status.log": "6ffa3376dab8efe10b89e0a639d7ad15884ffa6306796cfad6451ba27b9c2eae"
+  }
+}
