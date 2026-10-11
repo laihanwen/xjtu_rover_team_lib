@@ -1,6 +1,6 @@
 # ROV 操作与开发手册
 
-更新：2026-10-10。ROV 使用独立 Copy_cup 固件与原控制桥；双模式已弃用。普通日志每秒记录接收缓存，驾驶台日志区可打开 `/log-viewer`；采集助手不发送运动命令。见 [日志分析](../../docs/log-analysis.md)、[数据采集](../../docs/rov-data-collection.md)及[当前状态](../../docs/project-status.md)。
+更新：2026-10-10。ROV 使用独立 Copy_cup 固件与原控制桥；双模式已弃用。普通日志每秒记录接收缓存，驾驶台日志区可打开 `/log-viewer`。见 [日志分析](../../docs/log-analysis.md)及[当前状态](../../docs/project-status.md)。
 
 双摄矫正参数已接入共享 Runtime 的 `pi-rov.yaml`（320×240）。驾驶台预览和
 电脑端录制接收矫正画面，录制会话保存 `camera_calibration` 元数据；离线处理

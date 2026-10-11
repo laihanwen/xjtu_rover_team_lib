@@ -5,7 +5,8 @@ param(
     [string]$Pack = 'C:/Keil_v5/ARM/PACK/Keil/STM32F4xx_DFP/1.0.8',
     [string]$PiHost = '192.168.137.150',
     [string]$PiUser = 'pi',
-    [switch]$ApplyPiProfile
+    [switch]$ApplyPiProfile,
+    [switch]$Rebuild
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -28,7 +29,8 @@ try {
         New-Item -ItemType Directory -Force build/maintenance | Out-Null
         $taskLog = Join-Path $taskRoot ('build/maintenance/keil-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
         $taskProject = Join-Path $taskRoot 'firmware/stm32/MDK-ARM/Copy_cup.uvprojx'
-        $taskProcess = Start-Process -FilePath $Keil -ArgumentList @('-b',('"' + $taskProject + '"'),'-o',('"' + $taskLog + '"')) -WindowStyle Hidden -Wait -PassThru
+        $taskBuildAction = if ($Rebuild) { '-r' } else { '-b' }
+        $taskProcess = Start-Process -FilePath $Keil -ArgumentList @($taskBuildAction,('"' + $taskProject + '"'),'-o',('"' + $taskLog + '"')) -WindowStyle Hidden -Wait -PassThru
         $taskOutput = Get-Content -LiteralPath $taskLog -Raw
         Write-Output ($taskOutput -split "`n" | Select-Object -Last 12)
         if ($taskProcess.ExitCode -ne 0 -or $taskOutput -notmatch '0 Error\(s\)') { throw "Build failed; see $taskLog" }

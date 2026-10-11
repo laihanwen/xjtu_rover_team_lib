@@ -1,0 +1,25 @@
+{
+  "source_session": "20261011T101503_217412Z",
+  "image_size": [
+    640,
+    480
+  ],
+  "image_space": "raw",
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "files": [
+    {
+      "file": "front_0001.avi",
+      "sha256": "152c39508262fb08d00f2acdb82978d3740ab214fdc13205ffafe0ed842c5e2b",
+      "size_bytes": 31363056
+    },
+    {
+      "file": "front_0002.avi",
+      "sha256": "54d931b8a68ee4971b56085902af1c08d41a45c20b6fe6aa066d3b63145e554d",
+      "size_bytes": 15189612
+    }
+  ]
+}

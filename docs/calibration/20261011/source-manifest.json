@@ -1,0 +1,62 @@
+{
+  "source_session": "C:\\Users\\21670\\.codex\\worktrees\\ce28\\xjtu_rover_team_lib\\data\\rov-recordings\\20261011T094538_111539Z",
+  "image_space": "raw",
+  "environment": "underwater_user_confirmed",
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "files": [
+    {
+      "file": "down_0001.avi",
+      "size_bytes": 36894508,
+      "sha256": "bee9a914881cd688da4131db3de16f1321fa8f2556e6b8542bfc9bbf142d0bba"
+    },
+    {
+      "file": "down_0002.avi",
+      "size_bytes": 32370744,
+      "sha256": "630f53015174d9d21272f4fcb616abe98c11261055667c748781fb2f13826fdc"
+    },
+    {
+      "file": "down_0003.avi",
+      "size_bytes": 30642596,
+      "sha256": "3fdb48843e0744c2806562cdd1a91560452acce0fe463360bd0ad84e86bf3f47"
+    },
+    {
+      "file": "down_0004.avi",
+      "size_bytes": 29026682,
+      "sha256": "9033ea7a83eae7fd1ba809454ebfa8fad7a595b51e78e56ee3bd074838934492"
+    },
+    {
+      "file": "down_0005.avi",
+      "size_bytes": 17051702,
+      "sha256": "2e3e5cbca7918eb11b4a1d8edb61aa3ab0faf98be5b4b1079255d7ffb6522753"
+    },
+    {
+      "file": "front_0001.avi",
+      "size_bytes": 34500108,
+      "sha256": "12cdc03e4e6fc770380dc742fdaab42cdd64b9281ffd2da3ae2198aa86ba6820"
+    },
+    {
+      "file": "front_0002.avi",
+      "size_bytes": 29800788,
+      "sha256": "288348ff817c5d4a03bb5a5e269f3bcb6a50ee1bee2dcbcd56c5b41e36afa3cf"
+    },
+    {
+      "file": "front_0003.avi",
+      "size_bytes": 27395598,
+      "sha256": "6d8cdaac7eaff26e5a5e5fe2ef3e216d1f80ad2f217142e8b9fde5585e259d9b"
+    },
+    {
+      "file": "front_0004.avi",
+      "size_bytes": 27545354,
+      "sha256": "8421259968bcc6e0f791b092b0d722559b82e140e26835b11b9be79ca92e8b19"
+    },
+    {
+      "file": "front_0005.avi",
+      "size_bytes": 13496768,
+      "sha256": "2f9a047b48a1868c6022d7409f21e71a9baf6bf22e6ffc12a0a47052fa2f1440"
+    }
+  ]
+}

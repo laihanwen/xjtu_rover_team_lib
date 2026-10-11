@@ -1,0 +1,324 @@
+{
+  "image_size": [
+    640,
+    480
+  ],
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "calibration_flags": 128,
+  "fix_k3": true,
+  "sample_interval_seconds": 1.0,
+  "min_pose_distance_px": 3.0,
+  "model": "plumb_bob",
+  "sampled_frames": 27,
+  "detections": 27,
+  "diverse_views": 27,
+  "training_views": 21,
+  "rejected_training_views": 0,
+  "holdout_views": 6,
+  "rms_px": 0.4653929581478663,
+  "holdout_rms_px": 0.4753332223122195,
+  "holdout_errors_px": [
+    0.44563207030296326,
+    0.45440953969955444,
+    0.4691692888736725,
+    0.4160138964653015,
+    0.49923384189605713,
+    0.5551146268844604
+  ],
+  "camera_matrix": [
+    [
+      712.5520248624379,
+      0.0,
+      113.02012625881635
+    ],
+    [
+      0.0,
+      697.1036870263539,
+      108.9568823817117
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion_coefficients": [
+    -0.5377308059407466,
+    0.12256114127924142,
+    0.03212682710422766,
+    0.05079337076354575,
+    0.0
+  ],
+  "intrinsic_std_deviations": [
+    4.929626141065026,
+    4.987662540659242,
+    3.6445961114633163,
+    2.744997563296541,
+    0.010179022066481684,
+    0.017285047729707282,
+    0.0009184460522397882,
+    0.0019628920419295206,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_view_errors_px": [
+    0.40568407548815083,
+    0.426009649376062,
+    0.45795633570001437,
+    0.5233720670249075,
+    0.4735616961940028,
+    0.4669665954627915,
+    0.45698116661327076,
+    0.4942525595164269,
+    0.46868663281029593,
+    0.40093404906110086,
+    0.41237226581361597,
+    0.4198326005887351,
+    0.3856024624452326,
+    0.3802797079598728,
+    0.37996537579075085,
+    0.4934307627548665,
+    0.496040817951092,
+    0.5248763168337095,
+    0.5810017763990905,
+    0.5128354377246156,
+    0.5415447881450487
+  ],
+  "training_sources": [
+    {
+      "video": "0001.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0002.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0003.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0004.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0006.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0007.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0008.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0009.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0011.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0012.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0013.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0014.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0016.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0017.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0018.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0019.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0021.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0022.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0023.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0024.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0026.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "holdout_sources": [
+    {
+      "video": "0000.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0005.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0010.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0015.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0020.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "0025.jpg",
+      "frame": 0,
+      "seconds": 0.0,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "rectified_camera_matrix": [
+    [
+      555.5470079244672,
+      0.0,
+      91.6860703350886
+    ],
+    [
+      0.0,
+      630.6680093004048,
+      101.17349371700024
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "rectified_roi": [
+    0,
+    0,
+    639,
+    479
+  ],
+  "source_session": "20261011T101503_217412Z",
+  "quality": "user_verified_20261011_display",
+  "purpose": "underwater_preview_user_verified_navigation_unverified",
+  "camera_role": "front",
+  "environment": "underwater",
+  "full_dataset_sampled_frames": 358,
+  "full_dataset_diverse_views": 27,
+  "corner_detector": "CLAHE + 3x bicubic + OpenCV SB NORMALIZE_IMAGE EXHAUSTIVE ACCURACY",
+  "user_validation": "用户于 2026-10-11 确认当前参数已经验证、可用；确认范围为当前显示矫正，未声明导航或测距验收"
+}

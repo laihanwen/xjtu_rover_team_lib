@@ -58,7 +58,6 @@
 | [docs/reviews/rov-controller-pid-20261006.md](reviews/rov-controller-pid-20261006.md) | 验收/复盘证据 |
 | [docs/reviews/rov-manual-trial-20261006.md](reviews/rov-manual-trial-20261006.md) | 验收/复盘证据 |
 | [docs/reviews/rov-staged-repair-20261006.md](reviews/rov-staged-repair-20261006.md) | 验收/复盘证据 |
-| [docs/rov-data-collection.md](rov-data-collection.md) | 当前说明/模块入口 |
 | [docs/testing/front-metric-linux-20261010.md](testing/front-metric-linux-20261010.md) | 当前说明/模块入口 |
 | [docs/testing/p13-gripper.md](testing/p13-gripper.md) | 当前说明/模块入口 |
 | [docs/testing/p14-valve-foundation.md](testing/p14-valve-foundation.md) | 当前说明/模块入口 |

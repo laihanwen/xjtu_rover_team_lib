@@ -1,0 +1,332 @@
+{
+  "image_size": [
+    640,
+    480
+  ],
+  "inner_corners": [
+    11,
+    8
+  ],
+  "square_size_m": 0.015,
+  "calibration_flags": 128,
+  "fix_k3": true,
+  "sample_interval_seconds": 0.5,
+  "min_pose_distance_px": 3.0,
+  "model": "plumb_bob",
+  "sampled_frames": 539,
+  "detections": 28,
+  "diverse_views": 28,
+  "training_views": 22,
+  "rejected_training_views": 0,
+  "holdout_views": 6,
+  "rms_px": 0.2504142425330429,
+  "holdout_rms_px": 0.20116458145646204,
+  "holdout_errors_px": [
+    0.20730365812778473,
+    0.23361749947071075,
+    0.19516989588737488,
+    0.2446291148662567,
+    0.13367831707000732,
+    0.1716001331806183
+  ],
+  "camera_matrix": [
+    [
+      794.9401076263607,
+      0.0,
+      299.9258907696622
+    ],
+    [
+      0.0,
+      803.0430703820028,
+      231.8622573455605
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion_coefficients": [
+    0.6261357410758881,
+    -0.873569528773083,
+    -0.019361092353604985,
+    -0.013571089494124824,
+    0.0
+  ],
+  "intrinsic_std_deviations": [
+    7.876890440835277,
+    8.135475443273181,
+    1.6095686506214517,
+    2.534222770403497,
+    0.013430906310179472,
+    0.06294208453611992,
+    0.0018978579777863076,
+    0.0015678891372549657,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_view_errors_px": [
+    0.24074374907422474,
+    0.15153484402861925,
+    0.1518768663970897,
+    0.20759809082259273,
+    0.3225028375791587,
+    0.5111944191864422,
+    0.2974679318408739,
+    0.2925848976947078,
+    0.21734517909630907,
+    0.3845941727428281,
+    0.1844276142280946,
+    0.1492842539988464,
+    0.18950090234789876,
+    0.19023238245350543,
+    0.20747893424456507,
+    0.2898421084832446,
+    0.13468746299742085,
+    0.1428375296512377,
+    0.17153462333981553,
+    0.1337634199307122,
+    0.3175192477286259,
+    0.23615938287459654
+  ],
+  "training_sources": [
+    {
+      "video": "down_0003.avi",
+      "frame": 315,
+      "seconds": 10.490907879837474,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 330,
+      "seconds": 10.990474921734497,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 345,
+      "seconds": 11.49004196363152,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 360,
+      "seconds": 11.989609005528543,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 1080,
+      "seconds": 35.96882701658563,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 1695,
+      "seconds": 56.45107573436355,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 1710,
+      "seconds": 56.95064277626057,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 1725,
+      "seconds": 57.450209818157596,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0004.avi",
+      "frame": 135,
+      "seconds": 4.496253122398002,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0004.avi",
+      "frame": 885,
+      "seconds": 29.475437135720234,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 555,
+      "seconds": 18.464916658349136,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 570,
+      "seconds": 18.963968459926143,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 630,
+      "seconds": 20.960175666234157,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 645,
+      "seconds": 21.45922746781116,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 660,
+      "seconds": 21.958279269388164,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 675,
+      "seconds": 22.457331070965168,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 705,
+      "seconds": 23.455434674119175,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 720,
+      "seconds": 23.95448647569618,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 735,
+      "seconds": 24.453538277273182,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 750,
+      "seconds": 24.952590078850186,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 780,
+      "seconds": 25.950693682004193,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 795,
+      "seconds": 26.449745483581196,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "holdout_sources": [
+    {
+      "video": "down_0003.avi",
+      "frame": 300,
+      "seconds": 9.991340837940452,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0003.avi",
+      "frame": 1065,
+      "seconds": 35.469259974688605,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0004.avi",
+      "frame": 120,
+      "seconds": 3.9966694421315574,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 585,
+      "seconds": 19.463020261503146,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 690,
+      "seconds": 22.95638287254217,
+      "detected": true,
+      "selection": "selected"
+    },
+    {
+      "video": "down_0005.avi",
+      "frame": 765,
+      "seconds": 25.45164188042719,
+      "detected": true,
+      "selection": "selected"
+    }
+  ],
+  "rectified_camera_matrix": [
+    [
+      873.3636084627939,
+      0.0,
+      296.4589492069475
+    ],
+    [
+      0.0,
+      879.6337985632131,
+      227.1972788241379
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "rectified_roi": [
+    0,
+    0,
+    639,
+    479
+  ],
+  "quality": "preview_validated_offline_navigation_unverified",
+  "camera_role": "down",
+  "source_session": "20261011T094538_111539Z",
+  "corner_detector": "OpenCV findChessboardCornersSB native resolution, NORMALIZE_IMAGE",
+  "limitations": [
+    "Only 28 detected diverse views from 539 sampled frames",
+    "Holdout is interleaved from same session, not an independent acquisition",
+    "Surface calibration and navigation geometry are unverified"
+  ]
+}

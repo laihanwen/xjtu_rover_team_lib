@@ -41,7 +41,7 @@ try {
     }
     New-Item -ItemType Directory -Force $taskLogDir | Out-Null
     # Rebuild from this working tree, not a downloaded or cached HEX.
-    & (Join-Path $taskRoot 'tools/rov/Maintain-Rov.ps1') -Action build -Keil $Keil
+    & (Join-Path $taskRoot 'tools/rov/Maintain-Rov.ps1') -Action build -Keil $Keil -Rebuild
     $taskHex=Join-Path $taskRoot 'firmware/stm32/MDK-ARM/Copy_cup/Copy_cup.hex'
     $taskHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $taskHex).Hash
     Set-Content -LiteralPath (Join-Path $taskLogDir 'firmware-sha256.txt') -Value $taskHash

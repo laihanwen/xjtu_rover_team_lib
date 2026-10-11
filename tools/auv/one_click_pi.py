@@ -59,7 +59,8 @@ def main():
     if known.exists():client.load_host_keys(str(known))
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        client.connect(a.host,username=a.user,password=password,timeout=10,auth_timeout=10,banner_timeout=10)
+        client.connect(a.host,username=a.user,password=password,timeout=15,auth_timeout=30,banner_timeout=15,
+                       look_for_keys=not bool(password),allow_agent=not bool(password))
         client.save_host_keys(str(known))
         # Only these source helpers are uploaded; measured Pi configurations stay in place.
         remote_dir='/tmp/auv-one-click-tools'
