@@ -9,6 +9,12 @@ int main(){
   auto fresh=YAML::Load(v.json(10.1,.3,.5));check(fresh["pose_valid"].as<bool>()&&fresh["tags"].size()==1);
   check(fresh["cells"][0]["type"].as<std::string>()=="unknown");
   check(!fresh["cells"][0]["observed"].as<bool>());
+  check(fresh["cells"][0]["coverage_fraction"].as<double>()==0);
+  v.cells[0].visible_views.fill(3);v.cells[0].empty_views.fill(3);
+  auto covered=YAML::Load(v.json(10.1,.3,.5));
+  check(covered["cells"][0]["coverage_fraction"].as<double>()==1&&
+    covered["cells"][0]["empty_support_fraction"].as<double>()==1);
+  check(covered["cells"][0]["type"].as<std::string>()=="unknown"); // Diagnostic coverage is not map authority.
   check(fresh["image_url"].as<std::string>()=="data:image/jpeg;base64,AAECAw==");
   auto old=YAML::Load(v.json(11,.3,.5));check(!old["pose_valid"].as<bool>()&&old["tags"].size()==0);
   auto dead=YAML::Load(v.json(12,.3,.5));check(!dead["frame_fresh"].as<bool>()&&dead["image_url"].as<std::string>().empty());

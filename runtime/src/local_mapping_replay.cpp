@@ -42,7 +42,7 @@ int main(int argc,char** argv) {
       std::string value="\"";for(char ch:input){value+=ch;if(ch=='"')value+='"';}return value+"\"";
     };
     LocalMappingPipeline pipeline(cfg.cone,cfg.grid,cfg.local_floor);
-    LocalMapAccumulator map;std::uint64_t epoch=1;map.reset(epoch,"yellow_bottom_pipe_centres");
+    LocalMapAccumulator map(cfg.local_coverage);std::uint64_t epoch=1;map.reset(epoch,"yellow_bottom_pipe_centres");
     auv_vision::AprilTagDetector tags(cfg.apriltag_family);
     std::unique_ptr<CameraRectifier> rectifier;
     cv::Mat image;int index=0;std::string phase;double last_stamp=-1;

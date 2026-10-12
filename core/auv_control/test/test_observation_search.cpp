@@ -16,6 +16,17 @@ int main(){
   search.reset();pose.session=1;pose.x=4;require(search.step(pose,11,false).fault);
   search.reset();pose.x=0;step=search.step(pose,11,true);require(step.surge==0 && step.sway==0);
   pose.stamp=12;pose.x=.5;step=search.step(pose,12,true);require(step.sway>0);
+  // A measured closed perimeter lap is supported by the existing waypoint
+  // interface; completion is not a promise that all cells have been observed.
+  cfg.waypoints={{0,0},{1,0},{1,1},{0,1},{0,0}};
+  ObservationSearch lap(cfg);double lap_time=20;
+  for(std::size_t i=0;i<cfg.waypoints.size();++i) {
+    pose.x=cfg.waypoints[i][0];pose.y=cfg.waypoints[i][1];pose.stamp=lap_time;
+    require(lap.step(pose,lap_time,false).waypoint==i);
+    lap_time+=cfg.stable_sec+.01;pose.stamp=lap_time;
+    require(!lap.step(pose,lap_time,false).fault);lap_time+=.01;
+  }
+  pose.stamp=lap_time;require(lap.step(pose,lap_time,false).exhausted);
   cfg.waypoints={{4,0}};bool rejected=false;try{ObservationSearch invalid(cfg);}catch(const std::invalid_argument&){rejected=true;}require(rejected);
   using namespace auv_mission;
   MissionFsmConfig m;m.stop_after_map=true;m.allow_armed_during_observation=true;

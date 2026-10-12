@@ -44,6 +44,7 @@ struct Config {
   auv_mapping::GridMapperConfig grid;
   auv_mapping::LocalFloorModel local_floor;
   bool local_mapping_enabled{false},local_mapping_verified{false};
+  auv_mapping::LocalCoverageConfig local_coverage;
   double local_odometry_budget{1.0};
   auv_vision::ConeDetectorConfig cone;
   auv_control::GridExitConfig exit;
@@ -233,6 +234,8 @@ static Config load_config(const std::string& path) {
     c.local_mapping_enabled=local["enabled"].as<bool>(false);
     c.local_mapping_verified=local["navigation_verified"].as<bool>(false);
     c.local_odometry_budget=local["odometry_budget_sec"].as<double>(1.0);
+    if(const auto coverage=local["coverage"])c.local_coverage.required_views=coverage["required_views"].as<unsigned>(3);
+    c.local_coverage.validate();
     if(const auto floor=local["empty_floor"])c.local_floor.verified=floor["verified"].as<bool>(false);
     if(c.local_floor.verified) {
       const auto lower=local["empty_floor"]["hsv_lower"].as<std::vector<double>>();

@@ -2,8 +2,42 @@
 #include <stdexcept>
 #include <limits>
 using namespace auv_mapping;
-static void check(bool value){if(!value)throw std::runtime_error("local map regression failed");}
+static void check_impl(bool value,int line){if(!value)throw std::runtime_error("local map regression failed at line "+std::to_string(line));}
+#define check(value) check_impl((value),__LINE__)
+static void coverage_regression() {
+  LocalMapAccumulator map;map.reset(1,"grid");std::string reason;
+  LocalMapObservation frame;frame.epoch=1;frame.grid_frame="grid";frame.association_unique=true;
+  frame.cells.resize(1);auto& cell=frame.cells[0];cell.row=cell.col=0;
+  auto send=[&](unsigned sequence){frame.sequence=sequence;frame.stamp=sequence*.1;return map.update(frame,frame.stamp,reason);};
+  for(int i=0;i<kCoverageTiles/2;++i)cell.coverage[i]=kVisible|kEmptyFloor;
+  for(unsigned i=1;i<=3;++i)check(send(i));
+  check(map.cells()[0].type==LocalCellClass::unknown&&map.cells()[0].coverage_fraction()==.5);
+  check(!send(3)); // Cached image cannot supply another coverage vote.
+  cell.coverage={};for(int i=kCoverageTiles/2;i<kCoverageTiles;++i)cell.coverage[i]=kVisible|kEmptyFloor;
+  frame.association_unique=false;check(!send(4));
+  check(map.cells()[0].coverage_fraction()==.5);frame.association_unique=true;
+  check(send(4)&&send(5));check(map.cells()[0].type==LocalCellClass::unknown);
+  check(send(6));check(map.cells()[0].type==LocalCellClass::empty);
+  check(map.cells()[0].coverage_fraction()==1&&map.cells()[0].empty_support_fraction()==1);
+  check(!map.complete()); // Full coverage of one cell says nothing about others.
+  cell.coverage={};cell.coverage[0]=kOccupied;check(send(7));
+  check(map.cells()[0].type==LocalCellClass::unknown); // Unclassified target cannot disappear into floor votes.
+  cell.coverage.fill(kVisible|kEmptyFloor);
+  for(unsigned i=8;i<=10;++i)check(send(i));
+  check(map.cells()[0].type==LocalCellClass::unknown&&map.cells()[0].empty_support_fraction()<1);
+  map.reset(2,"grid");frame.epoch=2;cell.coverage.fill(kVisible);
+  for(unsigned i=1;i<=3;++i)check(send(i));
+  check(map.cells()[0].coverage_fraction()==1&&map.cells()[0].type==LocalCellClass::unknown);
+  cell.coverage[0]=kEmptyFloor;check(!send(4)); // Empty needs an actually visible tile.
+  cell.coverage[0]=8;check(!send(4));
+  bool rejected=false;try{LocalMapAccumulator invalid({2});}catch(const std::invalid_argument&){rejected=true;}check(rejected);
+  // Complete silhouette classification does not require seeing the whole cell.
+  map.reset(3,"grid");frame.epoch=3;cell.coverage={};cell.type=LocalCellClass::circle;
+  cell.confidence=.9;cell.full_cell_visible=false;cell.contour={{30,30},{40,30},{40,40}};cell.contour_frame="grid";
+  for(unsigned i=1;i<=3;++i)check(send(i));check(map.cells()[0].type==LocalCellClass::circle);
+}
 int main(){
+  coverage_regression();
   LocalMapAccumulator map;map.reset(1,"grid");std::string reason;
   LocalMapObservation observation;observation.epoch=1;observation.grid_frame="grid";observation.association_unique=true;
   observation.cells={{0,0,LocalCellClass::empty,false,.9,{}}};

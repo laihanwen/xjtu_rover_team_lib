@@ -24,11 +24,23 @@ from offline_replay import crc, frame, request
 from startup import wait_for_socket
 
 
-def run(binary, missing_surface=False, local=False):
+def run(binary, missing_surface=False, local=False, stage_entry=None, observable_stage=False):
+    if stage_entry:
+        assert stage_entry in ('ascent','surface','cones','exit','surface_missing','cones_missing','exit_missing')
+        local=True
+    scope=stage_entry.split('_')[0] if stage_entry else None
+    stage_negative=bool(stage_entry and stage_entry.endswith('_missing'))
+    missing_surface=missing_surface or stage_entry=='surface_missing'
+    evidence_prefix=(f"stage-{stage_entry}-{'observable' if observable_stage else 'current'}" if stage_entry else
+        ('local-' if local else '')+('missing-surface' if missing_surface else 'closed-loop'))
     cv2.setNumThreads(1)
     master, slave = pty.openpty()
     stop = threading.Event()
+    stage_active=threading.Event()
+    if not stage_entry:stage_active.set()
     state = dict(armed=False, depth=.4, row=2.15 if local else 1.5, col=1.5, vx=0., vy=0., target=.4)
+    if stage_entry and scope!='ascent':
+        state.update(depth=.3,target=.3,row=2.5,col=.5 if scope=='exit' else 1.5)
     lock = threading.Lock()
     phases, targets, snapshots = [], [], []
     with tempfile.TemporaryDirectory() as directory:
@@ -120,17 +132,42 @@ while True:
             cfg['mission'].update(map_timeout_sec=120,surface_timeout_sec=90,cone_visit_timeout_sec=180)
             cfg['grid_exit'].update(enabled=True,verified=True,allowed_sides_mask=1,
                 body_radius_m=.05,clearance_m=.02,timeout_sec=90)
+        # The wider vertical reference retains four nodes even at whole-body
+        # exit clearance, including the real rectification valid-mask margin.
+        front_fy=130 if observable_stage else 250
+        if stage_entry:
+            # A separate, explicit synthetic calibrated reference rig. It is
+            # not a change to production calibration or the normal local test.
+            cfg['camera_front']['camera_matrix']=list(cfg['camera_front']['camera_matrix'])
+            cfg['camera_front']['camera_matrix'][4]=front_fy
+            for phase in ['underwater','surface']:
+                cfg['front_metric'][phase]['camera_matrix']=list(cfg['front_metric'][phase]['camera_matrix'])
+                cfg['front_metric'][phase]['camera_matrix'][4]=front_fy
+            cfg['camera_front']['calibration_id']='synthetic-downstream-stage'
+            cfg['camera_front']['calibration_quality']='synthetic_only'
+            if scope=='exit':cfg['grid_exit']['allowed_sides_mask']=4
+            cfg['validation_fixture']=dict(synthetic=True,entry=stage_entry,frozen_map_supplied=True,
+                ascent_supplied=scope!='ascent',cone_visits_supplied=scope=='exit',front_fy=front_fy,
+                predecessor_body_and_pressure_held_until_scope=True,
+                acceptance_excludes='local BUILD_MAP; supplied predecessor stages')
         path = root/'config.yaml';path.write_text(yaml.safe_dump(cfg))
+        if stage_entry:
+            for device in ['/dev/ttyUSB0','/dev/pts/../ttyUSB0']:
+                rejected_cfg=yaml.safe_load(path.read_text());rejected_cfg['serial']['device']=device
+                rejected_path=root/'reject-physical.yaml';rejected_path.write_text(yaml.safe_dump(rejected_cfg))
+                rejected=subprocess.run([binary,str(rejected_path)],capture_output=True,text=True,timeout=5)
+                assert rejected.returncode!=0 and 'virtual PTY' in rejected.stderr,rejected.stderr
         surface = threading.Event()
         def render():
             while not stop.is_set():
                 with lock:depth,row,col=state['depth'],state['row'],state['col']
                 fx=250 if local else (90 if surface.is_set() else 130)
                 scale=fx/(1.4-depth)
+                vertical_scale=(front_fy if stage_entry else fx)/(1.4-depth)
                 offset=.2 if local else 0
                 # Canonical grid columns point opposite body Y-left. Mirror
                 # the local rig's projection and integrate sway consistently.
-                points=np.float32([[160+scale*((col*.5-x) if local else (x-col*.5)),120+scale*(y-row*.5-offset)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                points=np.float32([[160+scale*((col*.5-x) if local else (x-col*.5)),120+vertical_scale*(y-row*.5-offset)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
                 if local:assert not all(0<=p[0]<320 and 0<=p[1]<240 for p in points),'local camera must never show full outer grid'
                 h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),points)
                 active_texture=map_texture if local and mapping.is_set() else texture
@@ -152,7 +189,7 @@ while True:
                 try:
                     now=time.monotonic();dt=min(now-last,.1);last=now;sequence+=1
                     with lock:
-                        if state['armed']:
+                        if state['armed'] and stage_active.is_set():
                             state['row']+=state['vx']*dt/.5
                             state['col']+=(-1 if local else 1)*state['vy']*dt/.5
                             state['depth']+=np.clip(state['target']-state['depth'],-dt*.15,dt*.15)
@@ -188,6 +225,9 @@ while True:
                 value=json.loads(request(str(root/'control.sock'),'status'));snapshots.append(value)
                 if local and value['pose_valid']:
                     with lock:body_row,body_col=state['row'],state['col']
+                    # Evidence only; never feed simulation truth to Runtime.
+                    value['synthetic_body_row_col']=[body_row,body_col]
+                    value['synthetic_pose_error_m']=float(np.hypot(value['row']-body_row,value['col']-body_col)*.5)
                     assert np.hypot(value['row']-body_row,value['col']-body_col)<.2,{
                         'metric_row_col':[value['row'],value['col']],
                         'synthetic_body_row_col':[body_row,body_col]}
@@ -201,6 +241,77 @@ while True:
                 assert time.monotonic()<deadline,s
                 time.sleep(.05)
             assert request(str(root/'control.sock'),'start').startswith('OK')
+            if stage_entry:
+                armed=False;map_supplied=False;ascent_supplied=False;visits_supplied=False
+                blocked_until=None;entered_scope=False;scope_passed=False
+                deadline=time.monotonic()+150
+                while time.monotonic()<deadline:
+                    s=status()
+                    if s['arm_gate_ready'] and not armed:
+                        armed=request(str(root/'control.sock'),'arm SAFE_TO_ARM').startswith('OK')
+                    if s['phase']=='BUILD_MAP' and s['armed'] and not map_supplied:
+                        map_supplied=request(str(root/'control.sock'),'stage-test-freeze-map').startswith('OK')
+                        if map_supplied and scope=='ascent':stage_active.set()
+                    if scope!='ascent' and s['phase']=='SURFACE_FOR_CONES' and not ascent_supplied:
+                        ascent_supplied=request(str(root/'control.sock'),'stage-test-after-ascent').startswith('OK')
+                        if ascent_supplied and scope!='exit':stage_active.set()
+                    if s['phase']=='RELOCALIZE_SURFACE':
+                        if blocked_until is None:
+                            blocked_until=time.monotonic()+.35;reacquire_hold.set()
+                        if time.monotonic()<blocked_until:
+                            assert not s['surface_pose_ready'] and not s['surface_grid_valid'],s
+                            assert s['cmd_vx']==s['cmd_vy']==0,s
+                        else:surface.set();reacquire_hold.clear()
+                    if s['surface_grid_valid']:
+                        assert s['metric_pose_surface_frame'] and s['metric_pose_stamp_sec']>s['surface_reacquire_start_sec'],s
+                    if scope=='exit' and s['phase']=='VISIT_CONES' and not visits_supplied:
+                        if stage_negative:reacquire_hold.set()
+                        visits_supplied=request(str(root/'control.sock'),'stage-test-after-cones').startswith('OK')
+                        if visits_supplied:stage_active.set()
+                    if stage_entry=='cones_missing' and s['phase']=='VISIT_CONES':reacquire_hold.set()
+                    target_phase={'ascent':'SURFACE_FOR_CONES','surface':'RELOCALIZE_SURFACE',
+                        'cones':'VISIT_CONES','exit':'EXIT_GRID'}[scope]
+                    entered_scope|=s['phase']==target_phase
+                    if s['phase']=='FAULT':break
+                    success_phase={'ascent':'RELOCALIZE_SURFACE','surface':'VISIT_CONES',
+                        'cones':'EXIT_GRID','exit':'COMPLETE'}[scope]
+                    if not stage_negative and s['phase']==success_phase:
+                        scope_passed=True;break
+                    time.sleep(.04)
+                scope_snapshot=s
+                # Even a failed positive test must preserve actual DISARM and
+                # recorder evidence before asserting; later CTests run independently.
+                if s['phase'] not in ('COMPLETE','FAULT'):request(str(root/'control.sock'),'abort')
+                disarm_deadline=time.monotonic()+2
+                while s['armed']:
+                    assert time.monotonic()<disarm_deadline,s
+                    time.sleep(.03);s=status()
+                assert s['cmd_vx']==s['cmd_vy']==0,s
+                time.sleep(.1)
+                events=[json.loads(line) for line in (Path(s['recording_directory'])/'events.ndjson').read_text().splitlines()]
+                visits=[e for e in events if e.get('event')=='CONE_VISITED']
+                if os.environ.get('AUV_SIM_EVIDENCE_DIR'):
+                    out=Path(os.environ['AUV_SIM_EVIDENCE_DIR']);out.mkdir(parents=True,exist_ok=True)
+                    (out/(evidence_prefix+'-result.json')).write_text(json.dumps(dict(synthetic=True,
+                        fixture=cfg['validation_fixture'],negative=stage_negative,expected_fault=stage_negative,
+                        entered_scope=entered_scope,scope_passed=scope_passed,
+                        scope_snapshot=scope_snapshot,disarmed_snapshot=s,visits=visits,events=events),indent=2))
+                assert map_supplied and entered_scope,{'entry':stage_entry,'phases':phases,'status':scope_snapshot}
+                if stage_negative:
+                    assert scope_snapshot['phase']=='FAULT',scope_snapshot
+                    if scope=='surface':assert 'VISIT_CONES' not in phases and not visits,phases
+                    if scope=='exit':assert not any(e['event']=='EXIT_CONFIRMED' for e in events),events
+                else:
+                    assert scope_passed,{'entry':stage_entry,'phases':phases,'status':scope_snapshot}
+                    if scope=='ascent':assert any(e['event']=='SURFACE_CONFIRMED' for e in events),events
+                    if scope=='cones':assert len(visits)==4 and len({e['detail'].split(' frame=')[0] for e in visits})==4,visits
+                    if scope=='exit':
+                        assert visits_supplied and any(e['event']=='EXIT_CONFIRMED' for e in events),events
+                        with lock:assert state['row']>=3+(.05+.02)/.5,state
+                assert all(abs(t[1])<=.20001 and abs(t[2])<=.20001 for t in targets)
+                print(json.dumps(dict(stage=stage_entry,observable=observable_stage,phases=phases,
+                    measured_visits=len(visits),scope_passed=scope_passed,disarmed=True)))
+                return
             armed=False;deadline=time.monotonic()+(300 if local else 75);blocked_until=None
             while time.monotonic()<deadline:
                 s=status()
@@ -266,7 +377,7 @@ while True:
             output=os.environ.get('AUV_SIM_EVIDENCE_DIR')
             if output:
                 out=Path(output);out.mkdir(parents=True,exist_ok=True)
-                prefix=('local-' if local else '')+('missing-surface' if missing_surface else 'closed-loop')
+                prefix=evidence_prefix
                 (out/(prefix+'-diagnostics.json')).write_text(json.dumps(
                     dict(synthetic=True,phases=phases,snapshots=snapshots,targets=targets),indent=2))
                 errors.flush()
@@ -284,5 +395,8 @@ while True:
 
 
 if __name__=='__main__':
+    if '--stage' in sys.argv[2:]:
+        run(sys.argv[1],stage_entry=sys.argv[sys.argv.index('--stage')+1],observable_stage='--observable-stage' in sys.argv)
+        sys.exit(0)
     local='--local' in sys.argv[2:]
     run(sys.argv[1],local=local);run(sys.argv[1],missing_surface=True,local=local)

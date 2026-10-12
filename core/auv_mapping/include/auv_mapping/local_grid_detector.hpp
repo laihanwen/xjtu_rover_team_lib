@@ -78,7 +78,20 @@ class LocalGridDetector {
     for(int i=0;i<90;++i){double v=0;for(int d=-3;d<=3;++d)v+=votes[(i+d+90)%90];if(v>support){support=v;best=i;}}
     // Rotate the dominant pipe axis onto the local column axis. The actual
     // canonical rotation is chosen only by topology and observed yellow arms.
-    const double a=best*CV_PI/180,ca=std::cos(a),sa=std::sin(a);
+    // The peak window selects support, not its centre: using the first
+    // winning bin biases an axis by up to three degrees. Average supported
+    // measured angles modulo 90 degrees instead.
+    double axis_cos=0,axis_sin=0;
+    for(const auto& l:lines) {
+      const double angle=std::atan2(l[3]-l[1],l[2]-l[0]);
+      double degrees=angle*180/CV_PI;
+      while(degrees<0)degrees+=90;while(degrees>=90)degrees-=90;
+      const double distance=std::abs(degrees-best);
+      if(std::min(distance,90-distance)>4)continue;
+      const double weight=std::hypot(l[2]-l[0],l[3]-l[1]);
+      axis_cos+=weight*std::cos(4*angle);axis_sin+=weight*std::sin(4*angle);
+    }
+    const double a=.25*std::atan2(axis_sin,axis_cos),ca=std::cos(a),sa=std::sin(a);
     std::vector<float> xs,ys;
     for(const auto& l:lines) {
       const double dx=l[2]-l[0],dy=l[3]-l[1];

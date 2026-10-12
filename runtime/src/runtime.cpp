@@ -93,6 +93,16 @@ static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traver
       return false;
   }
 }
+#ifdef AUV_RUNTIME_STAGE_TEST
+static bool stage_virtual_device(const std::string& path) {
+  const std::string prefix="/dev/pts/";
+  if(path.rfind(prefix,0)!=0||path.size()==prefix.size()||
+      !std::all_of(path.begin()+prefix.size(),path.end(),[](char c){return c>='0'&&c<='9';}))return false;
+  std::error_code error;
+  const auto resolved=std::filesystem::canonical(path,error);
+  return !error&&resolved.string()==path;
+}
+#endif
 class Runtime {
  public:
   explicit Runtime(Config cfg) : cfg_(std::move(cfg)),exit_(cfg_.exit),ascent_transit_(cfg_.exit), mission_(cfg_.mission),
@@ -669,7 +679,7 @@ class Runtime {
     auv_vision::AprilTagDetector tags(cfg_.apriltag_family);
     auv_mapping::GridMapper mapper(cfg_.grid);
     auv_mapping::LocalMappingPipeline local_pipeline(cfg_.cone,cfg_.grid,cfg_.local_floor);
-    auv_mapping::LocalMapAccumulator local_map;
+    auv_mapping::LocalMapAccumulator local_map(cfg_.local_coverage);
     auv_mapping::LocalPoseFusion local_fusion;
     std::uint64_t local_epoch=1;double local_boundary=0;
     local_map.reset(local_epoch,"yellow_bottom_pipe_centres");local_fusion.reset(local_epoch,0);
@@ -831,21 +841,24 @@ class Runtime {
           }
           if(local_sample_valid) {
             metric=local_result.pose;
-            if(triggered&&phase==auv_mission::MissionPhase::kBuildMap) {
-              std::string reason;
-              if(!local_map.update(local_result.observation,seconds(),reason))
-                event("LOCAL_MAP_REJECT",reason);
-            }
             grid.rectified=local_result.geometry.rectified;grid.debug_image=local_result.geometry.debug;
           }
         }
-        // A conflicting association invalidates the anchor, rather than
-        // propagating through a newly observed contradictory landmark.
+        // Stop propagation through contradictory evidence, while preserving
+        // same-stage continuity for vetoing a later incorrect reacquisition.
         if(sensor_valid&&!local_result.geometry.valid&&local_result.geometry.association.reason=="topology or yellow-edge conflict")
-          local_fusion.reset(local_epoch,local_boundary);
+          local_fusion.reject_landmark();
         metric=local_fusion.update(metric,localization_->snapshot(seconds()),seconds(),local_epoch,
           cfg_.traversal.water_model().cell_size_m,cfg_.traversal.maximum_speed,cfg_.local_odometry_budget);
         metric.surface_frame=surface_phase;
+        local_sample_valid=local_sample_valid&&metric.valid&&metric.landmark_observation;
+        // A landmark rejected by fusion must not write semantic evidence into
+        // the map under an incorrect cell identity.
+        if(local_sample_valid&&triggered&&phase==auv_mission::MissionPhase::kBuildMap) {
+          std::string reason;
+          if(!local_map.update(local_result.observation,seconds(),reason))
+            event("LOCAL_MAP_REJECT",reason);
+        }
         if(local_sample_valid&&surface_phase) {
           bool match=false,conflict=false;
           {std::lock_guard<std::mutex> lock(state_mutex_);
@@ -859,7 +872,7 @@ class Runtime {
             }
           }
           metric.semantic_match=match&&!conflict;
-          if(conflict){metric.valid=false;metric.reason="local cone identity conflicts with frozen map";local_fusion.reset(local_epoch,local_boundary);}
+          if(conflict){metric.valid=false;metric.reason="local cone identity conflicts with frozen map";local_fusion.reject_landmark();}
         }
         event("LOCAL_GRID","camera="+std::string(metric_front?"front":"down")+" frame="+std::to_string(metric_seq)+
           " epoch="+std::to_string(local_epoch)+" nodes="+std::to_string(local_result.geometry.nodes.size())+
@@ -924,6 +937,14 @@ class Runtime {
                 <<",\"source_sequence\":"<<evidence.sequence<<",\"contour_frame\":\""<<evidence.contour_frame<<"\",\"contour\":[";
               for(std::size_t j=0;j<evidence.contour.size();++j){if(j)artifact<<',';artifact<<'['<<evidence.contour[j][0]<<','<<evidence.contour[j][1]<<']';}
               artifact<<']';
+              artifact<<",\"coverage_side\":"<<auv_mapping::kCoverageSide<<",\"coverage_required_views\":"<<cfg_.local_coverage.required_views
+                <<",\"visible_views\":[";
+              for(int j=0;j<auv_mapping::kCoverageTiles;++j){if(j)artifact<<',';artifact<<unsigned(evidence.visible_views[j]);}
+              artifact<<"],\"empty_views\":[";
+              for(int j=0;j<auv_mapping::kCoverageTiles;++j){if(j)artifact<<',';artifact<<unsigned(evidence.empty_views[j]);}
+              artifact<<"],\"occupied_tiles\":[";
+              for(int j=0;j<auv_mapping::kCoverageTiles;++j){if(j)artifact<<',';artifact<<(evidence.occupied[j]?"true":"false");}
+              artifact<<']';
             }
             artifact<<'}';}
           artifact<<"],\"cones\":[";
@@ -957,9 +978,11 @@ class Runtime {
         view.pose_valid=metric.valid;view.pose_stamp=metric.stamp;view.row=metric.row;view.col=metric.col;
         view.reprojection=metric.reprojection_px;view.pose_reason=metric.reason;view.cone_mode=cfg_.cone.mode;
         view.cone_reason=local_result.cone_reason;view.cells=local_map.cells();
+        view.coverage_required_views=cfg_.local_coverage.required_views;
         if(local_sample_valid){view.colour_cones=static_cast<int>(local_result.colour_cones);view.shape_cones=static_cast<int>(local_result.shape_cones);}
         for(const auto& cell:local_result.observation.cells)if(cell.row>=0&&cell.row<3&&cell.col>=0&&cell.col<3)
-          view.visible[cell.row*3+cell.col]=cell.full_cell_visible;
+          view.visible[cell.row*3+cell.col]=std::any_of(cell.coverage.begin(),cell.coverage.end(),
+            [](auto tile){return tile&auv_mapping::kVisible;});
         view.attach_image(metric_image,cfg_.local_mapping_enabled?local_result.geometry.debug:cv::Mat(),
           metric_front==tag_front&&visible_tag_sequence==metric_seq);
       }
@@ -969,6 +992,10 @@ class Runtime {
       const bool same_space=surface_phase==(cfg_.traversal.enabled && surface_grid_phase(mission_.snapshot().phase));
       if(epoch!=perception_epoch_ || !same_space)continue;
       metric_pose_=metric;
+      if(cfg_.local_mapping_enabled)for(std::size_t i=0;i<local_coverage_status_.size();++i) {
+        local_coverage_status_[i]={local_map.cells()[i].coverage_fraction(),
+          local_map.cells()[i].empty_support_fraction(cfg_.local_coverage.required_views)};
+      }
       if(epoch==perception_epoch_ && mission_.snapshot().phase==auv_mission::MissionPhase::kBuildMap && !map_.complete) map_=map;
       pose_valid_ = grid.stable && grid.position_valid && std::isfinite(grid.camera_row) && std::isfinite(grid.camera_col) &&
         grid.camera_row >= 0 && grid.camera_row <= 3 && grid.camera_col >= 0 && grid.camera_col <= 3;
@@ -1501,6 +1528,9 @@ class Runtime {
   std::string command(const std::string& cmd) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto now = seconds();
+#ifdef AUV_RUNTIME_STAGE_TEST
+#include "../test/stage_fixture_commands.inc"
+#endif
     if (cmd == "status") {
       std::ostringstream s;
       auto latency=std::vector<double>(latency_ms_.begin(),latency_ms_.begin()+latency_count_);
@@ -1622,7 +1652,10 @@ class Runtime {
         s << "{\"row\":" << static_cast<int>(cell.cell.row)
           << ",\"col\":" << static_cast<int>(cell.cell.col)
           << ",\"object\":\"" << json_escape(cell.cell.object_type)
-          << "\",\"visited\":" << (visited_[i] ? "true":"false") << '}';
+          << "\",\"visited\":" << (visited_[i] ? "true":"false");
+        if(cfg_.local_mapping_enabled)s<<",\"coverage_fraction\":"<<local_coverage_status_[i][0]
+          <<",\"empty_support_fraction\":"<<local_coverage_status_[i][1];
+        s<<'}';
       }
       s << "]"
         << ",\"video_degraded\":" << (video_detail_.empty() ? "false":"true")
@@ -1684,7 +1717,7 @@ class Runtime {
     if(cmd=="start" && !recording_ready(now)) return "ERR onboard recording required\n";
     auto r = mission_.command(*c,now);
     if (cmd == "reset" && r.accepted) {
-      fault_.clear(); route_.reset(); route_ready_=false; plan_={}; map_={};
+      fault_.clear(); route_.reset(); route_ready_=false; plan_={}; map_={};local_coverage_status_={};
       visited_.fill(false); all_visited_=false; tag_found_=false;
       {std::lock_guard<std::mutex> lock(perception_mutex_);perception_view_={};}
       pose_valid_=false; pose_time_=0; waypoint_index_=0;
@@ -1999,6 +2032,7 @@ class Runtime {
   auv_control::RouteExecutor route_;
   auv_planning::GridPlanner planner_;
   auv_core::SemanticMap map_;
+  std::array<std::array<double,2>,9> local_coverage_status_{};
   auv_core::Stm32Status status_;
   auv_stm32_bridge::GripperTelemetry gripper_;
   auv_planning::PlanResult plan_;
@@ -2038,6 +2072,12 @@ int main(int argc,char** argv) {
     // This process already has dedicated capture, vision and control threads.
     // Avoid OpenCV worker-pool oversubscription on the Raspberry Pi.
     cv::setNumThreads(1);
-    Runtime(load_config(argv[1])).run(); return 0;
+    auto config=load_config(argv[1]);
+#ifdef AUV_RUNTIME_STAGE_TEST
+    if(config.operation_mode!="debug"||!stage_virtual_device(config.serial)||
+        config.auto_arm||config.auto_start||config.web_enabled)
+      throw std::runtime_error("stage-test executable requires DEBUG, virtual PTY, manual ARM and disabled HTTP");
+#endif
+    Runtime(std::move(config)).run(); return 0;
   } catch (const std::exception& e) { std::cerr << "auv_runtime: " << e.what() << '\n'; return 1; }
 }

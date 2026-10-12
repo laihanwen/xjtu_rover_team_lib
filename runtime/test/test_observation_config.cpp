@@ -25,6 +25,11 @@ int main(int argc,char** argv){try{
   y["serial"]["device"]="";y["motion"]["motion_commands_enabled"]=true;require(rejects());
   y["motion"]["motion_commands_enabled"]=false;y["web"]["bind"]="0.0.0.0";require(rejects());
   y=YAML::LoadFile(base.string());
+  y["local_mapping"]["coverage"]["required_views"]=4;write();
+  require(load_config(temp.string()).local_coverage.required_views==4);
+  y["local_mapping"]["coverage"]["required_views"]=2;require(rejects());
+  y["local_mapping"]["coverage"]["required_views"]=11;require(rejects());
+  y=YAML::LoadFile(base.string());
   y["vision"]["apriltag_camera"]="side";require(rejects());
   y["vision"]["apriltag_camera"]="front";y["camera_front"]["enabled"]=false;require(rejects());
   y=YAML::LoadFile(base.string());

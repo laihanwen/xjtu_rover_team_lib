@@ -159,6 +159,8 @@ recording:
   minimum_free_bytes: 268435456
 
 # Fill safe relative-origin corridors from real pool measurements. No default patrol.
+# A perimeter lap uses measured corner waypoints followed by its start point.
+# Check accumulated coverage afterwards; a lap alone need not observe the centre.
 observation_search:
   enabled: false
   corridor_calibrated: false
@@ -248,6 +250,8 @@ local_mapping:
   enabled: false
   navigation_verified: false
   odometry_budget_sec: 1.0
+  coverage:
+    required_views: 3  # Independent accepted frames per 1/16-cell interior tile.
   empty_floor:
     verified: false
     # hsv_lower / hsv_upper must come from labeled visible-floor samples.

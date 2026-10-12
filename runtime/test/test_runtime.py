@@ -54,6 +54,8 @@ def main(binary):
         proc = subprocess.Popen([binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             wait_for_socket(proc, root / 'control.sock')
+            for hook in ('stage-test-freeze-map','stage-test-after-ascent','stage-test-after-cones'):
+                assert 'unknown' in command(str(root/'control.sock'),hook).lower()
             received = bytearray()
             status = struct.pack('<IBIfffffB', 1, 0, 0, 12., 1., 0., 0., 0., 0)
             assert len(status) == 30

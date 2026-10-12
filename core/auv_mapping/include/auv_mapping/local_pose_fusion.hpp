@@ -10,6 +10,10 @@ class LocalPoseFusion {
   void reset(std::uint64_t epoch,double boundary) {
     epoch_=epoch;boundary_=boundary;anchored_=false;anchor_={};odom_={};last_={};
   }
+  // Contradictory image evidence stops propagation, but must not erase the
+  // same-stage anchor used to veto a subsequent adjacent-cell reacquisition.
+  // Only a real stage/session reset may discard that continuity evidence.
+  void reject_landmark() {anchored_=false;last_={};}
   MetricGridPose snapshot(double now)const {auto p=last_;p.valid=p.valid&&std::isfinite(now)&&now>=p.stamp&&now-p.stamp<=.3;return p;}
   MetricGridPose update(const MetricGridPose& absolute,const auv_control::ObservationPose& odom,
       double now,std::uint64_t epoch,double pitch,double maximum_speed,double budget=1.0) {

@@ -34,6 +34,9 @@ install(FILES deploy/auv-observation.service DESTINATION lib/systemd/system)
 install(FILES deploy/auv-task-one.service DESTINATION lib/systemd/system)
 install(FILES deploy/auv-tag-docking.service DESTINATION lib/systemd/system)
 if(BUILD_TESTING)
+  add_executable(auv_runtime_stage_validation test/runtime_stage_validation.cpp)
+  target_compile_features(auv_runtime_stage_validation PRIVATE cxx_std_17)
+  target_link_libraries(auv_runtime_stage_validation PRIVATE auv_core::auv_core yaml-cpp pthread)
   add_subdirectory(test/portable)
   add_executable(test_mjpeg test/test_mjpeg.cpp)
   target_link_libraries(test_mjpeg PRIVATE auv_core::auv_core)
@@ -62,6 +65,18 @@ if(BUILD_TESTING)
       add_test(NAME local_task_one_closed_loop
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py $<TARGET_FILE:auv_runtime> --local)
       set_tests_properties(local_task_one_closed_loop PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 420)
+      foreach(stage ascent surface cones exit surface_missing cones_missing exit_missing)
+        add_test(NAME local_stage_${stage}_observable
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py
+            $<TARGET_FILE:auv_runtime_stage_validation> --stage ${stage} --observable-stage)
+        set_tests_properties(local_stage_${stage}_observable PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 180)
+      endforeach()
+      foreach(stage ascent cones exit)
+        add_test(NAME local_stage_${stage}_current
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py
+            $<TARGET_FILE:auv_runtime_stage_validation> --stage ${stage})
+        set_tests_properties(local_stage_${stage}_current PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 180)
+      endforeach()
       add_test(NAME front_metric_streams
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/front_metric_streams.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(front_metric_streams PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 40)

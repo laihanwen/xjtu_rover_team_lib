@@ -40,6 +40,7 @@ struct PerceptionView {
   int width{0},height{0},nodes{0},hypotheses{0},red_components{0},colour_cones{-1},shape_cones{-1};
   bool local_enabled{false},sensor_ready{false},geometry_valid{false},association_unique{false},pose_valid{false},map_complete{false};
   double row{NAN},col{NAN},reprojection{NAN};
+  unsigned coverage_required_views{3};
   std::vector<auv_vision::AprilTagObservation> tags;
   std::vector<int> target_ids{18};bool tag_confirmed{false};
   std::array<auv_mapping::AccumulatedCell,9> cells{};std::array<bool,9> visible{};
@@ -94,6 +95,8 @@ struct PerceptionView {
       if(i)out<<',';const auto& c=cells[i];
       out<<"{\"row\":"<<i/3<<",\"col\":"<<i%3<<",\"type\":"<<view_quote(view_class(c.type))
         <<",\"observed\":"<<(c.observed?"true":"false")<<",\"visible_now\":"<<(frame&&visible[i]?"true":"false")
+        <<",\"coverage_fraction\":"<<c.coverage_fraction()
+        <<",\"empty_support_fraction\":"<<c.empty_support_fraction(coverage_required_views)
         <<",\"conflict\":"<<(c.conflict?"true":"false")<<",\"votes\":["<<c.votes[0]<<','<<c.votes[1]<<','<<c.votes[2]<<"]}";
     }
     out<<"],\"image_url\":"<<view_quote(frame&&!jpeg.empty()?"data:image/jpeg;base64,"+view_base64(jpeg):"")<<'}';return out.str();

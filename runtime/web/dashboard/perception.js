@@ -50,10 +50,13 @@
       const coord=document.createElement('small'),label=document.createElement('b'),detail=document.createElement('span');
       coord.textContent=`(${Math.floor(i/3)+1}, ${i%3+1})`;label.textContent=c.conflict?'证据冲突':names[type];
       const votes=Array.isArray(c.votes)?c.votes.reduce((a,b)=>a+b,0):0;
-      detail.textContent=c.visible_now&&p.frame_fresh?'当前整格可见':c.observed?`累计证据 ${votes} 票`:'未确认';cell.append(coord,label,detail);q('pv-map').append(cell);
+      const coverage=Number.isFinite(c.coverage_fraction)?Math.round(Math.max(0,Math.min(1,c.coverage_fraction))*100):null;
+      const empty=Number.isFinite(c.empty_support_fraction)?Math.round(Math.max(0,Math.min(1,c.empty_support_fraction))*100):null;
+      detail.textContent=coverage!==null?`覆盖 ${coverage}% · 空地证据 ${empty===null?'—':empty+'%'}`:
+        c.visible_now&&p.frame_fresh?'当前局部可见':c.observed?`累计证据 ${votes} 票`:'未确认';cell.append(coord,label,detail);q('pv-map').append(cell);
     }
     set('pv-map-state',p.map_complete?'地图已冻结':`已确认 ${known}/9 格，锥 ${cones}/4，冲突 ${conflicts}`,p.map_complete?'pv-ok':'pv-warn');
-    set('pv-map-detail',`${p.frame_fresh?'累计地图':'历史地图：当前感知已过期'}。描边只表示当前整格可见；空格须观测确认，不由目标未检出推断。地图冻结不代表遍历已经完成。`);
+    set('pv-map-detail',`${p.frame_fresh?'累计地图':'历史地图：当前感知已过期'}。描边表示当前局部可见；覆盖率不等于空格确认，空地证据须逐区域多帧验证。地图冻结不代表遍历已经完成。`);
   }
   function demoSnapshot(){
     const mode=q('pv-demo').value,stale=mode==='stale',ambiguous=mode==='ambiguous',undecoded=mode==='undecoded';
