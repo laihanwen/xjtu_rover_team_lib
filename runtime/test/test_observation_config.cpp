@@ -18,6 +18,13 @@ int main(int argc,char** argv){try{
       c.camera_matrix==c.localization.intrinsics && c.distortion==c.localization.distortion);
   require(c.front_calibration_quality=="user_verified_20261010");
   require(c.apriltag_camera=="down");
+  // Local HTTP observation is allowed only without a hardware/control path.
+  y["web"]["bind"]="127.0.0.1";write();c=load_config(temp.string());
+  require(c.web_bind=="127.0.0.1" && !c.motion_enabled && c.serial.empty());
+  y["serial"]["device"]="/dev/DO_NOT_OPEN_SYNTHETIC_TEST";require(rejects());
+  y["serial"]["device"]="";y["motion"]["motion_commands_enabled"]=true;require(rejects());
+  y["motion"]["motion_commands_enabled"]=false;y["web"]["bind"]="0.0.0.0";require(rejects());
+  y=YAML::LoadFile(base.string());
   y["vision"]["apriltag_camera"]="side";require(rejects());
   y["vision"]["apriltag_camera"]="front";y["camera_front"]["enabled"]=false;require(rejects());
   y=YAML::LoadFile(base.string());

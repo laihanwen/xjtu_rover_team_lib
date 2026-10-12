@@ -51,7 +51,10 @@ def run(binary, missing_surface=False, local=False):
         texture[330:570,330:570]=cv2.cvtColor(marker,cv2.COLOR_GRAY2BGR)
         map_texture=None;mapping=threading.Event();reacquire_hold=threading.Event()
         if local:
-            noise=np.random.default_rng(18).integers(64,83,(900,900),dtype=np.uint8)
+            # Keep floor texture visible after perspective downsampling and
+            # MJPEG compression, within the synthetic empty-floor HSV model.
+            yy,xx=np.indices((900,900))
+            noise=np.where((xx//18+yy//18)%2,105,55).astype(np.uint8)
             texture=cv2.cvtColor(noise,cv2.COLOR_GRAY2BGR)
             for coordinate in [0,300,600,899]:
                 cv2.line(texture,(coordinate,0),(coordinate,899),(255,255,255),32)
@@ -63,7 +66,7 @@ def run(binary, missing_surface=False, local=False):
             # as empty-floor training evidence. No real-rig geometry implied.
             texture[718:813,403:498]=255
             local_marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,83)
-            texture[724:807,409:492]=cv2.cvtColor(local_marker,cv2.COLOR_GRAY2BGR)
+            texture[724:807,409:492]=cv2.cvtColor(cv2.flip(local_marker,1),cv2.COLOR_GRAY2BGR)
         fake = root/'rpicam-vid'
         fake.write_text('''#!/usr/bin/python3
 import pathlib,sys,time
@@ -125,7 +128,9 @@ while True:
                 fx=250 if local else (90 if surface.is_set() else 130)
                 scale=fx/(1.4-depth)
                 offset=.2 if local else 0
-                points=np.float32([[160+scale*(x-col*.5),120+scale*(y-row*.5-offset)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                # Canonical grid columns point opposite body Y-left. Mirror
+                # the local rig's projection and integrate sway consistently.
+                points=np.float32([[160+scale*((col*.5-x) if local else (x-col*.5)),120+scale*(y-row*.5-offset)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
                 if local:assert not all(0<=p[0]<320 and 0<=p[1]<240 for p in points),'local camera must never show full outer grid'
                 h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),points)
                 active_texture=map_texture if local and mapping.is_set() else texture
@@ -136,7 +141,7 @@ while True:
                 # Both synthetic cameras observe the SAME integrated motion.
                 # A static down video previously hid actual traversal motion.
                 down_scale=250/(1.4-depth)
-                down_points=np.float32([[160+down_scale*(x-col*.5),120+down_scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                down_points=np.float32([[160+down_scale*((col*.5-x) if local else (x-col*.5)),120+down_scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
                 down_h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),down_points)
                 down_image=cv2.warpPerspective(active_texture,down_h,(320,240),borderValue=(70,70,70) if local else (110,110,110))
                 tmp=root/'down.tmp';tmp.write_bytes(cv2.imencode('.jpg',down_image)[1].tobytes());tmp.replace(root/'down.jpg')
@@ -148,7 +153,8 @@ while True:
                     now=time.monotonic();dt=min(now-last,.1);last=now;sequence+=1
                     with lock:
                         if state['armed']:
-                            state['row']+=state['vx']*dt/.5;state['col']+=state['vy']*dt/.5
+                            state['row']+=state['vx']*dt/.5
+                            state['col']+=(-1 if local else 1)*state['vy']*dt/.5
                             state['depth']+=np.clip(state['target']-state['depth'],-dt*.15,dt*.15)
                         armed,depth=state['armed'],state['depth']
                     os.write(master,frame(0x80,struct.pack('<IBIfffffB',sequence,int(armed),0,12.,depth,0.,0.,0.,0)))
@@ -180,6 +186,11 @@ while True:
                 raise AssertionError((root/'stderr').read_text()) from error
             def status():
                 value=json.loads(request(str(root/'control.sock'),'status'));snapshots.append(value)
+                if local and value['pose_valid']:
+                    with lock:body_row,body_col=state['row'],state['col']
+                    assert np.hypot(value['row']-body_row,value['col']-body_col)<.2,{
+                        'metric_row_col':[value['row'],value['col']],
+                        'synthetic_body_row_col':[body_row,body_col]}
                 if local and value['phase']=='BUILD_MAP':mapping.set()
                 if not phases or phases[-1]!=value['phase']:phases.append(value['phase'])
                 return value
@@ -239,6 +250,7 @@ while True:
                     assert 'EXIT_GRID' in phases and any(e.get('event')=='EXIT_CONFIRMED' for e in events),phases
                     assert any(e.get('event')=='LOCAL_GRID' for e in events),events
             else:
+                assert 'RELOCALIZE_SURFACE' in phases, 'missing-surface scenario failed before testing surface reacquisition'
                 assert 'VISIT_CONES' not in phases and not visits,phases
             assert all(abs(t[1])<=.20001 and abs(t[2])<=.20001 for t in targets)
             output=os.environ.get('AUV_SIM_EVIDENCE_DIR')

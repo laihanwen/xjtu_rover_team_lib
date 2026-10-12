@@ -437,7 +437,9 @@ static Config load_config(const std::string& path) {
       }
     }
   }
-  if (!wired_web_address || c.web_port <= 0 || c.web_port > 65535 ||
+  const bool readonly_loopback=c.web_bind=="127.0.0.1" && c.operation_mode=="debug" &&
+      c.serial.empty() && !c.motion_enabled && !c.auto_start && !c.auto_arm;
+  if ((!wired_web_address && !readonly_loopback) || c.web_port <= 0 || c.web_port > 65535 ||
       c.video_dir.empty() || c.web_assets.empty() ||
       c.video_width <= 0 || c.video_width > 1920 ||
       c.video_height <= 0 || c.video_height > 1080 ||

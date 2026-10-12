@@ -865,7 +865,8 @@ class Runtime {
           " epoch="+std::to_string(local_epoch)+" nodes="+std::to_string(local_result.geometry.nodes.size())+
           " hypotheses="+std::to_string(local_result.geometry.association.hypotheses.size())+
           " cone_mode="+cfg_.cone.mode+" shape_model_id="+cfg_.cone.shape_model_id+" colour_cones="+std::to_string(local_result.colour_cones)+
-          " shape_cones="+std::to_string(local_result.shape_cones)+" cone_reason="+local_result.cone_reason+" reason="+metric.reason);
+          " shape_cones="+std::to_string(local_result.shape_cones)+" cone_reason="+local_result.cone_reason+
+          " geometry_reason="+local_result.geometry.reason+" reason="+metric.reason);
       }
       std::vector<auv_vision::ConeObservation> cones;
       cv::Mat cone_debug;
@@ -1353,10 +1354,16 @@ class Runtime {
                                     phase==auv_mission::MissionPhase::kBuildMap)) {
             if(armed_requested_) {
               const auto pose=localization_->snapshot(now);
-              const auto observation=search_.step(pose,now,tag_found_);
+              // A tag starts local map accumulation; keep observing the
+              // calibrated corridor until all cells have sufficient evidence.
+              // Complete-frame mapping can retain its original tag hold.
+              const bool hold_observation=tag_found_ && (!cfg_.local_mapping_enabled || map_.complete);
+              const auto observation=search_.step(pose,now,hold_observation);
               search_detail_=observation.reason;search_waypoint_=observation.waypoint;
               if(observation.fault||observation.exhausted) {
-                set_fault_locked(observation.reason);armed_requested_=false;disarm_pending_=true;motion_={};
+                const auto reason=observation.exhausted && tag_found_ ?
+                    "calibrated observation corridor exhausted before map completion":observation.reason;
+                set_fault_locked(reason);armed_requested_=false;disarm_pending_=true;motion_={};
                 mission_.force_fault(fault_,now);
               }else if(arm_ack_ && status_.armed){
                 motion_.vx=static_cast<float>(observation.surge);motion_.vy=static_cast<float>(observation.sway);
