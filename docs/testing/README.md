@@ -4,6 +4,7 @@
 
 ## 当前流程
 
+- [AUV 感知检查驾驶台](auv-perception-console-20261012.md)：标签、候选、局部关联、累计地图与新鲜度的可视化入口。
 - [双视觉与同钟记录软件](dual-vision-sensor-development-20261012.md)：本地 20/20，真实 B 权重与新增完整 Linux Runtime 回归待验收。
 
 - [Ubuntu 验证步骤](ubuntu-validation-assets-20261012.md)与[2026-10-12 实际结果](ubuntu-validation-results-20261012.md)：完整 Runtime 27/27 回归及真实样本统计，米制定位仍未验收。

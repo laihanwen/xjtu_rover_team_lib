@@ -4,6 +4,7 @@
 #include "mission_recorder.hpp"
 #include "runtime_config.hpp"
 #include "boot_identity.hpp"
+#include "perception_view.hpp"
 #include "auv_core/semantic_map.hpp"
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
@@ -694,6 +695,8 @@ class Runtime {
     std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false,previous_exit=false;
     auv_mapping::MetricGridPose exit_association_hint;
     auv_mapping::TagGridBinder tag_grid_binder;bool tag_grid_saved=false;
+    std::vector<auv_vision::AprilTagObservation> visible_tags;
+    double visible_tag_stamp=0,last_view_time=0;std::uint64_t visible_tag_sequence=0;
     while (running) {
       cv::Mat image,cached; double stamp = 0;bool cached_surface=false;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -708,7 +711,7 @@ class Runtime {
       if (image.empty() && front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
-      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;tag_grid_binder.reset();tag_grid_saved=false;mapper.reset();tracker.reset();
+      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;visible_tags.clear();visible_tag_stamp=0;visible_tag_sequence=0;tag_grid_binder.reset();tag_grid_saved=false;mapper.reset();tracker.reset();
         ++local_epoch;local_boundary=seconds();local_map.reset(local_epoch,"yellow_bottom_pipe_centres");
         local_fusion.reset(local_epoch,local_boundary);}
       auv_mission::MissionPhase phase;
@@ -738,10 +741,20 @@ class Runtime {
       const cv::Mat& tag_image=tag_front?front_corrected:image;
       const double tag_stamp=tag_front?front_stamp:stamp;
       const auto tag_sequence=tag_front?front_seen:seen;
+      if(!tag_image.empty()&&(phase==auv_mission::MissionPhase::kSearchAprilTag||
+          (seconds()<perception_observer_until_&&seconds()-visible_tag_stamp>=.5))) {
+        visible_tags=tags.detect(tag_image);visible_tag_stamp=tag_stamp;visible_tag_sequence=tag_sequence;
+        if(seconds()<perception_observer_until_) {
+          std::lock_guard<std::mutex> lock(perception_mutex_);
+          perception_view_.tags=visible_tags;perception_view_.tag_stamp=visible_tag_stamp;
+          perception_view_.tag_sequence=visible_tag_sequence;perception_view_.tag_camera=cfg_.apriltag_camera;
+          perception_view_.target_ids=cfg_.apriltag_ids;
+        }
+      }
       // Only a new frame from the selected camera can add a tag vote. The
       // independent stream may produce no frame on this vision iteration.
       if(!tag_image.empty() && phase==auv_mission::MissionPhase::kSearchAprilTag && !triggered) {
-        const auto found = tags.detect(tag_image);
+        const auto& found = visible_tags;
         const auto eligible=std::find_if(found.begin(),found.end(),[this](const auto& tag){
           return cfg_.apriltag_ids.empty()||std::find(cfg_.apriltag_ids.begin(),cfg_.apriltag_ids.end(),tag.id)!=cfg_.apriltag_ids.end();});
         if(eligible==found.end()){tag_id=-1;tag_votes=0;}
@@ -779,7 +792,7 @@ class Runtime {
         metric.surface_frame=surface_phase;
       }
       auv_mapping::LocalMappingResult local_result;
-      bool local_sample_valid=false;
+      bool local_sample_valid=false,metric_sensor_ready=false;
       if(cfg_.local_mapping_enabled) {
         auv_mapping::PlaneSample sensor;bool sensor_valid=false;
         {std::lock_guard<std::mutex> lock(state_mutex_);
@@ -791,6 +804,7 @@ class Runtime {
           sensor.pitch=cfg_.localization.imu_signs[1]*status_.pitch+cfg_.localization.imu_offsets[1]*CV_PI/180;
           sensor.yaw=cfg_.localization.imu_signs[2]*status_.yaw+cfg_.localization.imu_offsets[2]*CV_PI/180;
         }
+        metric_sensor_ready=sensor_valid;
         if(sensor_valid) {
           auto calibration=metric_front?(surface_phase?cfg_.traversal.front_surface:cfg_.traversal.front_underwater):
             (surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater);
@@ -801,7 +815,9 @@ class Runtime {
                          local_fusion.snapshot(metric_stamp).valid?local_fusion.snapshot(metric_stamp):exit_association_hint);
           local_sample_valid=local_result.pose.valid;
           if(local_sample_valid&&!tag_grid_saved&&(phase==auv_mission::MissionPhase::kSearchAprilTag||phase==auv_mission::MissionPhase::kBuildMap)) {
-            for(const auto& tag:tags.detect(metric_image))if(tag.id==18) {
+            const auto paired_tags=metric_front==tag_front&&visible_tag_sequence==metric_seq&&std::abs(visible_tag_stamp-metric_stamp)<.001?
+              visible_tags:tags.detect(metric_image);
+            for(const auto& tag:paired_tags)if(tag.id==18) {
               const auto binding=tag_grid_binder.update(tag,local_result.pose,calibration,cfg_.docking.size_m,sensor.depth,metric_stamp);
               if(binding.ready) {
                 std::ostringstream evidence;evidence.precision(15);
@@ -924,6 +940,28 @@ class Runtime {
         video_frame_ = grid.debug_image.empty() ? metric_image : grid.debug_image;
         ++video_sequence_;
       }
+      // Low-rate read-only evidence uses this same corrected frame. It never
+      // updates perception decisions and never opens a second camera device.
+      auv_runtime::PerceptionView view;bool publish_view=cfg_.web_enabled&&seconds()<perception_observer_until_&&seconds()-last_view_time>=.5;
+      if(publish_view) {
+        last_view_time=seconds();view.sequence=metric_seq;view.stamp=metric_stamp;view.epoch=local_epoch;
+        view.camera=metric_front?"front":"down";view.model=surface_phase?"surface":"underwater";
+        view.phase=auv_mission::mission_phase_name(phase);view.width=metric_image.cols;view.height=metric_image.rows;
+        view.tag_camera=cfg_.apriltag_camera;view.tag_sequence=visible_tag_sequence;view.tag_stamp=visible_tag_stamp;view.tags=visible_tags;
+        view.local_enabled=cfg_.local_mapping_enabled;view.sensor_ready=metric_sensor_ready;
+        view.geometry_valid=cfg_.local_mapping_enabled?local_result.geometry.valid:grid.orientation_valid;
+        view.association_unique=cfg_.local_mapping_enabled?local_result.geometry.association.unique:grid.orientation_valid;
+        view.nodes=static_cast<int>(local_result.geometry.nodes.size());view.hypotheses=static_cast<int>(local_result.geometry.association.hypotheses.size());
+        view.reason=cfg_.local_mapping_enabled?(metric_sensor_ready?local_result.geometry.reason:"sensor input stale or missing"):grid.reason;
+        view.pose_valid=metric.valid;view.pose_stamp=metric.stamp;view.row=metric.row;view.col=metric.col;
+        view.reprojection=metric.reprojection_px;view.pose_reason=metric.reason;view.cone_mode=cfg_.cone.mode;
+        view.cone_reason=local_result.cone_reason;view.cells=local_map.cells();
+        if(local_sample_valid){view.colour_cones=static_cast<int>(local_result.colour_cones);view.shape_cones=static_cast<int>(local_result.shape_cones);}
+        for(const auto& cell:local_result.observation.cells)if(cell.row>=0&&cell.row<3&&cell.col>=0&&cell.col<3)
+          view.visible[cell.row*3+cell.col]=cell.full_cell_visible;
+        view.attach_image(metric_image,cfg_.local_mapping_enabled?local_result.geometry.debug:cv::Mat(),
+          metric_front==tag_front&&visible_tag_sequence==metric_seq);
+      }
       std::lock_guard<std::mutex> lock(state_mutex_);
       // A phase can change while OpenCV is processing. Never publish a pose
       // computed with the previous phase's camera model into the new phase.
@@ -944,6 +982,17 @@ class Runtime {
       processed_time_ = finished; ++processed_frames_;
       latency_ms_[latency_index_++ % latency_ms_.size()] = (finished-metric_stamp)*1000.0;
       latency_count_=std::min(latency_count_+1,latency_ms_.size());
+      if(publish_view) {
+        view.map_complete=map_.complete;view.target_ids=cfg_.apriltag_ids;view.tag_confirmed=tag_found_;
+        if(!cfg_.local_mapping_enabled)for(const auto& c:map_.grid.cells) {
+          const int i=c.cell.row*3+c.cell.col;if(i<0||i>=9)continue;
+          const auto& type=c.cell.object_type;auto& target=view.cells[i];
+          target.type=type=="circle_cone"?auv_mapping::LocalCellClass::circle:type=="square_cone"?auv_mapping::LocalCellClass::square:
+            type=="empty"?auv_mapping::LocalCellClass::empty:auv_mapping::LocalCellClass::unknown;
+          target.observed=target.type!=auv_mapping::LocalCellClass::unknown;
+        }
+        std::lock_guard<std::mutex> preview_lock(perception_mutex_);perception_view_=std::move(view);
+      }
       } catch (const std::exception& e) {
         fault(std::string("vision: ")+e.what());
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -1630,6 +1679,7 @@ class Runtime {
     if (cmd == "reset" && r.accepted) {
       fault_.clear(); route_.reset(); route_ready_=false; plan_={}; map_={};
       visited_.fill(false); all_visited_=false; tag_found_=false;
+      {std::lock_guard<std::mutex> lock(perception_mutex_);perception_view_={};}
       pose_valid_=false; pose_time_=0; waypoint_index_=0;
       gripper_close_requested_=false; gripper_open_requested_=false;
       gripper_stop_requested_=false;
@@ -1742,6 +1792,20 @@ class Runtime {
     if (!running) return;
     httplib::Server server;
     web_server_=&server;
+    server.Get("/api/perception",[this](const httplib::Request&,httplib::Response& res){
+      perception_observer_until_=seconds()+3;
+      auv_runtime::PerceptionView view;{std::lock_guard<std::mutex> lock(perception_mutex_);view=perception_view_;}
+      // Latest control pose is independently timestamped; the low-rate overlay
+      // must not make a fresh Runtime pose appear stale (or vice versa).
+      {std::lock_guard<std::mutex> lock(state_mutex_);
+        view.pose_valid=metric_pose_.valid;view.pose_stamp=metric_pose_.stamp;view.pose_sequence=metric_pose_.sequence;
+        view.pose_model=metric_pose_.surface_frame?"surface":"underwater";
+        view.pose_source=metric_pose_.landmark_observation?"landmark":"short_odometry";
+        view.row=metric_pose_.row;view.col=metric_pose_.col;view.reprojection=metric_pose_.reprojection_px;
+        view.pose_reason=metric_pose_.reason;view.tag_confirmed=tag_found_;
+      }
+      res.set_header("Cache-Control","no-store");res.set_content(view.json(seconds(),cfg_.pose_timeout,cfg_.frame_timeout),"application/json");
+    });
     server.Get("/api/localization",[this](const httplib::Request&,httplib::Response& res){
       res.set_header("Cache-Control","no-store");res.set_content(localization_->json(seconds()),"application/json");
     });
@@ -1907,6 +1971,7 @@ class Runtime {
   double front_hz_{};
   std::string front_detail_;
   std::mutex frame_mutex_,video_mutex_,state_mutex_,log_mutex_;
+  std::mutex perception_mutex_;auv_runtime::PerceptionView perception_view_;std::atomic<double> perception_observer_until_{0};
   std::condition_variable log_cv_;
   std::deque<std::string> log_queue_;
   std::atomic<bool> log_degraded_{false};

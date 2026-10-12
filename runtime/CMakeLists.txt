@@ -51,6 +51,11 @@ if(BUILD_TESTING)
     execute_process(COMMAND ${Python3_EXECUTABLE} -c "import yaml"
       RESULT_VARIABLE AUV_CALIBRATION_YAML OUTPUT_QUIET ERROR_QUIET)
     if(AUV_CALIBRATION_YAML EQUAL 0)
+      if(HTTPLIB_INCLUDE_DIR AND HTTPLIB_LIBRARY)
+        add_test(NAME perception_http_readonly
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/perception_http.py $<TARGET_FILE:auv_runtime>)
+        set_tests_properties(perception_http_readonly PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 25)
+      endif()
       add_test(NAME a2_closed_loop
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(a2_closed_loop PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 120)

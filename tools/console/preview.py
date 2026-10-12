@@ -28,13 +28,14 @@ class Preview(BaseHTTPRequestHandler):
             file=ROV/'console.css' if path.endswith('.css') else Path(__file__).with_name('rov_demo.js')
             body=file.read_bytes();mime='text/css' if path.endswith('.css') else 'text/javascript'
         elif path == '/dashboard/config':
-            body = json.dumps({'demo': True, 'source': 'virtual', 'camera_base': ''}).encode()
+            body = json.dumps({'demo': True, 'source': 'virtual', 'camera_base': '', 'mission_profile': 'a2_task_one'}).encode()
             mime = 'application/json'
         else:
             files = {'/dashboard/': ('index.html', 'text/html'),
                      '/dashboard/dashboard.css': ('dashboard.css', 'text/css'),
                      '/dashboard/dashboard.js': ('dashboard.js', 'text/javascript'),
                      '/dashboard/recording.js': ('recording.js', 'text/javascript')}
+            files.update({'/dashboard/perception.js':('perception.js','text/javascript'),'/dashboard/perception.css':('perception.css','text/css')})
             files.update({'/dashboard/logs.html':('logs.html','text/html'),'/dashboard/logs.js':('logs.js','text/javascript')})
             if path not in files:
                 self.send_error(404)

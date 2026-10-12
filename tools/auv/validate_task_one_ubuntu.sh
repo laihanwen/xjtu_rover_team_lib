@@ -37,6 +37,10 @@ if ! grep -q 'local_task_one_closed_loop' "$evidence/registered-tests.log"; then
   printf 'Required local Runtime fixture was not registered.\n' | tee "$evidence/missing-test.log"
   exit 1
 fi
+if ! grep -q 'perception_http_readonly' "$evidence/registered-tests.log"; then
+  printf 'Required perception HTTP fixture was not registered; check cpp-httplib and Python replay dependencies.\n' | tee "$evidence/missing-http-test.log"
+  exit 1
+fi
 run_check ctest ctest --test-dir "$build" --output-on-failure
 run_check sensor-recording "$python" -m unittest discover -s tools/rov -p test_sensor_recorder.py
 run_check sensor-replay "$python" -m unittest discover -s tools/auv -p test_prepare_sensor_replay.py

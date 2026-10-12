@@ -23,6 +23,8 @@ git rev-parse HEAD
 
 ## 2. 完整 Runtime 与回归
 
+驾驶台新增感知接口后的增量说明见 [AUV 感知检查](auv-perception-console-20261012.md)。本轮还应注册并执行 `perception_http_readonly`：在 INIT/DISARM、空串口条件下检查真实 C++ 标签解码、JPEG 和 unknown 格位，不能只看演示画面。便携新鲜度测试为 `perception_view_freshness`。
+
 在仓库根目录：
 
 ```bash
