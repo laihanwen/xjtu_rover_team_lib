@@ -27,7 +27,7 @@
     set('pv-source',demo?'模拟感知 · 非实测':p.frame_fresh?'实时识别证据':'感知未就绪',demo?'pv-warn':p.frame_fresh?'pv-ok':'pv-bad');
     q('pv-image').hidden=!p.frame_fresh||!p.image_url;q('pv-empty').hidden=!q('pv-image').hidden;
     if(!q('pv-image').hidden)q('pv-image').src=p.image_url;else {q('pv-image').removeAttribute('src');set('pv-empty',p.sequence?'感知帧已过期；旧图已隐藏。':explain(p.reason));}
-    set('pv-frame',`${demo?'模拟 · ':''}${p.camera||'相机未知'} / ${p.model||'模型未知'} / ${p.phase||'阶段未知'} / 帧 ${p.sequence||'—'} / ${finite(p.age_sec)?p.age_sec.toFixed(2)+' s':'年龄未知'}`);
+    set('pv-frame',`${demo?'模拟 · ':''}${p.camera||'相机未知'} / ${p.model||'模型未知'} / ${p.phase||'阶段未知'} / ${p.width>0&&p.height>0?p.width+'×'+p.height:'尺寸未知'} / 帧 ${p.sequence||'—'} / ${finite(p.age_sec)?p.age_sec.toFixed(2)+' s':'年龄未知'}`);
     const tags=p.tag_fresh?Array.from(p.tags||[]):[];
     const target=tags.some(t=>Array.isArray(p.target_ids)&&(p.target_ids.length===0||p.target_ids.includes(t.id)));
     set('pv-tag',tags.length?'ID '+tags.map(t=>t.id).join(', ')+(target?'':' · 非目标'):'未解码 / 已过期',target?'pv-ok':'pv-warn');
