@@ -1,5 +1,8 @@
 # 独立 AUV 工具
 
+九宫格建图与遍历快速入口：`python3 tools/auv/grid_test.py --build-dir <完整Linux构建目录>`。
+默认运行现有模拟闭环及下游分段，保留失败与证据；不控制实机。实机准备步骤见 [快速测试](../../docs/grid-quick-test.md)。
+
 更新：2026-10-10。只提供独立 AUV 构建和任务工具，不使用已弃用的 AUV_ROV_DUAL 或会话切换。
 
 | 工具 | 职责 | 操作边界 |
