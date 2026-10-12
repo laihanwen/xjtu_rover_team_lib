@@ -10,6 +10,17 @@
 
 已填表只完成关键帧筛选：39 采用、7 跳过，主体掩膜/格位语义/节点关联/回访事件尚未填。Windows 独立复核：ID18 解码 1 帧（F035）、完整网格 0、颜色分量 23 帧、管线候选 30 帧；不是局部度量定位或训练完成。
 
+新审阅包使用单独校验工具，不能套用旧包的 native/labelled 目录约定：
+
+```bash
+python3 tools/auv/verify_perception_review_bundle.py /path/to/perception-review
+python3 tools/auv/verify_perception_review_bundle.py /path/to/perception-review \
+  --replay build-task-one-ubuntu/core/auv_core/auv_task_video_replay \
+  --output build-task-one-ubuntu/filled-review-replay
+```
+
+将新的逐帧输出通过包内 index.json 的 F 编号对齐，保留 Windows 对照和最新 Ubuntu 二进制版本。样本已经矫正，不再次去畸变；1 FPS 是稀疏样本播放频率，不是运动时间，不能用于光流闭环或重建同步姿态。输出目录须不存在。
+
 实际 Pi 摄像头服务此前配置 `tag36h11`，与已确认的 `tag16h5 / ID18` 不一致。后续部署准备须修正目标字典/ID及选定标签相机，保留已生效双摄640×480参数；不能直接覆盖为低分辨率模板。当前服务串口为空、运动关闭，ROV 桥占 UART，这只是共享摄像头观察入口，不能据此认为 AUV 固件与自主任务已部署。
 
 ## 交给 Ubuntu AI 的任务
