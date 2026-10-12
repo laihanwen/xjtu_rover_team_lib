@@ -22,6 +22,22 @@ class LocalPoseFusion {
     const bool usable=odom.valid&&odom.continuous&&odom.session&&fresh(odom.stamp)&&
       std::isfinite(odom.x)&&std::isfinite(odom.y)&&std::isfinite(odom.yaw);
     if(absolute.valid&&fresh(absolute.stamp)&&std::isfinite(absolute.row)&&std::isfinite(absolute.col)) {
+      // After a landmark gap, elapsed time alone must not permit a repeated
+      // lattice to jump into a neighbouring cell. Continuous same-session
+      // odometry can veto an inconsistent new landmark, even though it cannot
+      // supply a control pose beyond the propagation budget.
+      if(anchor_.valid&&usable&&odom.session==odom_.session&&odom.stamp>=odom_.stamp) {
+        const double x=odom.x-odom_.x,y=odom.y-odom_.y;
+        const double cs=std::cos(odom_.yaw),sn=std::sin(odom_.yaw);
+        const double bx=cs*x+sn*y,by=-sn*x+cs*y;
+        const auto& r=anchor_.body_from_grid;
+        const double predicted_col=anchor_.col+(r[0]*bx+r[3]*by)/pitch;
+        const double predicted_row=anchor_.row+(r[1]*bx+r[4]*by)/pitch;
+        const double allowance=.05+maximum_speed*std::abs(odom.stamp-absolute.stamp);
+        if(std::hypot(absolute.row-predicted_row,absolute.col-predicted_col)*pitch>allowance) {
+          anchored_=false;last_={};invalid.reason="landmark conflicts with continuous odometry";return invalid;
+        }
+      }
       if(last_.valid) {
         const double dt=absolute.stamp-last_.stamp;
         if(dt<0||std::hypot(absolute.row-last_.row,absolute.col-last_.col)*pitch>maximum_speed*dt+.05) {

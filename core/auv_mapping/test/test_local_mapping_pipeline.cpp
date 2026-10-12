@@ -54,4 +54,12 @@ int main() {
   auto conflict=p;conflict.stamp=3.2;conflict.row+=1;
   check(!fusion.update(conflict,odom,3.2,2,.5,.2).valid,"landmark jump rejected");
   check(!fusion.update({},odom,3.2,2,.5,.2).valid,"rejected correction cannot revive old anchor");
+  fusion.reset(3,4);p.stamp=4;odom={true,true,2,4,0,0,0};
+  check(fusion.update(p,odom,4,3,.5,.2).valid,"stationary landmark anchor");
+  odom.stamp=7;
+  check(!fusion.update({},odom,7,3,.5,.2).valid,"long gap cannot propagate odometry");
+  conflict=p;conflict.stamp=7;conflict.col+=1;
+  check(!fusion.update(conflict,odom,7,3,.5,.2).valid,"long gap cannot authorize adjacent-column reacquisition");
+  p.stamp=7.1;odom.stamp=7.1;
+  check(fusion.update(p,odom,7.1,3,.5,.2).valid,"fresh matching landmark can reacquire after gap");
 }
