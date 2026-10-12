@@ -50,7 +50,7 @@ class LocalMappingPipeline {
       if(matches==1){result.geometry=std::move(selected);result.geometry.reason="unique temporal metric association";}
       else result.geometry.reason="temporal association ambiguous or discontinuous";
     }
-    if(!result.geometry.valid)return result;
+    if(!result.geometry.valid){result.pose.reason=result.geometry.reason;return result;}
     std::vector<cv::Point3d> world;
     for(const auto& p:result.geometry.association.hypotheses[0].nodes)
       world.emplace_back(p[1]*calibration.cell_size_m,p[0]*calibration.cell_size_m,0);

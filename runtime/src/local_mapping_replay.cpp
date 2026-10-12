@@ -37,6 +37,7 @@ int main(int argc,char** argv) {
     auv_vision::AprilTagDetector tags(cfg.apriltag_family);
     std::unique_ptr<CameraRectifier> rectifier;
     cv::Mat image;int index=0;std::string phase;double last_stamp=-1;
+    MetricGridPose prior;
     while(video.read(image)) {
       const int frame=index++;auto sample=frames.find(frame);if(sample==frames.end())continue;
       const auto item=sample->second;
@@ -52,7 +53,7 @@ int main(int argc,char** argv) {
       if(next_phase!=phase) {
         if(!phase.empty()&&!map.begin_stage(++epoch,stamp,"yellow_bottom_pipe_centres"))
           throw std::runtime_error("map phase transition rejected");
-        phase=next_phase;rectifier.reset();
+        phase=next_phase;rectifier.reset();prior=MetricGridPose();
       }
       if(cfg.localization.imu_signs.size()!=3||cfg.localization.imu_offsets.size()!=3)
         throw std::runtime_error("recorded IMU conversion required; defaults cannot replace evidence");
@@ -66,7 +67,10 @@ int main(int argc,char** argv) {
         if(space=="raw")corrected=rectifier->apply(image);
       }
       const auto result=pipeline.process(corrected,c,sensor,std::uint64_t(frame)+1,epoch,camera=="front"?1:0,
-        rectifier?rectifier->valid_mask():cv::Mat());
+        rectifier?rectifier->valid_mask():cv::Mat(),prior);
+      // Use only previous measured landmark poses. The pipeline enforces the
+      // 0.3 s age/jump gates; never carry an anchor across an imaging phase.
+      if(result.pose.valid)prior=result.pose;
       std::string reason=result.pose.reason;
       if(result.pose.valid&&!map.update(result.observation,stamp,reason))reason="map reject: "+reason;
       bool tag18=false;for(const auto& tag:tags.detect(corrected))tag18|=tag.id==18;
