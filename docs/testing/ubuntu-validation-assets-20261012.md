@@ -46,6 +46,8 @@ python3 tools/auv/audit_recording_sync.py \
 
 ## 验收边界
 
+Ubuntu 执行结果已保存于[验证记录](ubuntu-validation-results-20261012.md)：同版完整 Runtime 单次 27/27 CTest 通过，真实样本与同步审计汇总均复现参考结果；这不解除下述真实导航验收缺口。
+
 本次 Windows 便携 16/16 通过不是 Ubuntu 完整 Runtime 通过；新附件也不是局部米制定位真值。完整外框拒绝、接头候选、unknown 锥类别以及缺同钟输入必须继续如实记录。实际 Runtime 局部路径默认关闭、运动关闭、自动 ARM 关闭；测试使用隔离目录和虚拟串口，不能连接生产 UART 或因此启动实机任务。
 
 详见[前三项结果](first-three-offline-validation-20261012.md)及[局部 Runtime 验证边界](local-runtime-development-20261011.md)。

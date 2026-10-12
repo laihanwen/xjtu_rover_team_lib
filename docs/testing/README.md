@@ -4,6 +4,7 @@
 
 ## 当前流程
 
+- [Ubuntu 验证步骤](ubuntu-validation-assets-20261012.md)与[2026-10-12 实际结果](ubuntu-validation-results-20261012.md)：完整 Runtime 27/27 回归及真实样本统计，米制定位仍未验收。
 - [原生测试策略](strategy.md)与[任务一验收](task1-apriltag-cones.md)。
 - [连续素材采集](next-data-collection-20261010.md)与[素材验证流程](mapping-validation-procedure-20261010.md)。
 - [局部 Runtime 开发及回归边界](local-runtime-development-20261011.md)与[版本对应关系](pi-regression-version-20261011.json)。
