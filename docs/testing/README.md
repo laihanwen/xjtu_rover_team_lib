@@ -18,5 +18,6 @@
 [P4 安全](p4-safety.md)、[P13 夹爪](p13-gripper.md)、[P14 转盘](p14-valve-foundation.md)包含历史设计或专项验收参考；其中 ROS 操作不作为轻量系统启动命令。其余日期报告按[索引](../catalog.md)检索，不能从历史通过记录推断新源码、当前设备或水池闭环已验收。
 ## 2026-10-12 本轮交接
 
+- [Ubuntu 增量实际结果](ubuntu-task-one-results-20261012.md)：完整编译、33/34 回归、已修复问题与仍失败的局部闭环，附真实样本对照及证据包。
 - [Ubuntu AI 增量测试交接](ubuntu-task-one-handoff-20261012.md)：最新源码、隔离测试脚本、旧素材复用与结果回传。
 - [双视觉与同钟记录开发](dual-vision-sensor-development-20261012.md)：20/20 便携范围、退出控制与模型训练边界。

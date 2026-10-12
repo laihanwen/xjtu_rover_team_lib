@@ -4,6 +4,8 @@
 
 当前执行平台：按用户最新要求，Pi 已断电，完整编译和测试全部交给 Ubuntu。不要继续在 Pi 构建；最新入口见[Ubuntu AI 交接](testing/ubuntu-task-one-handoff-20261012.md)。
 
+本轮 Ubuntu 已完整编译，最终 33/34 CTest；只读感知 HTTP、同钟记录工具及合成 ONNX 接口已通过。局部 Runtime 位姿对照仍失败，未完成上浮/四锥/退出验收；失败及修复见[实际结果](testing/ubuntu-task-one-results-20261012.md)。不沿用先前完整外框通过记录。
+
 ## 1. 局部观测 Runtime 闭环（当前优先）
 
 - [ ] 验证局部观测累积 → 地图冻结 → 上浮 → 新阶段前视重定位 → 四锥无重复遍历；完整外框模拟不能替代局部路径验收。
