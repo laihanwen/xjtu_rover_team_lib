@@ -4,7 +4,9 @@ import json
 import socket
 import struct
 import time
+from pathlib import Path
 from localization_telemetry import LocalizationTelemetry
+from sensor_recorder import SensorRecorder
 from trial_protocol import Parser, LeaseGate, encode, manual_frame, centered, decode_status, decode_pid
 
 
@@ -35,7 +37,7 @@ class LevelCheck:
         return True
 
 
-def run(uart, server, localization=None):
+def run(uart, server, localization=None, recorder=None):
     protocol = Parser()
     sequence = int(time.monotonic()*1000) & 0xffffffff
     telemetry = {}
@@ -74,6 +76,7 @@ def run(uart, server, localization=None):
                         if kind == 0x80:
                             telemetry = decode_status(payload)
                             telemetry_ms = now
+                            if recorder:recorder.offer(telemetry,telemetry_ms)
                             if level_check:
                                 try:
                                     if level_check.add(telemetry,now):
@@ -88,6 +91,7 @@ def run(uart, server, localization=None):
                         elif kind == 0x84:
                             pid = decode_pid(payload)
                             pid_ms = now
+                            if recorder:recorder.offer(pid,pid_ms,'pid')
                         elif kind == 0x7f and len(payload) == 6 and payload[0] == 8:
                             if level_ack and struct.unpack_from('<I',payload,2)[0] == level_ack[0]:
                                 detail = '岸上水平校准完成；本次开机有效' if payload[1] == 0 else 'STM32拒绝校准'
@@ -186,7 +190,7 @@ def run(uart, server, localization=None):
                     if now-last_status >= .1:
                         last_status = now
                         if localization:localization.offer(telemetry,telemetry_ms,now)
-                        reply = {'lease': gate.issue(now), 'telemetry': telemetry,
+                        reply = {'sensor_recording':recorder.status() if recorder else {'enabled':False}, 'lease': gate.issue(now), 'telemetry': telemetry,
                                  'telemetry_age': now-telemetry_ms, 'detail': detail,
                                  'pid': pid, 'pid_age': now-pid_ms if pid else None,
                                  'level_pending': bool(level_check or level_ack),
@@ -210,15 +214,22 @@ def main():
     parser.add_argument('--port', type=int, default=8888)
     parser.add_argument('--device', default='/dev/serial0')
     parser.add_argument('--localization-telemetry',default='/run/auv-rov/localization-input.json')
+    parser.add_argument('--sensor-recording-directory',default='',help='Optional bounded Pi-clock evidence; empty disables it')
+    parser.add_argument('--sensor-model',default='',help='JSON metadata with measured IMU/depth conventions; missing values remain null')
     args = parser.parse_args()
+    model=json.loads(Path(args.sensor_model).read_text(encoding='utf-8')) if args.sensor_model else {}
+    if not isinstance(model,dict):raise ValueError('sensor model must be a JSON object')
     import serial
     with serial.Serial(args.device,115200,timeout=0,write_timeout=.1,exclusive=True) as uart:
         with socket.socket() as server:
             server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             server.bind((args.bind,args.port)); server.listen(1)
             publisher=LocalizationTelemetry(args.localization_telemetry)
-            try:run(uart, server,publisher)
-            finally:publisher.close()
+            recorder=SensorRecorder(args.sensor_recording_directory,model) if args.sensor_recording_directory else None
+            try:run(uart, server,publisher,recorder)
+            finally:
+                publisher.close()
+                if recorder:recorder.close()
 
 
 if __name__ == '__main__':

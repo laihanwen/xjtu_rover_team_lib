@@ -3,12 +3,14 @@
 #include "localization.hpp"
 #include "mission_recorder.hpp"
 #include "runtime_config.hpp"
+#include "boot_identity.hpp"
 #include "auv_core/semantic_map.hpp"
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
 #include "auv_mapping/grid_mapper.hpp"
 #include "auv_mapping/local_mapping_pipeline.hpp"
 #include "auv_mapping/local_pose_fusion.hpp"
+#include "auv_mapping/tag_grid_binding.hpp"
 #include "auv_mission/mission_fsm.hpp"
 #include "auv_planning/grid_planner.hpp"
 #include "auv_stm32_bridge/motion_target.hpp"
@@ -65,7 +67,7 @@ static std::string json_escape(const std::string& s) {
 static std::string json_number(double value) {return std::isfinite(value)?std::to_string(value):"null";}
 static bool surface_grid_phase(auv_mission::MissionPhase phase) {
   return phase==auv_mission::MissionPhase::kRelocalizeSurface ||
-      phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones;
+      phase==auv_mission::MissionPhase::kPlanCones || phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kExitGrid;
 }
 static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traversal=false) {
   if(surface_traversal && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
@@ -74,6 +76,7 @@ static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traver
     case auv_mission::MissionPhase::kSearchAprilTag:
     case auv_mission::MissionPhase::kBuildMap:
     case auv_mission::MissionPhase::kVisitCones:
+    case auv_mission::MissionPhase::kExitGrid:
     case auv_mission::MissionPhase::kSearchCucumber:
     case auv_mission::MissionPhase::kAlignCucumber:
     case auv_mission::MissionPhase::kGrab:
@@ -91,7 +94,7 @@ static bool propulsion_phase(auv_mission::MissionPhase phase,bool surface_traver
 }
 class Runtime {
  public:
-  explicit Runtime(Config cfg) : cfg_(std::move(cfg)), mission_(cfg_.mission),
+  explicit Runtime(Config cfg) : cfg_(std::move(cfg)),exit_(cfg_.exit),ascent_transit_(cfg_.exit), mission_(cfg_.mission),
     route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search),
     ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal),docking_(cfg_.docking) {
     cv::setNumThreads(cfg_.opencv_threads);
@@ -505,10 +508,10 @@ class Runtime {
         std::vector<std::uint8_t> down,front;std::uint64_t ds=0,fs=0;double dt=0,ft=0;
         {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_raw_jpeg_;ds=frame_sequence_;dt=frame_time_;}
         if(cfg_.front_enabled){std::lock_guard<std::mutex> lock(front_mutex_);front=front_raw_jpeg_;fs=front_sequence_;ft=front_time_;}
-        std::ostringstream telemetry;std::deque<std::string> points;std::string planned;
+        std::ostringstream telemetry;std::deque<std::string> points;std::string planned,binding;
         {std::lock_guard<std::mutex> lock(state_mutex_);
           telemetry.precision(15);
-          points.swap(trajectory_queue_);planned.swap(plan_artifact_pending_);
+          points.swap(trajectory_queue_);planned.swap(plan_artifact_pending_);binding.swap(tag_binding_pending_);
           telemetry<<"{\"received_sec\":"<<status_time_<<",\"valid\":"<<(safe_status(seconds())?"true":"false")
             <<",\"armed\":"<<(status_.armed?"true":"false")
             <<",\"depth_m\":"<<(std::isfinite(status_.depth)?std::to_string(status_.depth):"null")
@@ -525,6 +528,10 @@ class Runtime {
             if(!route)throw std::runtime_error("planned route write failed");
             std::lock_guard<std::mutex> lock(state_mutex_);plan_evidence_saved_=true;
           }
+        }
+        if(!binding.empty()) {
+          std::ofstream out(run_dir_+"/tag-grid-binding.json");out<<binding;out.flush();
+          if(!out)throw std::runtime_error("tag/grid transform evidence write failed");
         }
         if(ds && !down.empty()){recorder_->append("down",down,ds,dt,"\""+json_escape(cfg_.camera)+"\"",telemetry.str());recording_down_time_=dt;}
         if(fs && !front.empty()){recorder_->append("front",front,fs,ft,"\""+json_escape(cfg_.front_source)+"\"",telemetry.str());recording_front_time_=ft;}
@@ -684,7 +691,9 @@ class Runtime {
         cfg_.traversal.front_surface.height,cfg_.traversal.front_surface.camera_matrix,
         cfg_.traversal.front_surface.distortion);
     std::uint64_t seen = 0, front_seen = 0;
-    std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false;
+    std::uint64_t epoch=perception_epoch_;int tag_id=-1,tag_votes=0;bool previous_surface=false,previous_exit=false;
+    auv_mapping::MetricGridPose exit_association_hint;
+    auv_mapping::TagGridBinder tag_grid_binder;bool tag_grid_saved=false;
     while (running) {
       cv::Mat image,cached; double stamp = 0;bool cached_surface=false;
       { std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -699,14 +708,17 @@ class Runtime {
       if (image.empty() && front_image.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
       try {
       const auto current_epoch=perception_epoch_.load();
-      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;mapper.reset();tracker.reset();
+      if(epoch!=current_epoch){epoch=current_epoch;tag_id=-1;tag_votes=0;tag_grid_binder.reset();tag_grid_saved=false;mapper.reset();tracker.reset();
         ++local_epoch;local_boundary=seconds();local_map.reset(local_epoch,"yellow_bottom_pipe_centres");
         local_fusion.reset(local_epoch,local_boundary);}
       auv_mission::MissionPhase phase;
       bool triggered=false;
       {std::lock_guard<std::mutex> lock(state_mutex_);phase=mission_.snapshot().phase;triggered=tag_found_;}
       const bool surface_phase=cfg_.traversal.enabled && surface_grid_phase(phase);
-      if(surface_phase!=previous_surface){mapper.reset();previous_surface=surface_phase;
+      const bool exit_phase=phase==auv_mission::MissionPhase::kExitGrid;
+      if(surface_phase!=previous_surface||exit_phase!=previous_exit){
+        exit_association_hint=exit_phase&&surface_phase==previous_surface?local_fusion.snapshot(seconds()):auv_mapping::MetricGridPose();
+        mapper.reset();previous_surface=surface_phase;previous_exit=exit_phase;
         ++local_epoch;local_boundary=seconds();
         if(!local_map.begin_stage(local_epoch,local_boundary,"yellow_bottom_pipe_centres"))
           throw std::runtime_error("local map stage transition rejected");
@@ -780,12 +792,27 @@ class Runtime {
           sensor.yaw=cfg_.localization.imu_signs[2]*status_.yaw+cfg_.localization.imu_offsets[2]*CV_PI/180;
         }
         if(sensor_valid) {
-          const auto& calibration=metric_front?(surface_phase?cfg_.traversal.front_surface:cfg_.traversal.front_underwater):
+          auto calibration=metric_front?(surface_phase?cfg_.traversal.front_surface:cfg_.traversal.front_underwater):
             (surface_phase?cfg_.traversal.surface:cfg_.traversal.underwater);
+          if(exit_phase&&cfg_.exit.enabled)calibration.outside_margin_cells=cfg_.exit.outside_margin();
           local_result=local_pipeline.process(metric_image,calibration,sensor,metric_seq,local_epoch,metric_front?1:0,
             metric_front?(surface_phase?front_surface.valid_mask():front_underwater.valid_mask()):
-                         (surface_phase?surface.valid_mask():underwater.valid_mask()),local_fusion.snapshot(metric_stamp));
+                         (surface_phase?surface.valid_mask():underwater.valid_mask()),
+                         local_fusion.snapshot(metric_stamp).valid?local_fusion.snapshot(metric_stamp):exit_association_hint);
           local_sample_valid=local_result.pose.valid;
+          if(local_sample_valid&&!tag_grid_saved&&(phase==auv_mission::MissionPhase::kSearchAprilTag||phase==auv_mission::MissionPhase::kBuildMap)) {
+            for(const auto& tag:tags.detect(metric_image))if(tag.id==18) {
+              const auto binding=tag_grid_binder.update(tag,local_result.pose,calibration,cfg_.docking.size_m,sensor.depth,metric_stamp);
+              if(binding.ready) {
+                std::ostringstream evidence;evidence.precision(15);
+                evidence<<"{\"frame\":\"tag18\",\"grid_frame\":\"yellow_bottom_pipe_centres\",\"stamp\":"<<binding.stamp
+                  <<",\"sequence\":"<<binding.sequence<<",\"tag_x_grid_m\":"<<binding.x<<",\"tag_y_grid_m\":"<<binding.y
+                  <<",\"tag_yaw_grid_rad\":"<<binding.yaw<<",\"competition_heading_verified\":false}";
+                if(recorder_) {std::lock_guard<std::mutex> lock(state_mutex_);tag_binding_pending_=evidence.str();}
+                event("TAG_GRID_BOUND",evidence.str());tag_grid_saved=true;
+              }
+            }
+          }
           if(local_sample_valid) {
             metric=local_result.pose;
             if(triggered&&phase==auv_mission::MissionPhase::kBuildMap) {
@@ -820,7 +847,9 @@ class Runtime {
         }
         event("LOCAL_GRID","camera="+std::string(metric_front?"front":"down")+" frame="+std::to_string(metric_seq)+
           " epoch="+std::to_string(local_epoch)+" nodes="+std::to_string(local_result.geometry.nodes.size())+
-          " hypotheses="+std::to_string(local_result.geometry.association.hypotheses.size())+" reason="+metric.reason);
+          " hypotheses="+std::to_string(local_result.geometry.association.hypotheses.size())+
+          " cone_mode="+cfg_.cone.mode+" shape_model_id="+cfg_.cone.shape_model_id+" colour_cones="+std::to_string(local_result.colour_cones)+
+          " shape_cones="+std::to_string(local_result.shape_cones)+" cone_reason="+local_result.cone_reason+" reason="+metric.reason);
       }
       std::vector<auv_vision::ConeObservation> cones;
       cv::Mat cone_debug;
@@ -1139,8 +1168,8 @@ class Runtime {
             set_fault_locked("grid pose timeout"); armed_requested_ = false; disarm_pending_ = true;
           }
           if(cfg_.traversal.enabled && (!depth_sample_fresh(now) ||
-             ((phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kPlanCones) &&
-              (!surface_grid_fresh(now)||std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)>cfg_.traversal.depth_tolerance_m)))) {
+             ((phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kPlanCones||phase==auv_mission::MissionPhase::kExitGrid) &&
+              (((phase!=auv_mission::MissionPhase::kExitGrid||exit_started_)&&!surface_grid_fresh(now))||std::abs(depth_sample_.depth_m-cfg_.traversal.surface_depth_m)>cfg_.traversal.depth_tolerance_m)))) {
             set_fault_locked("A2 depth telemetry, surface height or absolute grid pose invalid");
             armed_requested_=false;disarm_pending_=true;
           }
@@ -1287,17 +1316,31 @@ class Runtime {
           }
           if(cfg_.traversal.enabled && (phase==auv_mission::MissionPhase::kSurfaceForCones ||
              phase==auv_mission::MissionPhase::kRelocalizeSurface ||phase==auv_mission::MissionPhase::kPlanCones ||
-             phase==auv_mission::MissionPhase::kVisitCones)) {
+             phase==auv_mission::MissionPhase::kVisitCones||phase==auv_mission::MissionPhase::kExitGrid)) {
             if(!armed_requested_||!arm_ack_||!status_.armed) {
               set_fault_locked("A2 armed control continuity lost");
             }else if(phase==auv_mission::MissionPhase::kSurfaceForCones) {
               if(!ascent_started_) {
+                if(cfg_.exit.enabled&&!ascent_transit_done_) {
+                  if(!ascent_transit_started_) {
+                    std::array<bool,9> empty{};
+                    for(int i=0;i<9;++i)if(static_cast<std::size_t>(i)<map_.grid.cells.size())empty[i]=map_.grid.cells[i].cell.object_type=="empty";
+                    if(!ascent_transit_.begin_transit(metric_pose_,empty,cfg_.traversal.ascent_row*3+cfg_.traversal.ascent_col,now))
+                      set_fault_locked("no observed empty route to ascent cell");
+                    else {ascent_transit_started_=true;event("ASCENT_TRANSIT_STARTED","observed empty-cell route");}
+                  }else {
+                    const auto transit=ascent_transit_.step(metric_pose_,now);a2_detail_=transit.reason;
+                    if(transit.fault)set_fault_locked(transit.reason);
+                    else {motion_.vx=static_cast<float>(transit.surge);motion_.vy=static_cast<float>(transit.sway);ascent_transit_done_=transit.complete;}
+                  }
+                }else {
                 const auto approach=center_approach_.step(metric_pose_,now);a2_detail_=approach.detail;
                 motion_.vx=static_cast<float>(approach.surge);motion_.vy=static_cast<float>(approach.sway);
                 if(approach.fault)set_fault_locked(approach.detail);
                 else if(approach.complete) {
                   if(!ascent_.begin(metric_pose_,depth_sample_.depth_m,now))set_fault_locked("measured ascent column unavailable");
                   else {ascent_started_=true;event("ASCENT_STARTED","center alignment confirmed; zero lateral thrust");}
+                }
                 }
               }else {
               const auto rise=ascent_.step(depth_sample_.depth_m,safe_status(now)&&depth_sample_fresh(now),now,depth_sample_.sensor_sequence);
@@ -1322,6 +1365,24 @@ class Runtime {
                 }
                 if(actual.fault)set_fault_locked(actual.detail);
                 else {motion_.vx=static_cast<float>(actual.surge);motion_.vy=static_cast<float>(actual.sway);all_visited_=actual.complete;}
+              }else if(phase==auv_mission::MissionPhase::kExitGrid) {
+                if(!exit_started_) {
+                  if(exit_wait_start_<0)exit_wait_start_=now;
+                  if(!metric_pose_.valid||!metric_pose_.landmark_observation||metric_pose_.stamp<=exit_wait_start_) {
+                    if(now-exit_wait_start_>cfg_.exit.reacquire_timeout)set_fault_locked("exit new-stage landmark timeout");
+                  }else {
+                  std::array<bool,9> empty{};unsigned mask=0;
+                  for(int i=0;i<9;++i){if(visited_[i])mask|=1U<<i;
+                    if(static_cast<std::size_t>(i)<map_.grid.cells.size())empty[i]=map_.grid.cells[i].cell.object_type=="empty";}
+                  if(!exit_.begin(metric_pose_,empty,mask,now))set_fault_locked("no verified exit corridor without cone reentry");
+                  else {exit_started_=true;event("EXIT_STARTED","bounded whole-body exit; new frame required");}
+                  }
+                }else {
+                  const auto leaving=exit_.step(metric_pose_,now);a2_detail_=leaving.reason;
+                  if(leaving.fault)set_fault_locked(leaving.reason);
+                  else {motion_.vx=static_cast<float>(leaving.surge);motion_.vy=static_cast<float>(leaving.sway);
+                    if(leaving.complete){mission_.update_exit(true,now);event("EXIT_CONFIRMED",leaving.reason);}}
+                }
               }else a2_detail_="holding surface depth; fresh grid reacquisition / evidence gate";
             }
             if(!fault_.empty()){armed_requested_=false;disarm_pending_=true;motion_={};mission_.force_fault(fault_,now);}
@@ -1389,7 +1450,7 @@ class Runtime {
       auto latency=std::vector<double>(latency_ms_.begin(),latency_ms_.begin()+latency_count_);
       std::sort(latency.begin(),latency.end());
       double p99=latency.empty() ? -1.0 : latency[static_cast<std::size_t>(0.99*(latency.size()-1))];
-      s << "{\"phase\":\"" << (cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))
+      s << "{\"pi_boot_id\":\""<<pi_boot_identity()<<"\",\"phase\":\"" << (cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))
         << "\",\"run_id\":\""<<run_id_<<"\",\"recording_directory\":\""<<json_escape(run_dir_)
         << "\",\"recording_enabled\":"<<(cfg_.recording_enabled?"true":"false")
         << ",\"recording_ready\":"<<(recording_ready(now)?"true":"false")
@@ -1575,9 +1636,9 @@ class Runtime {
       gripper_pending_.reset(); gripper_ack_=false; gripper_command_time_=0;
       map_image_saved_=false;
       ++perception_epoch_;search_.reset();
-      ascent_.reset();surface_route_.reset();center_approach_.reset();ascent_started_=surface_confirmed_=surface_ready_=false;
+      ascent_.reset();surface_route_.reset();center_approach_.reset();exit_.reset();ascent_transit_.reset();ascent_transit_started_=ascent_transit_done_=false;exit_started_=false;exit_wait_start_=-1;ascent_started_=surface_confirmed_=surface_ready_=false;
       surface_pose_votes_=0;surface_vote_sequence_=0;surface_reacquire_start_=0;metric_pose_={};
-      plan_evidence_saved_=a2_completion_logged_=false;plan_artifact_pending_.clear();
+      plan_evidence_saved_=a2_completion_logged_=false;plan_artifact_pending_.clear();tag_binding_pending_.clear();
     }
     event("COMMAND",cmd+": "+r.message);
     return std::string(r.accepted ? "OK ":"ERR ")+r.message+"\n";
@@ -1706,6 +1767,7 @@ class Runtime {
       res.set_content(reinterpret_cast<const char*>(jpeg.data()),jpeg.size(),"image/jpeg");
       res.set_header("Cache-Control","no-store");
       res.set_header("X-Frame-Time-Monotonic",std::to_string(stamp));
+      res.set_header("X-Pi-Boot-ID",pi_boot_identity());
       res.set_header("X-Camera-Source",front ? cfg_.front_source : cfg_.camera);
       res.set_header("X-Image-Space",(!raw && (front?cfg_.front_preview_rectify:cfg_.down_preview_rectify))?"rectified":"raw");
     };
@@ -1722,6 +1784,7 @@ class Runtime {
         --mjpeg_clients_; res.status=429; return;
       }
       res.set_header("Cache-Control","no-store");
+      res.set_header("X-Pi-Boot-ID",pi_boot_identity());
       res.set_chunked_content_provider("multipart/x-mixed-replace; boundary=auvframe",
         [this,cached,front,raw,last=-1.0,delivered=seconds()](size_t,httplib::DataSink& sink) mutable {
           while (running && sink.is_writable()) {
@@ -1820,8 +1883,10 @@ class Runtime {
   int surface_pose_votes_{0};
   int observed_cell_{-1};
   bool ascent_started_{false},surface_confirmed_{false},surface_ready_{false},plan_evidence_saved_{false},a2_completion_logged_{false};
+  auv_control::GridExit exit_;bool exit_started_{false};double exit_wait_start_{-1};
+  auv_control::GridExit ascent_transit_;bool ascent_transit_started_{false},ascent_transit_done_{false};
   std::deque<std::string> trajectory_queue_;
-  std::string plan_artifact_pending_,a2_detail_;
+  std::string plan_artifact_pending_,tag_binding_pending_,a2_detail_;
   std::unique_ptr<MissionRecorder> recorder_;
   std::string run_id_,run_dir_,recording_detail_,search_detail_;
   std::size_t search_waypoint_{0};

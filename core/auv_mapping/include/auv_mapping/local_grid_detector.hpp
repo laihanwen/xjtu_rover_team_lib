@@ -2,6 +2,7 @@
 #include "auv_mapping/local_grid_association.hpp"
 #include "auv_mapping/plane_odometry.hpp"
 #include "auv_mapping/metric_grid_pose.hpp"
+#include "auv_mapping/pipe_centerlines.hpp"
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 
@@ -64,7 +65,8 @@ class LocalGridDetector {
     cv::bitwise_or(occluder1,occluder2,occluders);
     cv::bitwise_or(white,yellow,mask);cv::bitwise_and(mask,coverage,mask);
     std::vector<cv::Vec4i> lines;
-    cv::HoughLinesP(mask,lines,1,CV_PI/180,35,50,6);
+    const auto centres=config_.local_pipe_centres?pipe_centerlines(mask):mask;
+    cv::HoughLinesP(centres,lines,1,CV_PI/180,35,50,6);
     if(lines.size()<3||lines.size()>100){out.reason="insufficient or excessive pipe segments";return out;}
     std::array<double,90> votes{};
     for(const auto& l:lines) {

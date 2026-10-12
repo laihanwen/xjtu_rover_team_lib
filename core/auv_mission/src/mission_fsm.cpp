@@ -60,6 +60,7 @@ std::string mission_phase_name(MissionPhase phase)
       return "SURFACE_FOR_CONES";
     case MissionPhase::kRelocalizeSurface:
       return "RELOCALIZE_SURFACE";
+    case MissionPhase::kExitGrid:return "EXIT_GRID";
     case MissionPhase::kPaused:
       return "PAUSED";
     case MissionPhase::kComplete:
@@ -83,7 +84,8 @@ MissionFsm::MissionFsm(MissionFsmConfig config)
     config_.valve_align_timeout_sec <= 0.0 || config_.valve_rotate_timeout_sec <= 0.0 ||
     config_.return_home_timeout_sec <= 0.0 || config_.surface_timeout_sec <= 0.0 ||
     config_.status_timeout_sec <= 0.0 || !std::isfinite(config_.surface_relocalize_timeout_sec) ||
-    config_.surface_relocalize_timeout_sec <= 0.0 ||
+    config_.surface_relocalize_timeout_sec <= 0.0 ||!std::isfinite(config_.exit_timeout_sec)||config_.exit_timeout_sec<=0||
+    (config_.exit_after_visit&&(!config_.surface_before_visit||config_.full_mission))||
     (config_.surface_before_visit && (config_.stop_after_map || config_.full_mission)))
   {
     throw std::invalid_argument("mission timeouts must be positive");
@@ -131,7 +133,7 @@ bool MissionFsm::is_active() const
          snapshot_.phase == MissionPhase::kReturnHome ||
          snapshot_.phase == MissionPhase::kSurface ||
          snapshot_.phase == MissionPhase::kSurfaceForCones ||
-         snapshot_.phase == MissionPhase::kRelocalizeSurface;
+         snapshot_.phase == MissionPhase::kRelocalizeSurface||snapshot_.phase==MissionPhase::kExitGrid;
 }
 
 double MissionFsm::phase_timeout() const
@@ -147,6 +149,7 @@ double MissionFsm::phase_timeout() const
       return config_.planning_timeout_sec;
     case MissionPhase::kVisitCones:
       return config_.cone_visit_timeout_sec;
+    case MissionPhase::kExitGrid:return config_.exit_timeout_sec;
     case MissionPhase::kSearchCucumber:
       return config_.cucumber_search_timeout_sec;
     case MissionPhase::kAlignCucumber:
@@ -227,6 +230,7 @@ CommandResult MissionFsm::command(MissionCommand command_value, double now_sec)
       transport_complete_ = valve_found_ = valve_aligned_ = valve_rotated_ = false;
       home_reached_ = surfaced_ = false;
       surface_pose_ready_=false;surface_pose_received_sec_=-1;
+      exit_complete_=false;exit_received_sec_=-1;
       transition(MissionPhase::kInit, "mission reset; waiting for START", now_sec);
       return {true, "mission reset"};
   }
@@ -306,6 +310,7 @@ void MissionFsm::update_surface(bool surfaced, double now_sec)
 void MissionFsm::update_surface_pose(bool ready,double now_sec) {
   surface_pose_ready_=ready;surface_pose_received_sec_=now_sec;
 }
+void MissionFsm::update_exit(bool complete,double now_sec){exit_complete_=complete;exit_received_sec_=now_sec;}
 
 void MissionFsm::tick(double now_sec)
 {
@@ -317,7 +322,8 @@ void MissionFsm::tick(double now_sec)
     }
     const bool after_route = snapshot_.phase >= MissionPhase::kVisitCones &&
       snapshot_.phase <= MissionPhase::kSurface;
-    const bool allowed_visit_arm = config_.allow_armed_during_visit && after_route;
+    const bool allowed_visit_arm = config_.allow_armed_during_visit && (after_route||
+      (config_.exit_after_visit&&snapshot_.phase==MissionPhase::kExitGrid));
     const bool allowed_observation_arm = config_.allow_armed_during_observation &&
       (snapshot_.phase == MissionPhase::kSearchAprilTag || snapshot_.phase == MissionPhase::kBuildMap);
     const bool allowed_surface_arm = config_.surface_before_visit && config_.allow_armed_during_visit &&
@@ -391,10 +397,15 @@ void MissionFsm::tick(double now_sec)
     case MissionPhase::kVisitCones:
       if (map_received_sec_ >= 0.0 && map_complete_ && all_cones_visited_) {
         transition(
-          config_.full_mission ? MissionPhase::kSearchCucumber : MissionPhase::kComplete,
+          config_.full_mission ? MissionPhase::kSearchCucumber :
+          config_.exit_after_visit?MissionPhase::kExitGrid:MissionPhase::kComplete,
           config_.full_mission ? "cone targets visited; searching for cucumber" :
-          "all cone targets visited", now_sec);
+          config_.exit_after_visit?"all cones visited; measured exit required":"all cone targets visited", now_sec);
       }
+      break;
+    case MissionPhase::kExitGrid:
+      if(exit_complete_&&exit_received_sec_>=phase_entered_sec_)
+        transition(MissionPhase::kComplete,"whole-body grid exit observed",now_sec);
       break;
     case MissionPhase::kSearchCucumber:
       if (cucumber_received_sec_ >= 0.0 && cucumber_found_) {

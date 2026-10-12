@@ -13,11 +13,13 @@ struct MetricGridCalibration {
   bool verified{false};
   double cell_size_m{0}, pool_depth_m{0}, height_tolerance_m{0.15}, max_reprojection_px{3};
   double minimum_confidence{0.8};
+  double outside_margin_cells{0}; // Explicit exit-phase copies only.
   int width{0},height{0};
   std::vector<double> camera_matrix,distortion,camera_to_body,camera_offset_m,depth_offset_m;
   void validate() const {
     if(!verified)return;
-    if(!std::isfinite(cell_size_m)||cell_size_m<=0||!std::isfinite(pool_depth_m)||pool_depth_m<=0||
+    if(!std::isfinite(outside_margin_cells)||outside_margin_cells<0||outside_margin_cells>.75||
+      !std::isfinite(cell_size_m)||cell_size_m<=0||!std::isfinite(pool_depth_m)||pool_depth_m<=0||
       !std::isfinite(height_tolerance_m)||height_tolerance_m<=0||
       !std::isfinite(max_reprojection_px)||max_reprojection_px<=0||
       !std::isfinite(minimum_confidence)||minimum_confidence<=0||minimum_confidence>1||width<16||height<16||
@@ -88,7 +90,8 @@ inline MetricGridPose metric_landmark_pose(const std::vector<cv::Point3d>& world
     out.reason="grid projection, tilt or metric height inconsistent";return out;
   }
   out.row=body_in_grid[1]/c.cell_size_m;out.col=body_in_grid[0]/c.cell_size_m;
-  if(!std::isfinite(out.row)||!std::isfinite(out.col)||out.row<0||out.row>=3||out.col<0||out.col>=3) {
+  const double margin=c.outside_margin_cells;
+  if(!std::isfinite(out.row)||!std::isfinite(out.col)||out.row<-margin||out.row>=3+margin||out.col<-margin||out.col>=3+margin) {
     out.reason="body outside grid";return out;
   }
   std::copy(rbg.val,rbg.val+9,out.body_from_grid.begin());

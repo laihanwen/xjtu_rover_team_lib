@@ -22,6 +22,14 @@ int main() {
   check(found.geometry.valid,"cropped yellow boundary topology must resolve");
   check(found.pose.valid,"local landmark PnP must resolve");
   check(std::abs(found.pose.row-2.4)<.08&&std::abs(found.pose.col-1.5)<.08,"metric local body position");
+  GridMapperConfig ridge;ridge.local_pipe_centres=true;
+  check(LocalMappingPipeline({},ridge).process(image,c,sensor,2,1,0).pose.valid,"experimental ridge resolves controlled fixture");
+  auv_vision::ConeDetectorConfig alternative;alternative.mode="agreement";
+  LocalFloorModel floor;floor.verified=true;floor.lower={0,0,0};floor.upper={179,255,255};
+  auto no_model=LocalMappingPipeline(alternative,{},floor).process(image,c,sensor,2,1,0);
+  check(no_model.pose.valid,"alternative backend preserves measured geometry");
+  check(std::all_of(no_model.observation.cells.begin(),no_model.observation.cells.end(),
+      [](const auto& cell){return cell.type==LocalCellClass::unknown;}),"unavailable model cannot authorize empty cells");
   c.verified=false;
   check(!pipeline.process(image,c,sensor,2,1,0).pose.valid,"unverified model cannot navigate");
   c.verified=true;

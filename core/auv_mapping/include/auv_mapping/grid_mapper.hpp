@@ -29,6 +29,7 @@ struct GridMapperConfig
   bool single_yellow_edge{false};
   bool white_grid_edges{false}; // Explicit white-boundary profile; retain dark/legacy fixtures.
   double white_s_max{60.0}, white_v_min{150.0};
+  bool local_pipe_centres{false}; // Experimental, not enabled by synthetic tests alone.
   int yellow_oriented_frames{3};
   int dark_value_max{95};
   double yellow_edge_minimum_support{0.45};

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "auv_vision/cone_detector.hpp"
+#include "auv_vision/shape_cone_segmenter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,15 @@ const char * cone_shape_name(const ConeShape shape)
 ConeDetector::ConeDetector(ConeDetectorConfig config)
 : config_(std::move(config))
 {
+  if(config_.mode!="colour"&&config_.mode!="shape"&&config_.mode!="agreement")
+    throw std::invalid_argument("invalid cone vision mode");
+  if(config_.mode!="colour"&&!config_.shape_model_path.empty()) {
+    if(config_.shape_model_id.empty())
+      throw std::invalid_argument("shape model requires an explicit version");
+    shape_=std::make_shared<ShapeConeSegmenter>(config_.shape_model_path);
+  }
+  if(config_.mode!="colour"&&config_.shape_model_verified&&!shape_)
+    throw std::invalid_argument("verified shape model is missing");
   validate_range(config_.hsv_lower_1, config_.hsv_upper_1, "primary HSV");
   validate_range(config_.hsv_lower_2, config_.hsv_upper_2, "secondary HSV");
   validate_range(config_.lab_lower, config_.lab_upper, "LAB");
@@ -143,6 +153,11 @@ ConeDetectorResult ConeDetector::process(const cv::Mat & rectified_bgr) const
       std::vector<std::vector<cv::Point>> contours;
       cv::findContours(
         mask(roi).clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+      // Several measured red pieces may be stripes or separate instances.
+      // Do not choose one piece and report it as the whole cone silhouette.
+      const auto significant=std::count_if(contours.begin(),contours.end(),[&](const auto& contour){
+        return std::abs(cv::contourArea(contour))>=roi.area()*config_.minimum_area_ratio;});
+      if(significant>1)continue;
       ConeObservation best;
       for (const auto & local_contour : contours) {
         const double area = std::abs(cv::contourArea(local_contour));
@@ -231,6 +246,29 @@ ConeDetectorResult ConeDetector::process(const cv::Mat & rectified_bgr) const
           0.45, color, 1, cv::LINE_AA);
       }
     }
+  }
+  result.colour_observations=result.observations;
+  result.decision_reason="colour silhouette";
+  if(config_.mode!="colour") {
+    result.classifier_ready=false;
+    result.observations.clear();result.decision_reason="shape model unavailable or unverified";
+    if(shape_) {
+      try {
+        result.shape_observations=shape_->process(rectified_bgr,&result.shape_background);
+        if(config_.shape_model_verified) {
+          result.classifier_ready=true;
+          result.decision_reason=config_.mode=="shape"?"verified grayscale body model":"two-scheme agreement; conflicts unknown";
+          result.observations=ShapeConeSegmenter::select(config_.mode,result.colour_observations,
+            result.shape_observations,rectified_bgr.size(),config_.minimum_confidence);
+        }else result.decision_reason="unverified shape candidates only; semantic decisions blocked";
+      } catch(const std::exception& error) {
+        result.decision_reason="shape inference rejected: "+std::string(error.what());
+      }
+    }
+    // Do not leave old colour decisions drawn as if accepted by the selector.
+    result.debug_image=rectified_bgr.clone();
+    for(const auto& cone:result.observations)cv::drawContours(result.debug_image,
+      std::vector<std::vector<cv::Point>>{cone.contour},-1,{0,255,0},2);
   }
   return result;
 }

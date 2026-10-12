@@ -41,6 +41,7 @@ enum class MissionPhase
   kSurface,
   kSurfaceForCones,
   kRelocalizeSurface,
+  kExitGrid,
   kPaused,
   kComplete,
   kFault,
@@ -79,6 +80,7 @@ struct MissionFsmConfig
   bool stop_after_map{false};
   bool surface_before_visit{false};
   double surface_relocalize_timeout_sec{15.0};
+  bool exit_after_visit{false};double exit_timeout_sec{60};
 };
 
 struct CommandResult
@@ -117,6 +119,7 @@ public:
   void update_home(bool reached, double now_sec);
   void update_surface(bool surfaced, double now_sec);
   void update_surface_pose(bool ready, double now_sec);
+  void update_exit(bool complete,double now_sec);
 
   MissionSnapshot snapshot() const;
 
@@ -160,6 +163,7 @@ private:
   bool surfaced_{false};
   bool surface_pose_ready_{false};
   double surface_pose_received_sec_{-1.0};
+  double exit_received_sec_{-1};bool exit_complete_{false};
 };
 
 std::string mission_phase_name(MissionPhase phase);

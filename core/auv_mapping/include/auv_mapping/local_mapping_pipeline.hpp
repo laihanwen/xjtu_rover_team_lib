@@ -5,6 +5,7 @@
 
 namespace auv_mapping {
 struct LocalMappingResult {
+  std::size_t colour_cones{0},shape_cones{0};std::string cone_reason;
   LocalGridDetection geometry;
   MetricGridPose pose;
   LocalMapObservation observation;
@@ -22,7 +23,7 @@ struct LocalFloorModel {
 };
 class LocalMappingPipeline {
  public:
-  explicit LocalMappingPipeline(auv_vision::ConeDetectorConfig c,GridMapperConfig grid={},LocalFloorModel floor={}):grid_(grid),cones_(c),floor_(floor){floor_.validate();}
+  explicit LocalMappingPipeline(auv_vision::ConeDetectorConfig c,GridMapperConfig grid={},LocalFloorModel floor={}):grid_(grid),cones_(c),floor_(floor),cone_mode_(c.mode){floor_.validate();}
   LocalMappingResult process(const cv::Mat& image,const MetricGridCalibration& calibration,
       const PlaneSample& sensor,std::uint64_t sequence,std::uint64_t epoch,int camera,const cv::Mat& valid_pixels=cv::Mat(),const MetricGridPose& prior=MetricGridPose())const {
     LocalMappingResult result;result.geometry=grid_.process(image,calibration,sensor,valid_pixels);
@@ -60,6 +61,8 @@ class LocalMappingPipeline {
     observation.epoch=epoch;observation.sequence=sequence;observation.camera=camera;observation.stamp=sensor.stamp;
     observation.grid_frame="yellow_bottom_pipe_centres";observation.association_unique=true;
     const auto found=cones_.process(result.geometry.rectified);
+    result.colour_cones=found.colour_observations.size();result.shape_cones=found.shape_observations.size();
+    result.cone_reason=found.decision_reason;
     cv::Mat hsv,red1,red2,red;
     cv::cvtColor(result.geometry.rectified,hsv,cv::COLOR_BGR2HSV);
     cv::inRange(hsv,cv::Scalar(0,80,50),cv::Scalar(20,255,255),red1);
@@ -69,7 +72,7 @@ class LocalMappingPipeline {
       const cv::Rect roi(col*200+12,row*200+12,176,176);
       // Any unseen cell interior remains unknown, including cropped cones.
       cell.full_cell_visible=cv::countNonZero(result.geometry.visible(cv::Rect(col*200,row*200,200,200)))==40000;
-      if(!cell.full_cell_visible){observation.cells.push_back(cell);continue;}
+      if(!cell.full_cell_visible||!found.classifier_ready){observation.cells.push_back(cell);continue;}
       const auto cone=std::find_if(found.observations.begin(),found.observations.end(),
         [&](const auto& c){return c.row==row&&c.col==col;});
       if(cone!=found.observations.end()&&cone->confidence>=.8&&
@@ -78,12 +81,14 @@ class LocalMappingPipeline {
         // unknown until a single measured silhouette supports the class.
         cv::Mat labels,stats,centroids;const int parts=cv::connectedComponentsWithStats(red(roi),labels,stats,centroids);
         int significant=0;for(int i=1;i<parts;++i)if(stats.at<int>(i,cv::CC_STAT_AREA)>roi.area()*.01)++significant;
-        if(significant==1) {
+        if(significant==1||cone_mode_!="colour") {
           cell.type=cone->shape==auv_vision::ConeShape::kCircle?LocalCellClass::circle:LocalCellClass::square;
           cell.confidence=cone->confidence;cell.contour_frame="yellow_bottom_map_pixels_600";
           for(auto p:cone->contour)cell.contour.push_back({double(p.x),double(p.y)});
         }
-      } else if(floor_.verified&&cv::countNonZero(red(roi))<roi.area()*.005) {
+      } else if(floor_.verified&&cv::countNonZero(red(roi))<roi.area()*.005&&
+          (cone_mode_=="colour"||(!found.shape_background.empty()&&
+            cv::countNonZero(found.shape_background(roi))>=roi.area()*.995))) {
         cv::Mat floor_mask;cv::inRange(hsv(roi),floor_.lower,floor_.upper,floor_mask);
         if(cv::countNonZero(floor_mask)<roi.area()*floor_.minimum_support) {
           observation.cells.push_back(cell);continue;
@@ -95,6 +100,6 @@ class LocalMappingPipeline {
     return result;
   }
  private:
-  LocalGridDetector grid_;auv_vision::ConeDetector cones_;LocalFloorModel floor_;
+  LocalGridDetector grid_;auv_vision::ConeDetector cones_;LocalFloorModel floor_;std::string cone_mode_;
 };
 }

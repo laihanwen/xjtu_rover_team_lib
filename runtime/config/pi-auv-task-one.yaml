@@ -47,6 +47,7 @@ vision:
   single_yellow_edge: true
   white_grid_edges: true
   white_s_max: 60
+  local_pipe_centres: false # Experimental ridge detector, validate recall before enabling.
   white_v_min: 150
   yellow_oriented_frames: 3
   grid_dark_value_max: 95
@@ -58,6 +59,10 @@ vision:
   apriltag_family: tag16h5
   grid_stable_frames: 3
   cone_minimum_confidence: 0.72
+  cone_vision_mode: colour # colour / shape / agreement; alternative requires validated body weights
+  cone_shape_model: ""
+  cone_shape_model_id: ""
+  cone_shape_model_verified: false
   cone_history_size: 5
   cone_required_votes: 3
   cone_clear_votes: 3
@@ -119,6 +124,15 @@ web:
   assets: /usr/local/share/auv-runtime/web
 
 # Independent read-only plane odometry. Do not mark verified until underwater calibration.
+grid_exit:
+  enabled: false
+  verified: false
+  allowed_sides_mask: 0 # N/E/S/W bits; no permitted side guessed.
+  body_radius_m: 0 # Measured whole-body horizontal bounding radius required.
+  clearance_m: 0 # Measured external corridor clearance required.
+  speed_mps: 0.1
+  timeout_sec: 60
+
 localization:
   enabled: true
   hz: 10

@@ -19,11 +19,14 @@
 #include <cstdint>
 #include <deque>
 #include <vector>
+#include <memory>
+#include <string>
 
 #include "opencv2/core.hpp"
 
 namespace auv_vision
 {
+class ShapeConeSegmenter;
 
 enum class ConeShape : std::uint8_t
 {
@@ -48,6 +51,10 @@ struct ConeObservation
 
 struct ConeDetectorConfig
 {
+  std::string mode{"colour"}; // colour, shape, agreement
+  std::string shape_model_path;
+  std::string shape_model_id;
+  bool shape_model_verified{false};
   cv::Scalar hsv_lower_1{0, 80, 50};
   cv::Scalar hsv_upper_1{20, 255, 255};
   bool use_second_hsv_range{true};
@@ -71,6 +78,10 @@ struct ConeDetectorConfig
 
 struct ConeDetectorResult
 {
+  bool classifier_ready{true};
+  cv::Mat shape_background;
+  std::vector<ConeObservation> colour_observations, shape_observations;
+  std::string decision_reason;
   std::vector<ConeObservation> observations;
   cv::Mat mask;
   cv::Mat debug_image;
@@ -85,6 +96,7 @@ public:
 
 private:
   ConeDetectorConfig config_;
+  std::shared_ptr<ShapeConeSegmenter> shape_;
 };
 
 struct ConeTrackerConfig

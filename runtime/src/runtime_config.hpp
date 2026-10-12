@@ -1,4 +1,5 @@
 #pragma once
+#include "auv_control/grid_exit.hpp"
 #include "localization.hpp"
 #include "tag_docking.hpp"
 #include "auv_control/route_executor.hpp"
@@ -45,6 +46,7 @@ struct Config {
   bool local_mapping_enabled{false},local_mapping_verified{false};
   double local_odometry_budget{1.0};
   auv_vision::ConeDetectorConfig cone;
+  auv_control::GridExitConfig exit;
   auv_vision::ConeTrackerConfig tracker;
   auv_mission::MissionFsmConfig mission;
   std::string mission_profile{"task_one"};
@@ -246,6 +248,7 @@ static Config load_config(const std::string& path) {
   c.grid.single_yellow_edge=y["vision"]["single_yellow_edge"].as<bool>(false);
   c.grid.white_grid_edges=y["vision"]["white_grid_edges"].as<bool>(false);
   c.grid.white_s_max=y["vision"]["white_s_max"].as<double>(60);
+  c.grid.local_pipe_centres=y["vision"]["local_pipe_centres"].as<bool>(false);
   c.grid.white_v_min=y["vision"]["white_v_min"].as<double>(150);
   c.grid.yellow_oriented_frames=y["vision"]["yellow_oriented_frames"].as<int>(3);
   c.grid.dark_value_max=y["vision"]["grid_dark_value_max"].as<int>(95);
@@ -253,6 +256,10 @@ static Config load_config(const std::string& path) {
   c.grid.yellow_edge_margin=y["vision"]["yellow_edge_margin"].as<double>(.2);
   c.grid.stable_frames = y["vision"]["grid_stable_frames"].as<int>();
   c.cone.minimum_confidence = y["vision"]["cone_minimum_confidence"].as<double>();
+  c.cone.mode=y["vision"]["cone_vision_mode"].as<std::string>("colour");
+  c.cone.shape_model_path=y["vision"]["cone_shape_model"].as<std::string>("");
+  c.cone.shape_model_id=y["vision"]["cone_shape_model_id"].as<std::string>("");
+  c.cone.shape_model_verified=y["vision"]["cone_shape_model_verified"].as<bool>(false);
   c.tracker.history_size = y["vision"]["cone_history_size"].as<int>();
   c.tracker.required_votes = y["vision"]["cone_required_votes"].as<int>();
   c.tracker.clear_votes = y["vision"]["cone_clear_votes"].as<int>();
@@ -283,6 +290,16 @@ static Config load_config(const std::string& path) {
   c.mission.full_mission = c.mission_profile == "full";
   c.mission.stop_after_map = c.mission_profile == "a1_observation";
   c.mission.surface_before_visit = c.mission_profile == "a2_task_one";
+  if(const auto x=y["grid_exit"]) {
+    c.exit.enabled=x["enabled"].as<bool>(false);c.exit.verified=x["verified"].as<bool>(false);
+    c.exit.allowed_sides=x["allowed_sides_mask"].as<unsigned>(0);
+    c.exit.cell_size_m=c.traversal.surface_model().cell_size_m;
+    c.exit.body_radius_m=x["body_radius_m"].as<double>(0);c.exit.clearance_m=x["clearance_m"].as<double>(0);
+    c.exit.speed=x["speed_mps"].as<double>(.1);c.exit.timeout=x["timeout_sec"].as<double>(60);
+    c.exit.pose_timeout=c.pose_timeout;c.exit.validate();
+    if(c.exit.enabled&&(!c.local_mapping_enabled||!c.traversal.enabled))throw std::invalid_argument("exit requires local A2 localization");
+  }
+  c.mission.exit_after_visit=c.exit.enabled;c.mission.exit_timeout_sec=c.exit.timeout;
   c.mission.surface_relocalize_timeout_sec=c.traversal.reacquire_timeout_sec;
   c.planner.forbid_target_reentry=c.mission.surface_before_visit;
   c.mission.allow_armed_during_observation=c.search.enabled;

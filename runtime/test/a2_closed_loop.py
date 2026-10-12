@@ -24,11 +24,11 @@ from offline_replay import crc, frame, request
 from startup import wait_for_socket
 
 
-def run(binary, missing_surface=False):
+def run(binary, missing_surface=False, local=False):
     cv2.setNumThreads(1)
     master, slave = pty.openpty()
     stop = threading.Event()
-    state = dict(armed=False, depth=.4, row=1.5, col=1.5, vx=0., vy=0., target=.4)
+    state = dict(armed=False, depth=.4, row=2.15 if local else 1.5, col=1.5, vx=0., vy=0., target=.4)
     lock = threading.Lock()
     phases, targets, snapshots = [], [], []
     with tempfile.TemporaryDirectory() as directory:
@@ -49,6 +49,21 @@ def run(binary, missing_surface=False):
         texture[315:585,315:585]=255
         marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,240)
         texture[330:570,330:570]=cv2.cvtColor(marker,cv2.COLOR_GRAY2BGR)
+        map_texture=None;mapping=threading.Event();reacquire_hold=threading.Event()
+        if local:
+            noise=np.random.default_rng(18).integers(64,83,(900,900),dtype=np.uint8)
+            texture=cv2.cvtColor(noise,cv2.COLOR_GRAY2BGR)
+            for coordinate in [0,300,600,899]:
+                cv2.line(texture,(coordinate,0),(coordinate,899),(255,255,255),32)
+                cv2.line(texture,(0,coordinate),(899,coordinate),(0,255,255) if coordinate==899 else (255,255,255),32)
+            for x,y in [(150,150),(750,150)]:cv2.circle(texture,(x,y),60,(0,80,255),-1)
+            for x,y in [(150,750),(750,750)]:cv2.rectangle(texture,(x-60,y-60),(x+60,y+60),(0,80,255),-1)
+            map_texture=texture.copy()
+            # Synthetic tag leaves view after acquisition; never use tag ink
+            # as empty-floor training evidence. No real-rig geometry implied.
+            texture[718:813,403:498]=255
+            local_marker=cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_16h5),18,83)
+            texture[724:807,409:492]=cv2.cvtColor(local_marker,cv2.COLOR_GRAY2BGR)
         fake = root/'rpicam-vid'
         fake.write_text('''#!/usr/bin/python3
 import pathlib,sys,time
@@ -90,24 +105,40 @@ while True:
         for phase,fx in [('underwater',130),('surface',90)]:
             cfg['front_metric'][phase].update(verified=True,width=320,height=240,
                 camera_matrix=[fx,0,160,0,fx,120,0,0,1],distortion_coefficients=[0]*5)
+        if local:
+            cfg['vision'].update(white_grid_edges=True)
+            cfg['camera_front']['camera_matrix']=kd
+            for phase in ['underwater','surface']:cfg['front_metric'][phase]['camera_matrix']=kd
+            cfg['front_metric']['camera_offset_m']=[.2,0,0]
+            cfg['local_mapping'].update(enabled=True,navigation_verified=True,
+                empty_floor=dict(verified=True,hsv_lower=[0,0,50],hsv_upper=[179,15,110],minimum_support=.95))
+            cfg['observation_search'].update(maximum_speed=.1,waypoint_timeout_sec=40,
+                waypoints_m=[[-.775,-.45],[-.775,.45],[.125,.45],[.125,-.45],[0,0]])
+            cfg['mission'].update(map_timeout_sec=120,surface_timeout_sec=90,cone_visit_timeout_sec=180)
+            cfg['grid_exit'].update(enabled=True,verified=True,allowed_sides_mask=1,
+                body_radius_m=.05,clearance_m=.02,timeout_sec=90)
         path = root/'config.yaml';path.write_text(yaml.safe_dump(cfg))
         surface = threading.Event()
         def render():
             while not stop.is_set():
                 with lock:depth,row,col=state['depth'],state['row'],state['col']
-                fx=90 if surface.is_set() else 130
+                fx=250 if local else (90 if surface.is_set() else 130)
                 scale=fx/(1.4-depth)
-                points=np.float32([[160+scale*(x-col*.5),120+scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                offset=.2 if local else 0
+                points=np.float32([[160+scale*(x-col*.5),120+scale*(y-row*.5-offset)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
+                if local:assert not all(0<=p[0]<320 and 0<=p[1]<240 for p in points),'local camera must never show full outer grid'
                 h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),points)
-                image=cv2.warpPerspective(texture,h,(320,240),borderValue=(110,110,110))
+                active_texture=map_texture if local and mapping.is_set() else texture
+                image=cv2.warpPerspective(active_texture,h,(320,240),borderValue=(70,70,70) if local else (110,110,110))
                 if surface.is_set() and missing_surface:image[:]=110
+                if local and reacquire_hold.is_set():image[:]=70
                 tmp=root/'front.tmp';tmp.write_bytes(cv2.imencode('.jpg',image)[1].tobytes());tmp.replace(root/'front.jpg')
                 # Both synthetic cameras observe the SAME integrated motion.
                 # A static down video previously hid actual traversal motion.
                 down_scale=250/(1.4-depth)
                 down_points=np.float32([[160+down_scale*(x-col*.5),120+down_scale*(y-row*.5)] for x,y in [(0,0),(1.5,0),(1.5,1.5),(0,1.5)]])
                 down_h=cv2.getPerspectiveTransform(np.float32([[0,0],[899,0],[899,899],[0,899]]),down_points)
-                down_image=cv2.warpPerspective(texture,down_h,(320,240),borderValue=(110,110,110))
+                down_image=cv2.warpPerspective(active_texture,down_h,(320,240),borderValue=(70,70,70) if local else (110,110,110))
                 tmp=root/'down.tmp';tmp.write_bytes(cv2.imencode('.jpg',down_image)[1].tobytes());tmp.replace(root/'down.jpg')
                 time.sleep(.05)
         def mcu():
@@ -149,6 +180,7 @@ while True:
                 raise AssertionError((root/'stderr').read_text()) from error
             def status():
                 value=json.loads(request(str(root/'control.sock'),'status'));snapshots.append(value)
+                if local and value['phase']=='BUILD_MAP':mapping.set()
                 if not phases or phases[-1]!=value['phase']:phases.append(value['phase'])
                 return value
             deadline=time.monotonic()+8
@@ -158,7 +190,7 @@ while True:
                 assert time.monotonic()<deadline,s
                 time.sleep(.05)
             assert request(str(root/'control.sock'),'start').startswith('OK')
-            armed=False;deadline=time.monotonic()+75;blocked_until=None
+            armed=False;deadline=time.monotonic()+(300 if local else 75);blocked_until=None
             while time.monotonic()<deadline:
                 s=status()
                 if s['arm_gate_ready'] and not armed:
@@ -168,13 +200,15 @@ while True:
                     assert response.startswith(('OK','ERR')),response
                     armed=response.startswith('OK')
                 if s['phase']=='RELOCALIZE_SURFACE':
-                    if blocked_until is None:blocked_until=time.monotonic()+.35
+                    if blocked_until is None:
+                        blocked_until=time.monotonic()+.35
+                        if local:reacquire_hold.set()
                     # For .35 s after ascent the stream still emits underwater
                     # geometry. No old pose may authorize surface traversal.
                     if time.monotonic()<blocked_until:
                         assert not s['surface_pose_ready'] and not s['surface_grid_valid'],s
                         assert s['cmd_vx']==s['cmd_vy']==0,s
-                    else:surface.set()
+                    else:surface.set();reacquire_hold.clear()
                 if s['surface_grid_valid']:
                     assert s['metric_pose_surface_frame'],s
                     assert s['metric_pose_stamp_sec']>s['surface_reacquire_start_sec'],s
@@ -201,15 +235,18 @@ while True:
                 assert all(p in phases for p in ['BUILD_MAP','SURFACE_FOR_CONES','RELOCALIZE_SURFACE','VISIT_CONES','COMPLETE']),phases
                 assert len(visits)==4 and len({e['detail'].split(' frame=')[0] for e in visits})==4,visits
                 assert 'A2_COMPLETE' in {e.get('event') for e in events}
+                if local:
+                    assert 'EXIT_GRID' in phases and any(e.get('event')=='EXIT_CONFIRMED' for e in events),phases
+                    assert any(e.get('event')=='LOCAL_GRID' for e in events),events
             else:
                 assert 'VISIT_CONES' not in phases and not visits,phases
             assert all(abs(t[1])<=.20001 and abs(t[2])<=.20001 for t in targets)
             output=os.environ.get('AUV_SIM_EVIDENCE_DIR')
             if output:
                 out=Path(output);out.mkdir(parents=True,exist_ok=True)
-                (out/('missing-surface.json' if missing_surface else 'closed-loop.json')).write_text(json.dumps(
+                (out/(('local-' if local else '')+('missing-surface.json' if missing_surface else 'closed-loop.json'))).write_text(json.dumps(
                     dict(phases=phases,final=s,visits=visits,snapshots=snapshots,events=events,targets=targets),indent=2))
-            print(json.dumps(dict(scenario='missing_surface' if missing_surface else 'closed_loop',phases=phases,visits=len(visits))))
+            print(json.dumps(dict(local=local,scenario='missing_surface' if missing_surface else 'closed_loop',phases=phases,visits=len(visits))))
         finally:
             # Preserve diagnostics even when an assertion interrupts the run.
             # Temporary videos and virtual serial devices are not evidence of
@@ -217,7 +254,7 @@ while True:
             output=os.environ.get('AUV_SIM_EVIDENCE_DIR')
             if output:
                 out=Path(output);out.mkdir(parents=True,exist_ok=True)
-                prefix='missing-surface' if missing_surface else 'closed-loop'
+                prefix=('local-' if local else '')+('missing-surface' if missing_surface else 'closed-loop')
                 (out/(prefix+'-diagnostics.json')).write_text(json.dumps(
                     dict(synthetic=True,phases=phases,snapshots=snapshots,targets=targets),indent=2))
                 errors.flush()
@@ -235,4 +272,5 @@ while True:
 
 
 if __name__=='__main__':
-    run(sys.argv[1]);run(sys.argv[1],missing_surface=True)
+    local='--local' in sys.argv[2:]
+    run(sys.argv[1],local=local);run(sys.argv[1],missing_surface=True,local=local)

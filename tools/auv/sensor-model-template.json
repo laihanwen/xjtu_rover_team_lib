@@ -1,0 +1,9 @@
+{
+  "source_commit": null,
+  "imu_signs": null,
+  "imu_offsets_deg": null,
+  "depth_zero_m": null,
+  "depth_reference": null,
+  "depth_absolute_offset_m": null,
+  "sensor_model_verified": false
+}

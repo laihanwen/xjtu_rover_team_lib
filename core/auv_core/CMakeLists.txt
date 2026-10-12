@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(auv_core VERSION 0.1.0 LANGUAGES C CXX)
 
-find_package(OpenCV 4.7 REQUIRED COMPONENTS objdetect calib3d core imgcodecs imgproc video videoio)
+find_package(OpenCV 4.7 REQUIRED COMPONENTS objdetect calib3d core dnn imgcodecs imgproc video videoio)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
@@ -60,6 +60,25 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/auv_coreConfig.cmake
 
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(test_tag_grid_binding ../auv_mapping/test/test_tag_grid_binding.cpp)
+  target_link_libraries(test_tag_grid_binding PRIVATE auv_core)
+  add_test(NAME tag_grid_binding COMMAND test_tag_grid_binding)
+  add_executable(test_grid_exit ../auv_control/test/test_grid_exit.cpp)
+  target_link_libraries(test_grid_exit PRIVATE auv_core)
+  add_test(NAME grid_exit_closed_loop COMMAND test_grid_exit)
+  add_executable(test_dual_cone ../auv_vision/test/test_dual_cone.cpp)
+  target_link_libraries(test_dual_cone PRIVATE auv_core)
+  add_test(NAME dual_cone_vision COMMAND test_dual_cone)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    set(shape_smoke_model "${CMAKE_CURRENT_BINARY_DIR}/shape-smoke.onnx")
+    add_custom_command(OUTPUT "${shape_smoke_model}"
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../auv_vision/test/make_shape_smoke_model.py" "${shape_smoke_model}"
+      DEPENDS ../auv_vision/test/make_shape_smoke_model.py)
+    add_custom_target(shape_smoke_fixture ALL DEPENDS "${shape_smoke_model}")
+    add_dependencies(test_dual_cone shape_smoke_fixture)
+    add_test(NAME shape_model_inference COMMAND test_dual_cone "${shape_smoke_model}")
+  endif()
   add_executable(test_local_mapping_pipeline ../auv_mapping/test/test_local_mapping_pipeline.cpp)
   target_link_libraries(test_local_mapping_pipeline PRIVATE auv_core)
   add_test(NAME local_mapping_pipeline COMMAND test_local_mapping_pipeline)

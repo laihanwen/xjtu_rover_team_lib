@@ -12,6 +12,9 @@ from pathlib import Path
 from urllib.request import urlopen
 from urllib.error import HTTPError
 
+class CameraBootChanged(RuntimeError):
+    pass
+
 
 def multipart_frame(response, boundary):
     """Read one bounded MJPEG part; HTTPResponse removes transfer chunk framing."""
@@ -132,6 +135,7 @@ class DatasetRecorder:
         if any(t.is_alive() for t in self.threads):raise ValueError('录制仍在运行或正在停止')
         with urlopen(self.base_url+'/api/status',timeout=2) as r:state=json.load(r)
         sources={'down':state.get('down_source',''),'front':state.get('front_source','')}
+        self.pi_boot_id=state.get('pi_boot_id') or None
         if not sources['down'].startswith('csi:') or not sources['front'].startswith('/dev/v4l/by-id/') or not state.get('front_enabled'):
             raise ValueError('请先部署CSI下视、USB前视双摄配置；相机来源尚未确认')
         self.directory.mkdir(parents=True,exist_ok=True)
@@ -143,6 +147,7 @@ class DatasetRecorder:
         # prevent offline consumers from correcting the recorded pixels twice.
         manifest['camera_calibration']=state.get('camera_calibration',{})
         manifest['preview_modes']=dict(self.preview_modes)
+        manifest['pi_boot_id']=self.pi_boot_id
         for role,mode in self.preview_modes.items():
             if mode=='raw':
                 if not manifest['camera_calibration'].get('raw_preview_available'):
@@ -173,6 +178,8 @@ class DatasetRecorder:
                     if not poll_fallback and response is None:
                         try:
                             response=urlopen(self.camera_url(role,'mjpeg'),timeout=1)
+                            if self.pi_boot_id and response.headers.get('X-Pi-Boot-ID')!=self.pi_boot_id:
+                                raise CameraBootChanged('Pi启动标识变更，需开始新录制会话')
                             if response.headers.get_content_type()!='multipart/x-mixed-replace':
                                 raise ValueError('invalid MJPEG stream type')
                             boundary=response.headers.get_param('boundary')
@@ -187,6 +194,8 @@ class DatasetRecorder:
                             jpeg=snapshot.read(8*1024*1024+1)
                             stamp=snapshot.headers.get('X-Frame-Time-Monotonic')
                             actual=snapshot.headers.get('X-Camera-Source')
+                            if self.pi_boot_id and snapshot.headers.get('X-Pi-Boot-ID')!=self.pi_boot_id:
+                                raise CameraBootChanged('Pi启动标识变更，需开始新录制会话')
                     else:
                         jpeg,stamp,actual=multipart_frame(response,boundary)
                     if len(jpeg)>8*1024*1024:raise ValueError('JPEG exceeds size limit')
@@ -207,7 +216,7 @@ class DatasetRecorder:
                             writer=MjpegAvi(prefix.with_suffix('.avi'),*jpeg_size(jpeg),self.fps)
                             sidecar=prefix.with_suffix('.frames.jsonl').open('w',encoding='utf-8')
                         writer.write(jpeg)
-                        sidecar.write(json.dumps({'frame':len(writer.index)-1,'capture_monotonic_sec':stamp,'received_utc':datetime.now(timezone.utc).isoformat(),'source':source,'width':writer.width,'height':writer.height})+'\n');sidecar.flush()
+                        sidecar.write(json.dumps({'frame':len(writer.index)-1,'capture_monotonic_sec':stamp,'received_utc':datetime.now(timezone.utc).isoformat(),'source':source,'width':writer.width,'height':writer.height,'pi_boot_id':self.pi_boot_id})+'\n');sidecar.flush()
                         total+=1;last_stamp=stamp
                     failed=0
                     with self.lock:self.info['cameras'][role].update(frames=total,error='',
@@ -217,7 +226,7 @@ class DatasetRecorder:
                     if response:response.close();response=None
                     failed+=1
                     with self.lock:self.info['cameras'][role]['error']=str(e)
-                    if failed>=15 or isinstance(e,OSError) and 'disk reserve' in str(e):
+                    if failed>=15 or isinstance(e,CameraBootChanged) or isinstance(e,OSError) and 'disk reserve' in str(e):
                         raise RuntimeError(role+': '+str(e)) from e
                 if poll_fallback or failed:
                     self.stop_event.wait(max(.01 if failed else 0,1/self.fps-(time.monotonic()-before)))

@@ -19,16 +19,18 @@ class RecorderTests(unittest.TestCase):
    self.assertEqual(jpeg_size(JPEG),(32,24))
  def test_invalid_jpeg_is_rejected(self):
   with self.assertRaises(ValueError):jpeg_size(b'invalid')
- def serve(self,duplicate=False,wrong=False,stream=False):
+ def serve(self,duplicate=False,wrong=False,stream=False,boot_id=None,header_boot=None):
   visits=[]
   class Handler(BaseHTTPRequestHandler):
    def do_GET(self):
     visits.append(self.path)
     path=self.path.replace('.raw.','.')
     if self.path=='/api/status':
-     b=json.dumps({'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True,'camera_calibration':{'raw_preview_available':True,'down':{'preview_rectified':True,'raw_distortion_coefficients':[.1,.2,0,0,0],'preview_distortion_coefficients':[0,0,0,0,0]}}}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
+     b=json.dumps({'pi_boot_id':boot_id,'down_source':'csi:0' if not wrong else '/dev/v4l/by-id/usb','front_source':'/dev/v4l/by-id/usb','front_enabled':True,'camera_calibration':{'raw_preview_available':True,'down':{'preview_rectified':True,'raw_distortion_coefficients':[.1,.2,0,0,0],'preview_distortion_coefficients':[0,0,0,0,0]}}}).encode();self.send_response(200);self.end_headers();self.wfile.write(b)
     elif path in ('/api/camera/down.jpg','/api/camera/front.jpg'):
-     self.send_response(200);self.send_header('X-Camera-Source','csi:0' if '/down.' in self.path else '/dev/v4l/by-id/usb');self.send_header('X-Frame-Time-Monotonic',str(1 if duplicate else time.monotonic()));self.end_headers();self.wfile.write(JPEG)
+     self.send_response(200);self.send_header('X-Camera-Source','csi:0' if '/down.' in self.path else '/dev/v4l/by-id/usb');self.send_header('X-Frame-Time-Monotonic',str(1 if duplicate else time.monotonic()));
+     if boot_id:self.send_header('X-Pi-Boot-ID',header_boot or boot_id)
+     self.end_headers();self.wfile.write(JPEG)
     elif stream and path in ('/api/camera/down.mjpeg','/api/camera/front.mjpeg'):
      self.send_response(200);self.send_header('Content-Type','multipart/x-mixed-replace; boundary=auvframe');self.end_headers()
      try:
@@ -110,6 +112,16 @@ class RecorderTests(unittest.TestCase):
    r=DatasetRecorder(url,d,min_free_bytes=0)
    with self.assertRaises(ValueError):r.start()
    self.assertFalse(r.status()['active'])
+ def test_boot_change_stops_before_writing(self):
+  url,_=self.serve(boot_id='boot-a',header_boot='boot-b')
+  with tempfile.TemporaryDirectory() as d:
+   r=DatasetRecorder(url,d,min_free_bytes=0);r.start()
+   try:
+    end=time.monotonic()+2
+    while r.status()['active'] and time.monotonic()<end:time.sleep(.02)
+   finally:r.close()
+   self.assertIn('Pi启动标识',r.status()['error'])
+   self.assertEqual(r.status()['cameras']['down']['frames'],0)
  def test_independent_ffmpeg_decoder(self):
   try:import imageio_ffmpeg
   except ImportError:self.skipTest('optional independent decoder unavailable')

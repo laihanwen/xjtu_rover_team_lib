@@ -21,6 +21,12 @@ int main(int argc,char** argv) {
     const auto input=YAML::LoadFile(argv[3]);
     const std::string camera=input["camera"].as<std::string>();
     const std::string space=input["image_space"].as<std::string>();
+    if(const auto model=input["sensor_model"]) {
+      if(!model["sensor_model_verified"].as<bool>(false)||
+         model["imu_signs"].as<std::vector<double>>()!=cfg.localization.imu_signs||
+         model["imu_offsets_deg"].as<std::vector<double>>()!=cfg.localization.imu_offsets)
+        throw std::runtime_error("recorded sensor model does not match replay IMU conversion");
+    }
     if((camera!="front"&&camera!="down")||(space!="raw"&&space!="rectified"))
       throw std::runtime_error("explicit camera and native image space required; display crops unsupported");
     std::map<int,YAML::Node> frames;
@@ -31,7 +37,10 @@ int main(int argc,char** argv) {
     cv::VideoCapture video(argv[2]);if(!video.isOpened())throw std::runtime_error("video open failed");
     std::filesystem::create_directories(argv[4]);
     const std::filesystem::path folder(argv[4]);
-    std::ofstream report(folder/"frames.csv");report.precision(15);report<<"frame,stamp,phase,geometry,pose,nodes,hypotheses,tag18,map_complete,reason\n";
+    std::ofstream report(folder/"frames.csv");report.precision(15);report<<"frame,stamp,phase,geometry,pose,nodes,hypotheses,tag18,map_complete,colour_cones,shape_cones,cone_reason,reason\n";
+    auto quoted=[](const std::string& input) {
+      std::string value="\"";for(char ch:input){value+=ch;if(ch=='"')value+='"';}return value+"\"";
+    };
     LocalMappingPipeline pipeline(cfg.cone,cfg.grid,cfg.local_floor);
     LocalMapAccumulator map;std::uint64_t epoch=1;map.reset(epoch,"yellow_bottom_pipe_centres");
     auv_vision::AprilTagDetector tags(cfg.apriltag_family);
@@ -75,7 +84,8 @@ int main(int argc,char** argv) {
       if(result.pose.valid&&!map.update(result.observation,stamp,reason))reason="map reject: "+reason;
       bool tag18=false;for(const auto& tag:tags.detect(corrected))tag18|=tag.id==18;
       report<<frame<<','<<stamp<<','<<phase<<','<<result.geometry.valid<<','<<result.pose.valid<<','
-        <<result.geometry.nodes.size()<<','<<result.geometry.association.hypotheses.size()<<','<<tag18<<','<<map.complete()<<",\""<<reason<<"\"\n";
+        <<result.geometry.nodes.size()<<','<<result.geometry.association.hypotheses.size()<<','<<tag18<<','<<map.complete()<<','
+        <<result.colour_cones<<','<<result.shape_cones<<','<<quoted(result.cone_reason)<<','<<quoted(reason)<<'\n';
       if(!result.geometry.debug.empty()&&!cv::imwrite((folder/(std::to_string(frame)+"-nodes.jpg")).string(),result.geometry.debug))
         throw std::runtime_error("node evidence write failed");
       if(result.geometry.valid) {

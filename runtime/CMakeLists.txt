@@ -54,6 +54,9 @@ if(BUILD_TESTING)
       add_test(NAME a2_closed_loop
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(a2_closed_loop PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 120)
+      add_test(NAME local_task_one_closed_loop
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/a2_closed_loop.py $<TARGET_FILE:auv_runtime> --local)
+      set_tests_properties(local_task_one_closed_loop PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 420)
       add_test(NAME front_metric_streams
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/front_metric_streams.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(front_metric_streams PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 40)

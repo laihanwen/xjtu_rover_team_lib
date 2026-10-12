@@ -1,5 +1,6 @@
 // Offline same-library replay; accepts already rectified display frames only.
 #include "auv_mapping/grid_mapper.hpp"
+#include "auv_mapping/pipe_centerlines.hpp"
 #include "auv_vision/cone_detector.hpp"
 #include "auv_vision/apriltag_detector.hpp"
 #include <opencv2/videoio.hpp>
@@ -61,6 +62,14 @@ int main(int argc,char** argv) {
         candidates<<index<<",pipe_segment,"<<line<<",0,"<<p[0]<<','<<p[1]<<",unknown,unverified\n";
         candidates<<index<<",pipe_segment,"<<line<<",1,"<<p[2]<<','<<p[3]<<",unknown,unverified\n";
         cv::line(local_debug,{p[0],p[1]},{p[2],p[3]},{255,0,255},1);
+      }
+      std::vector<cv::Vec4i> centre_lines;
+      cv::HoughLinesP(auv_mapping::pipe_centerlines(pipe),centre_lines,1,CV_PI/180,40,40,8);
+      if(centre_lines.size()<=80)for(std::size_t line=0;line<centre_lines.size();++line) {
+        const auto p=centre_lines[line];
+        candidates<<index<<",pipe_center_segment,"<<line<<",0,"<<p[0]<<','<<p[1]<<",unknown,unverified\n";
+        candidates<<index<<",pipe_center_segment,"<<line<<",1,"<<p[2]<<','<<p[3]<<",unknown,unverified\n";
+        cv::line(local_debug,{p[0],p[1]},{p[2],p[3]},{255,255,0},1);
       }
       if(index%(step*10)==0&&!cv::imwrite((std::filesystem::path(argv[2])/(std::to_string(index)+"-local.jpg")).string(),local_debug))
         throw std::runtime_error("local diagnostic image write failed");
