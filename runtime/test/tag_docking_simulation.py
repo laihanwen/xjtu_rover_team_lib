@@ -66,7 +66,7 @@ def main(binary):
             camera_offset_m=[0, 0, 0], depth_offset_m=[0, 0, 0], imu_signs=[1, 1, 1],
             imu_offsets_deg=[0, 0, 0], pool_depth_m=2, calibration_verified=True)
         # Synthetic rig has two parallel downward cameras; real rig calibration is never altered.
-        cfg['tag_docking'].update(approach_only=False, return_to_origin=False,
+        cfg['tag_docking'].update(approach_only=False, observation_sec=0, return_to_origin=False,
             geometry_verified=True, geometry_user_accepted=False,
             front_body_bias_m=[0, 0, 0], down_body_bias_m=[0, 0, 0],
             corridor_verified=True, depth_verified=True,

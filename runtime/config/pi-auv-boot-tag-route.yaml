@@ -35,11 +35,11 @@ serial:
 control:
   socket: /run/auv-runtime/control.sock
 operation:
-  # debug requires explicit auvctl commands. autonomous starts without an operator.
-  mode: autonomous
+  # Commission the route before changing mode or enabling one-shot startup.
+  mode: debug
   auto_origin: true
-  auto_start: true
-  auto_arm: true
+  auto_start: false
+  auto_arm: false
   startup_delay_sec: 5.0
   startup_timeout_sec: 300.0
   startup_stable_sec: 1.0
@@ -88,7 +88,7 @@ safety:
   control_watchdog_timeout_sec: 0.25
   actuator_status_timeout_sec: 0.5
 motion:
-  motion_commands_enabled: true
+  motion_commands_enabled: false
   directions_calibrated: false
   limits_calibrated: false
   surge_from_row: 0.0
@@ -214,10 +214,11 @@ tag_docking:
   down_camera_offset_m: [0.09, 0.01, -0.06]
   down_body_bias_m: [0.019853422222222215, 0.04305282222222222, 0.09923506666666668]
 
-# Dedicated one-shot boot trial. Calibration flags above remain unchanged.
+# Dedicated one-shot boot trial. Set this authorization only after the real
+# direction, limit, depth and hardware gates have been commissioned.
 # Replace serial.device using the real Pi symlink before --check-config/enable.
 boot_tag_route:
-  explicit_motion_authorization: true
+  explicit_motion_authorization: false
   depth_stable_sec: 10
   depth_stable_span_m: 0.03
   minimum_start_depth_m: 0.35

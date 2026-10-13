@@ -32,7 +32,13 @@ def command(path, text):
     with socket.socket(socket.AF_UNIX) as peer:
         peer.connect(path)
         peer.sendall(text.encode())
-        return peer.recv(4096).decode()
+        chunks = []
+        total = 0
+        while data := peer.recv(4096):
+            total += len(data)
+            assert total <= 1024 * 1024, 'control response too large'
+            chunks.append(data)
+        return b''.join(chunks).decode()
 
 
 def main(binary):

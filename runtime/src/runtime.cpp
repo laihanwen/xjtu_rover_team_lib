@@ -255,7 +255,9 @@ class Runtime {
   }
   bool arm_gate_ready(double now) const {
     if(cfg_.mission_profile=="boot_tag_route")return boot_route_.phase==BootTagRoute::Phase::WaitArm&&
-      cfg_.boot_route.explicit_motion_authorization&&cfg_.motion_enabled&&!cfg_.serial.empty()&&
+      cfg_.boot_route.explicit_motion_authorization&&cfg_.motion_enabled&&
+      cfg_.directions_calibrated&&cfg_.limits_calibrated&&!cfg_.serial.empty()&&
+      cfg_.docking.corridor_verified&&cfg_.docking.depth_verified&&
       fault_.empty()&&safe_status(now)&&!status_.armed&&depth_sample_fresh(now)&&
       depth_sample_.depth_m>=cfg_.boot_route.min_start_depth_m&&recording_ready(now)&&
       frame_time_>0&&now-frame_time_<=cfg_.frame_timeout&&front_time_>0&&
