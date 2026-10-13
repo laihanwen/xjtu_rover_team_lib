@@ -5,7 +5,6 @@
 #include "auv_mapping/pipe_centerlines.hpp"
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
-#include <limits>
 
 namespace auv_mapping {
 struct LocalGridDetection {
@@ -127,23 +126,8 @@ class LocalGridDetector {
       std::vector<cv::Point2f> p1{p},p2;cv::perspectiveTransform(p1,p2,inv);out.pixels.push_back(p2[0]);
     }
     out.association=associate_local_grid(out.nodes);
-    if(out.association.unique) {
-      out=resolve(std::move(out),image,valid_pixels,0);
-      if(out.valid)remember_placement(out,sample.stamp);
-      return out;
-    }
-    // Repeated interior nodes stay ambiguous without an outer edge or yellow
-    // arm. A bounded, same-stage temporal prior disambiguates them against the
-    // last accepted placement instead of enlarging the topology gate.
-    if(out.association.hypotheses.size()>1) {
-      const std::size_t selected=temporal_select(out.association,sample.stamp);
-      if(selected<out.association.hypotheses.size()) {
-        out=resolve(std::move(out),image,valid_pixels,selected);
-        if(out.valid){out.reason="continuous local association";remember_placement(out,sample.stamp);}
-        return out;
-      }
-    }
-    out.reason=out.association.reason;return out;
+    if(!out.association.unique){out.reason=out.association.reason;return out;}
+    return resolve(std::move(out),image,valid_pixels,0);
   }
   // Resolves an already measured candidate; caller must establish uniqueness
   // from topology or a fresh, same-stage bounded metric prediction.
@@ -169,39 +153,6 @@ class LocalGridDetector {
   }
  private:
   GridMapperConfig config_;
-  // Bounded temporal prior for continuous association of repeated interior
-  // nodes. Stores the canonical placement of the last accepted frame so an
-  // ambiguous lattice can be pinned to the same rotation and a nearby centroid
-  // instead of enlarging the topology or pixel-residual gates.
-  mutable bool prior_valid_{false};
-  mutable double prior_stamp_{-1};
-  mutable int prior_quarter_turns_{0};
-  mutable double prior_centroid_row_{0},prior_centroid_col_{0};
-  std::size_t temporal_select(const GridAssociationResult& association,double stamp)const {
-    if(!prior_valid_||!std::isfinite(stamp)||stamp<prior_stamp_||stamp-prior_stamp_>1.0)
-      return association.hypotheses.size();
-    std::size_t best=association.hypotheses.size();double best_distance=std::numeric_limits<double>::infinity();bool unique=false;
-    for(std::size_t i=0;i<association.hypotheses.size();++i) {
-      const auto& h=association.hypotheses[i];
-      if(h.quarter_turns!=prior_quarter_turns_)continue;
-      double r=0,c=0;
-      for(const auto& n:h.nodes){r+=n[0];c+=n[1];}
-      r/=h.nodes.size();c/=h.nodes.size();
-      const double d=std::hypot(r-prior_centroid_row_,c-prior_centroid_col_);
-      if(d>1.0)continue;
-      if(d<best_distance-1e-9){best=i;best_distance=d;unique=true;}
-      else if(std::abs(d-best_distance)<=1e-9)unique=false;
-    }
-    return unique?best:association.hypotheses.size();
-  }
-  void remember_placement(const LocalGridDetection& out,double stamp)const {
-    if(!out.valid||out.association.hypotheses.empty())return;
-    const auto& h=out.association.hypotheses[0];
-    prior_valid_=true;prior_stamp_=stamp;prior_quarter_turns_=h.quarter_turns;
-    double r=0,c=0;
-    for(const auto& n:h.nodes){r+=n[0];c+=n[1];}
-    prior_centroid_row_=r/h.nodes.size();prior_centroid_col_=c/h.nodes.size();
-  }
   static std::vector<float> lattice_consensus(std::vector<float> v) {
     // Keeps the largest subset of clustered line positions that lies on the
     // measured 100 px cell lattice (a missing line yields an integer multiple
