@@ -68,6 +68,21 @@ static void TestHeartbeatCannotArm(void)
 
 int main(void)
 {
+    AuvSafety_Init(0U);
+    MakeReady(2000U);
+    assert(AuvSafety_RequestArm(1U, 2000U) == AUV_ARM_ACCEPTED);
+    assert(!AuvSafety_ApplyRemoteKill(0U, 1U, 2001U)); /* No clearing while armed. */
+    assert(AuvSafety_ApplyRemoteKill(1U, 0U, 2002U));
+    assert(!AuvSafety_IsArmed() && AuvSafety_GetContext()->kill_active);
+    AuvSafety_OnHeartbeat(2003U);
+    assert(AuvSafety_RequestArm(1U, 2003U) == AUV_ARM_UNSAFE);
+    assert(!AuvSafety_ApplyRemoteKill(0U, 0U, 2004U));
+    assert(!AuvSafety_ApplyRemoteKill(2U, 1U, 2004U));
+    assert(AuvSafety_GetContext()->kill_active);
+    assert(AuvSafety_ApplyRemoteKill(0U, 1U, 2005U));
+    AuvSafety_OnHeartbeat(2006U);
+    assert(!AuvSafety_IsArmed()); /* Clear cannot re-arm. */
+    assert(AuvSafety_RequestArm(1U, 2006U) == AUV_ARM_ACCEPTED);
     TestExplicitArmAndTimeout();
     TestFaultsAndDisarm();
     TestTickRollover();

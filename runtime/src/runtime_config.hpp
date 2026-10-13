@@ -2,6 +2,7 @@
 #include "auv_control/grid_exit.hpp"
 #include "localization.hpp"
 #include "tag_docking.hpp"
+#include "boot_tag_route.hpp"
 #include "auv_control/route_executor.hpp"
 #include "auv_control/surface_traversal.hpp"
 #include "auv_mapping/grid_mapper.hpp"
@@ -17,6 +18,7 @@
 #include <stdexcept>
 struct Config {
   TagDockConfig docking;
+  BootTagRouteConfig boot_route;
   auv_control::SurfaceTraversalConfig traversal;
   auv_control::ObservationSearchConfig search;
   bool auto_origin{}, recording_enabled{}, recording_required{};
@@ -71,24 +73,59 @@ static Config load_config(const std::string& path) {
   if(const auto t=y["tag_docking"]) {
     auto& a=c.docking;
     a.id=t["id"].as<int>(18);a.size_m=t["size_m"].as<double>(.138);
+    a.approach_only=t["approach_only"].as<bool>(false);
+    a.observation_sec=t["observation_sec"].as<double>(0);
     a.votes=t["stable_frames"].as<int>(3);
     a.max_depth=t["maximum_depth_m"].as<double>(1.2);a.min_depth=t["minimum_depth_m"].as<double>(.1);
     a.depth_rate=t["depth_rate_mps"].as<double>(.03);a.depth_tolerance=t["depth_tolerance_m"].as<double>(.03);
     a.depth_hold=t["depth_hold_sec"].as<double>(2);a.depth_timeout=t["depth_stage_timeout_sec"].as<double>(30);
     a.speed=t["maximum_target"].as<double>(.08);a.gain=t["position_gain"].as<double>(.3);
     a.down_speed=t["down_maximum_target"].as<double>(.04);a.hover_speed=t["hover_maximum_target"].as<double>(.03);
+    a.blind_speed=t["blind_handoff_maximum_target"].as<double>(.02);
+    a.blind_time=t["blind_handoff_timeout_sec"].as<double>(1.0);
+    a.blind_distance=t["blind_handoff_maximum_distance_m"].as<double>(.12);
+    a.blind_start_range=t["blind_handoff_start_range_m"].as<double>(.25);
     a.target_rate=t["maximum_target_change_per_sec"].as<double>(.08);
     a.resume_px=t["hover_resume_error_px"].as<double>(15);
     a.minimum_edge_px=t["minimum_tag_edge_px"].as<double>(8);a.border_px=t["tag_border_margin_px"].as<double>(3);
     a.radius=t["maximum_radius_m"].as<double>(0);a.timeout=t["task_timeout_sec"].as<double>(90);
     a.lost_timeout=t["tag_loss_timeout_sec"].as<double>(2);a.frame_timeout=t["observation_timeout_sec"].as<double>(.3);
+    a.depth_sample_timeout=t["depth_sample_timeout_sec"].as<double>(2.5);
     a.reprojection=t["maximum_reprojection_px"].as<double>(2);a.center_px=t["center_tolerance_px"].as<double>(10);
     a.center_hold=t["center_hold_sec"].as<double>(2);a.max_tilt=t["maximum_tilt_rad"].as<double>(.15);
     a.geometry_verified=t["geometry_verified"].as<bool>(false);
+    a.geometry_user_accepted=t["geometry_user_accepted"].as<bool>(false);
     a.corridor_verified=t["corridor_verified"].as<bool>(false);a.depth_verified=t["depth_verified"].as<bool>(false);
     for(auto item:{std::make_pair("depth_targets_m",&a.depth_targets),{"front_camera_to_body",&a.front_rotation},
         {"front_camera_offset_m",&a.front_offset},{"down_camera_to_body",&a.down_rotation},{"down_camera_offset_m",&a.down_offset}})
       if(t[item.first])*item.second=t[item.first].as<std::vector<double>>();
+    if(t["front_body_bias_m"])a.front_body_bias=t["front_body_bias_m"].as<std::vector<double>>();
+    if(t["down_body_bias_m"])a.down_body_bias=t["down_body_bias_m"].as<std::vector<double>>();
+    a.return_to_origin=t["return_to_origin"].as<bool>(false);
+    if(t["finish_waypoints_m"])for(const auto& p:t["finish_waypoints_m"]){
+      const auto v=p.as<std::vector<double>>();
+      if(v.size()!=2)throw std::runtime_error("finish waypoint must have x,y");
+      a.finish_waypoints.push_back({v[0],v[1]});
+    }
+  }
+  if(const auto t=y["boot_tag_route"]) {
+    auto& b=c.boot_route;
+    b.explicit_motion_authorization=t["explicit_motion_authorization"].as<bool>(false);
+    b.stable_sec=t["depth_stable_sec"].as<double>(10);
+    b.stable_span_m=t["depth_stable_span_m"].as<double>(.03);
+    b.min_start_depth_m=t["minimum_start_depth_m"].as<double>(.35);
+    b.max_depth_m=t["maximum_depth_m"].as<double>(1.2);
+    b.ascend_m=t["ascent_m"].as<double>(.2);
+    b.depth_tolerance_m=t["depth_tolerance_m"].as<double>(.04);
+    b.ascend_timeout_sec=t["ascent_timeout_sec"].as<double>(30);
+    b.forward_target=t["forward_target"].as<double>(.04);
+    b.forward_sec=t["forward_max_sec"].as<double>(15);
+    b.max_displacement_m=t["maximum_displacement_m"].as<double>(.5);
+    b.return_timeout_sec=t["return_timeout_sec"].as<double>(25);
+    b.arrival_tolerance_m=t["arrival_tolerance_m"].as<double>(.12);
+    b.hold_sec=t["final_depth_hold_sec"].as<double>(2);
+    b.hold_timeout_sec=t["final_depth_timeout_sec"].as<double>(12);
+    b.yaw_limit_rad=t["maximum_yaw_error_rad"].as<double>(.35);
   }
   if(const auto s=y["observation_search"]) {
     c.search.enabled=s["enabled"].as<bool>(false);
@@ -390,14 +427,15 @@ static Config load_config(const std::string& path) {
     throw std::runtime_error("invalid runtime configuration");
   if (c.operation_mode != "debug" && c.operation_mode != "autonomous")
     throw std::runtime_error("operation.mode must be debug or autonomous");
-  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation" && c.mission_profile!="a2_task_one" && c.mission_profile!="tag_docking")
+  if (c.mission_profile != "task_one" && c.mission_profile != "full" && c.mission_profile != "a1_observation" && c.mission_profile!="a2_task_one" && c.mission_profile!="tag_docking" && c.mission_profile!="boot_tag_route")
     throw std::runtime_error("invalid mission.profile");
   if(c.recording_enabled && (c.recording_dir.empty()||!std::isfinite(c.recording_segment)||
       c.recording_segment<=0||c.recording_reserve<1024))throw std::runtime_error("invalid recording settings");
   if(c.recording_required && !c.recording_enabled)throw std::runtime_error("required onboard recording is disabled");
-  if(c.search.enabled && (!c.motion_enabled||!c.localization.enabled||!c.auto_origin||
-      !c.recording_required || (!c.mission.stop_after_map&&!c.mission.surface_before_visit)))
-    throw std::runtime_error("search requires motion, localization, auto_origin, recording and A1/A2 profile");
+  if(c.search.enabled && (!c.localization.enabled||!c.auto_origin||!c.recording_required||
+      (c.mission_profile!="tag_docking"&&c.mission_profile!="boot_tag_route"&&(!c.motion_enabled||
+       (!c.mission.stop_after_map&&!c.mission.surface_before_visit)))))
+    throw std::runtime_error("search requires localization, auto_origin, recording and supported mission profile");
   if(c.traversal.enabled && (!c.mission.surface_before_visit||!c.search.enabled||!c.grid.single_yellow_edge||
       !c.localization.plane.verified||
       c.expected_cones!=4||!c.recording_required||!c.front_enabled||
@@ -450,23 +488,39 @@ static Config load_config(const std::string& path) {
       c.video_bitrate_kbps <= 0 || c.segment_time <= 0 || c.max_event_bytes < 1024 ||
       (c.video_encoder != "h264_v4l2m2m" && c.video_encoder != "libx264"))
     throw std::runtime_error("invalid video or wired web configuration");
-  if (c.motion_enabled && (c.serial.empty() || !c.directions_calibrated || !c.limits_calibrated ||
+  const bool boot_trial=c.mission_profile=="boot_tag_route";
+  if(boot_trial){
+    c.boot_route.validate();
+    if(!c.boot_route.explicit_motion_authorization||!c.auto_start||!c.auto_arm||
+       c.operation_mode!="autonomous"||!c.motion_enabled||!c.recording_required||
+       !c.front_enabled||c.apriltag_family!="tag16h5"||c.apriltag_ids!=std::vector<int>{18}||
+       !c.down_preview_rectify||!c.front_preview_rectify||
+       c.startup_timeout<=c.startup_delay+c.boot_route.stable_sec||
+       c.route.maximum_speed<c.boot_route.forward_target)
+      throw std::runtime_error("boot tag route needs explicit authorization, auto mode, dual cameras and recording");
+    c.docking.validate(false);
+  }
+  if (c.motion_enabled && (c.serial.empty() || (!boot_trial&&(!c.directions_calibrated || !c.limits_calibrated)) ||
       c.route.maximum_speed <= 0 || c.route.maximum_speed > 0.2 ||
       c.camera_matrix.size() != 9 || c.distortion.empty() ||
-      (!c.search.enabled && c.mission_profile!="tag_docking" && (!std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
+      (!c.search.enabled && c.mission_profile!="tag_docking" && !boot_trial && (!std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
         c.route.surge_from_col*c.route.sway_from_row) ||
       std::abs(c.route.surge_from_row*c.route.sway_from_col-
         c.route.surge_from_col*c.route.sway_from_row) < 1e-6))))
     throw std::runtime_error("motion requires calibrated directions, limits and serial device");
   if(c.mission_profile=="tag_docking") {
     c.docking.validate(c.motion_enabled);
-    if(c.search.enabled||c.traversal.enabled||!c.front_enabled||!c.recording_required||
+    if(c.traversal.enabled||!c.front_enabled||!c.recording_required||
        !c.auto_origin||!c.localization.enabled||c.apriltag_family!="tag16h5"||c.docking.id!=18||
        c.apriltag_ids!=std::vector<int>{18}||c.camera_width!=c.front_width||c.camera_height!=c.front_height||
        !c.down_preview_rectify||!c.front_preview_rectify||c.front_camera_matrix.size()!=9)
       throw std::runtime_error("tag docking requires independent dual rectified cameras, recording, localization and tag16h5/18");
+    if(c.search.enabled&&(c.search.maximum_radius_m>c.docking.radius||
+       c.search.maximum_speed>c.docking.speed||
+       c.search.depth_m<c.docking.min_depth||c.search.depth_m>c.docking.max_depth))
+      throw std::runtime_error("tag search outside docking envelope");
     if(c.motion_enabled&&(!c.localization.plane.verified||
-        c.front_calibration_quality!="independently_verified"||
+        (c.front_calibration_quality!="independently_verified"&&!c.docking.geometry_user_accepted)||
         c.camera_matrix!=c.localization.intrinsics||c.distortion!=c.localization.distortion||
         c.docking.down_rotation!=c.localization.rotation||c.docking.down_offset!=c.localization.camera_offset||
         c.docking.speed>c.route.maximum_speed))

@@ -63,6 +63,8 @@ CSI 启动等待首帧最多 8 秒，连续采集后无帧 2 秒则重启该相�
 
 ## 自主模式
 
+标签最短任务的开机录像专用服务、一次启动锁存核查、手动模式切换以及自动运动的水中/水平基准限制见 [开机任务说明](../docs/testing/tag-autoboot-20261013.md)。当前配置仅开放开机录像与日志；完整上电自动 ARM 尚不满足实机安全前置条件。
+
 完成相机、控制方向、速度限制和真实 STM32 安全验收后，比赛配置可以设置 `operation.mode: autonomous`、`auto_start: true` 和 `auto_arm: true`。自主模式会先保持 DISARM，等待启动延时，并要求相机采集、视觉处理与安全 STM32 STATUS 在 `startup_stable_sec` 内持续新鲜，然后自动启动 Mission；进入 `VISIT_CONES` 且完整 ARM 安全门仍满足时，才自动发送一次 ARM 请求。自主模式拒绝远程 `start`、`arm`、`pause`、`resume`、`abort` 和 `reset`，只保留只读 `status` 与紧急 `disarm`。紧急 DISARM 会把任务锁定到 FAULT。
 
 STM32 heartbeat还受独立的控制循环看门狗约束。若控制循环超过 `safety.control_watchdog_timeout_sec` 未完成一次周期，即使串口线程仍存活，也会停止heartbeat、请求DISARM并等待STM32自身的heartbeat failsafe生效。这避免“通信线程健康但控制决策已经卡死”时维持危险输出。
@@ -113,3 +115,7 @@ Pi相机专用配置现保存在`runtime/config/pi-rov.yaml`，并随安装复�
 ## 2026-10-11 局部观测开发入口
 
 任务一新增局部管网拓扑、地图累积、局部 PnP 与短时下视里程计融合接入源码，默认 `local_mapping.enabled: false`。新增 `auv_local_mapping_replay` 文件回放目标；未完成 C++ 编译和动态回归，按用户要求暂不测试，不作为实机部署版本。配置、图像空间、帧级遥测格式和未完成边界见[开发记录](../docs/testing/local-runtime-development-20261011.md)。
+
+# 单次开机标签直行返航试验
+
+专用 `mission.profile: boot_tag_route`、状态与部署前提见 [试验说明](../docs/testing/boot-tag-route-20261014.md)。它使用独立配置 `/etc/auv-runtime/pi-auv-boot-tag-route.yaml` 与 `auv-boot-tag-route.service`；现有 `runtime.yaml` 和手动 tag-docking 入口保持原样。当前 MCU 自主动力参数仍有硬件阻断，不能把源码测试视为可下水自动 ARM。

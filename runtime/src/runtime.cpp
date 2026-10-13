@@ -5,6 +5,7 @@
 #include "runtime_config.hpp"
 #include "boot_identity.hpp"
 #include "perception_view.hpp"
+#include "yellow_edge_watch.hpp"
 #include "auv_core/semantic_map.hpp"
 #include "auv_core/status_decoder.hpp"
 #include "auv_control/route_executor.hpp"
@@ -107,7 +108,7 @@ class Runtime {
  public:
   explicit Runtime(Config cfg) : cfg_(std::move(cfg)),exit_(cfg_.exit),ascent_transit_(cfg_.exit), mission_(cfg_.mission),
     route_(cfg_.route), planner_(cfg_.planner), search_(cfg_.search),
-    ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal),docking_(cfg_.docking) {
+    ascent_(cfg_.traversal),surface_route_(cfg_.traversal),center_approach_(cfg_.traversal),docking_(cfg_.docking,cfg_.search),boot_route_(cfg_.boot_route) {
     cv::setNumThreads(cfg_.opencv_threads);
     (void)auv_vision::AprilTagDetector(cfg_.apriltag_family);
     (void)auv_mapping::GridMapper(cfg_.grid);
@@ -126,7 +127,10 @@ class Runtime {
       std::ofstream config_copy(run_dir_+"/config.yaml");config_copy<<source;
       YAML::Node manifest;
       manifest["run_id"]=run_id_;manifest["mode"]=cfg_.operation_mode;
-      manifest["profile"]=cfg_.mission_profile;manifest["time_basis"]="Pi receive steady seconds; not exposure timestamps";
+      manifest["profile"]=cfg_.mission_profile;manifest["pi_boot_id"]=pi_boot_identity();
+      manifest["config_source"]=cfg_.config_source;manifest["auto_start"]=cfg_.auto_start;
+      manifest["auto_arm"]=cfg_.auto_arm;
+      manifest["time_basis"]="Pi receive steady seconds; not exposure timestamps";
       manifest["video_format"]="received JPEG frames in MJPEG segments with JSONL offsets/timestamps";
       manifest["release"]=source["release"] ? source["release"] : YAML::Node("unverified");
       manifest["localization"]=source["localization"];
@@ -140,6 +144,10 @@ class Runtime {
   void run() {
     std::signal(SIGINT, stop_signal); std::signal(SIGTERM, stop_signal); std::signal(SIGPIPE,SIG_IGN);
     event("BOOT", "mode=" + cfg_.operation_mode + " DISARM");
+    event("RUN_START", "pi_boot_id=" + pi_boot_identity() + " config=" + cfg_.config_source +
+      " auto_start=" + (cfg_.auto_start ? "true" : "false") +
+      " auto_arm=" + (cfg_.auto_arm ? "true" : "false"));
+    event("TIME_ANCHOR", "timestamp_unix_ms and steady_sec in this event are the Pi clock pair; camera stamps are Pi receive times");
     std::thread logger(&Runtime::logger_loop, this);
     std::thread capture(&Runtime::capture_loop, this);
     std::thread front(&Runtime::front_loop, this);
@@ -179,6 +187,7 @@ class Runtime {
     web.join();
 #endif
     capture.join(); front.join(); vision.join(); localization.join(); control.join(); serial.join(); video.join(); recorder.join();
+    if(!run_end_logged_)event("RUN_END", "process shutdown; DISARM requested; task_result=interrupted");
     event("SHUTDOWN", "DISARM requested");
     log_stop_=true;
     log_cv_.notify_all(); logger.join();
@@ -245,6 +254,12 @@ class Runtime {
       (!cfg_.front_enabled || (recording_front_time_>0 && now-recording_front_time_.load()<=cfg_.frame_timeout+1)));
   }
   bool arm_gate_ready(double now) const {
+    if(cfg_.mission_profile=="boot_tag_route")return boot_route_.phase==BootTagRoute::Phase::WaitArm&&
+      cfg_.boot_route.explicit_motion_authorization&&cfg_.motion_enabled&&!cfg_.serial.empty()&&
+      fault_.empty()&&safe_status(now)&&!status_.armed&&depth_sample_fresh(now)&&
+      depth_sample_.depth_m>=cfg_.boot_route.min_start_depth_m&&recording_ready(now)&&
+      frame_time_>0&&now-frame_time_<=cfg_.frame_timeout&&front_time_>0&&
+      now-front_time_<=cfg_.frame_timeout&&processed_time_>0&&now-processed_time_<=cfg_.frame_timeout;
     if(cfg_.mission_profile=="tag_docking")return docking_.phase==TagDockTask::Phase::WaitArm&&
       cfg_.motion_enabled&&cfg_.directions_calibrated&&cfg_.limits_calibrated&&!cfg_.serial.empty()&&
       fault_.empty()&&safe_status(now)&&!status_.armed&&dock_ready(now);
@@ -260,9 +275,10 @@ class Runtime {
       (!cfg_.traversal.enabled||depth_sample_fresh(now)) && (observation_ready||route_ready);
   }
   bool depth_sample_fresh(double now) const {
+    if(cfg_.mission_profile=="tag_docking"||cfg_.mission_profile=="boot_tag_route")return cfg_.docking.depth_fresh(
+      depth_sample_.valid,now,depth_sample_received_,depth_sample_.age_sec);
     return depth_sample_.valid && depth_sample_received_>0 && now>=depth_sample_received_ &&
-      now-depth_sample_received_+depth_sample_.age_sec<=(cfg_.mission_profile=="tag_docking" ?
-        cfg_.docking.frame_timeout : cfg_.traversal.depth_sample_timeout_sec);
+      now-depth_sample_received_+depth_sample_.age_sec<=cfg_.traversal.depth_sample_timeout_sec;
   }
   bool surface_grid_fresh(double now) const {
     return metric_pose_.valid && metric_pose_.surface_frame && metric_pose_.stamp>surface_reacquire_start_ && now>=metric_pose_.stamp &&
@@ -514,7 +530,12 @@ class Runtime {
     if(!recorder_)return;
     std::ofstream trajectory;
     if(cfg_.mission.surface_before_visit)trajectory.open(run_dir_+"/trajectory.jsonl");
+    bool task_ended=false;
     while(running) {
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        if(cfg_.mission_profile=="tag_docking" && run_end_logged_){task_ended=true;break;}
+      }
       try {
         std::vector<std::uint8_t> down,front;std::uint64_t ds=0,fs=0;double dt=0,ft=0;
         {std::lock_guard<std::mutex> lock(frame_mutex_);down=down_raw_jpeg_;ds=frame_sequence_;dt=frame_time_;}
@@ -529,7 +550,7 @@ class Runtime {
             <<",\"roll_rad\":"<<(std::isfinite(status_.roll)?std::to_string(status_.roll):"null")
             <<",\"pitch_rad\":"<<(std::isfinite(status_.pitch)?std::to_string(status_.pitch):"null")
             <<",\"yaw_rad\":"<<(std::isfinite(status_.yaw)?std::to_string(status_.yaw):"null")
-            <<",\"phase\":\""<<(cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))<<"\"}";
+            <<",\"phase\":\""<<(cfg_.mission_profile=="boot_tag_route"?boot_route_.name():cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))<<"\"}";
         }
         if(cfg_.mission.surface_before_visit) {
           for(const auto& point:points)trajectory<<point;
@@ -554,6 +575,13 @@ class Runtime {
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    if(task_ended) {
+      recorder_.reset(); // close both video and frame-index streams before collection
+      std::ofstream marker(run_dir_+"/recording-complete");
+      marker << "RUN_END; onboard video and indexes closed\n";
+      if(!marker)event("RECORDING_FAILED","cannot finalize recording-complete marker");
+      else event("RECORDING_FINALIZED","video and frame indexes closed; cameras and web remain active");
+    }
   }
   bool dock_ready(double now) const {
     return safe_status(now)&&depth_sample_fresh(now)&&recording_ready(now)&&!log_degraded_&&
@@ -566,15 +594,64 @@ class Runtime {
     return dock_front_.detected&&dock_front_.metric_valid&&dock_front_.id==cfg_.docking.id&&
       dock_front_.sequence&&now>=dock_front_.stamp&&now-dock_front_.stamp<=cfg_.docking.frame_timeout;
   }
+  std::string dock_blockers_json(double now) const {
+    std::vector<std::string> reasons;
+    if(!cfg_.motion_enabled)reasons.push_back("motion_disabled");
+    if(!cfg_.directions_calibrated||!cfg_.limits_calibrated)reasons.push_back("motion_calibration_unverified");
+    if(!cfg_.docking.geometry_verified)reasons.push_back("tag_geometry_unverified");
+    if(!cfg_.docking.corridor_verified)reasons.push_back("corridor_unverified");
+    if(!cfg_.docking.depth_verified)reasons.push_back("depth_control_unverified");
+    if(!safe_status(now))reasons.push_back("mcu_status_unsafe_or_stale");
+    if(status_.armed)reasons.push_back("already_armed");
+    if(!depth_sample_fresh(now))reasons.push_back("pressure_sample_invalid_or_stale");
+    if(!recording_ready(now)||log_degraded_)reasons.push_back("recording_not_ready");
+    if(!localization_->snapshot(now).valid)reasons.push_back("localization_origin_not_ready");
+    if(!dock_front_ready(now)&&!docking_.search_enabled())reasons.push_back("front_tag_not_metric_or_stale");
+    if(!std::isfinite(depth_sample_.depth_m)||depth_sample_.depth_m<cfg_.docking.min_depth||
+       depth_sample_.depth_m>cfg_.docking.max_depth)reasons.push_back("start_depth_outside_envelope");
+    if(!dock_ready(now))reasons.push_back("camera_attitude_or_readiness_gate");
+    if(!fault_.empty())reasons.push_back("runtime_fault");
+    if(docking_.phase!=TagDockTask::Phase::Idle)reasons.push_back("task_not_idle");
+    std::ostringstream out;out<<'[';
+    for(std::size_t i=0;i<reasons.size();++i){if(i)out<<',';out<<'"'<<json_escape(reasons[i])<<'"';}
+    out<<']';return out.str();
+  }
+  std::string dock_probe_json(const DockObservation& o,double now) const {
+    const bool fresh=o.sequence&&now>=o.stamp&&now-o.stamp<=cfg_.docking.frame_timeout;
+    const bool available=cfg_.operation_mode=="debug"&&!cfg_.motion_enabled&&!status_.armed&&
+      (docking_.phase==TagDockTask::Phase::Idle||docking_.phase==TagDockTask::Phase::Fault);
+    const bool valid=available&&fresh&&o.metric_valid;
+    std::ostringstream out;
+    out<<"{\"available\":"<<(available?"true":"false")<<",\"valid\":"<<(valid?"true":"false")
+       <<",\"reason\":\""<<json_escape(o.quality_reason)<<"\",\"sequence\":"<<o.sequence
+       <<",\"stamp_sec\":"<<json_number(o.stamp)<<",\"age_sec\":"<<json_number(now-o.stamp)
+       <<",\"tag_body_m\":";
+    if(valid)out<<'['<<json_number(o.tag_forward)<<','<<json_number(o.tag_left)<<','<<json_number(o.tag_up)<<']';else out<<"null";
+    out<<",\"reprojection_px\":"<<(valid?json_number(o.reprojection):"null")
+       <<",\"centre_error_px\":"<<(fresh&&o.detected?json_number(o.pixel_error):"null")
+       <<",\"approach_correction_m\":";
+    if(valid)out<<'['<<json_number(o.forward)<<','<<json_number(o.left)<<']';else out<<"null";
+    out<<'}';return out.str();
+  }
+  std::string dock_probe_model_json() const {
+    std::ostringstream out;out<<"{\"tag_size_m\":"<<cfg_.docking.size_m
+      <<",\"maximum_radius_m\":"<<cfg_.docking.radius;
+    auto values=[&](const char* key,const std::vector<double>& v){out<<",\""<<key<<"\":[";for(std::size_t i=0;i<v.size();++i){if(i)out<<',';out<<json_number(v[i]);}out<<']';};
+    values("front_camera_to_body",cfg_.docking.front_rotation);values("front_offset_m",cfg_.docking.front_offset);
+    values("down_camera_to_body",cfg_.docking.down_rotation);values("down_offset_m",cfg_.docking.down_offset);
+    out<<'}';return out.str();
+  }
   void dock_control_locked(double now) {
     const auto pose=localization_->snapshot(now);
     if(cfg_.auto_start&&!autonomous_start_attempted_&&docking_.phase==TagDockTask::Phase::Idle) {
       const bool ready=fault_.empty()&&cfg_.motion_enabled&&!status_.armed&&dock_ready(now)&&
-        dock_front_ready(now);
+        (dock_front_ready(now)||docking_.search_enabled());
       if(ready){if(!startup_ready_since_)startup_ready_since_=now;}else startup_ready_since_=0;
       if(now-boot_time_>=cfg_.startup_delay&&startup_ready_since_&&now-startup_ready_since_>=cfg_.startup_stable) {
         autonomous_start_attempted_=true;
-        if(claim_autonomous_run_locked()&&docking_.start(now,depth_sample_.depth_m,pose))event("TAG_DOCK_START","autonomous one-shot latch");
+        if(claim_autonomous_run_locked()&&docking_.start(now,depth_sample_.depth_m,pose)){
+          dock_task_started_=true;event("TAG_DOCK_START","autonomous one-shot latch");
+        }
         else set_fault_locked("tag docking startup refused");
       }else if(now-boot_time_>cfg_.startup_timeout){autonomous_start_attempted_=true;set_fault_locked("tag docking startup timeout");}
     }
@@ -582,8 +659,19 @@ class Runtime {
       autonomous_arm_attempted_=true;
       if(arm_gate_ready(now))request_arm_locked("autonomous tag docking");else set_fault_locked("tag docking ARM gate rejected");
     }
+    if(arm_ack_&&status_.armed&&!dock_arm_confirmed_logged_){
+      dock_arm_confirmed_logged_=true;event("ARM_CONFIRMED","STM32 ACK and armed STATUS both observed");
+    }
     if(!fault_.empty())docking_.fail(fault_);
     const bool ready=dock_ready(now);
+    if(docking_.active()&&dock_front_ready(now)&&!dock_front_identified_logged_){
+      dock_front_identified_logged_=true;
+      std::ostringstream detail;detail<<"id="<<dock_front_.id<<" camera=front frame="<<dock_front_.sequence
+        <<" frame_steady_sec="<<dock_front_.stamp<<" tag_body_x_m="<<dock_front_.tag_forward
+        <<" tag_body_y_m="<<dock_front_.tag_left<<" tag_body_z_m="<<dock_front_.tag_up
+        <<" reprojection_px="<<dock_front_.reprojection;
+      event("TAG_IDENTIFIED",detail.str());
+    }
     if(docking_.active() && !ready) {
       std::ostringstream detail;
       detail << "safe_status=" << safe_status(now) << " pressure_fresh=" << depth_sample_fresh(now)
@@ -610,11 +698,42 @@ class Runtime {
       if(fault_.empty())set_fault_locked(docking_.reason);
       armed_requested_=false;arm_pending_=false;disarm_pending_=true;motion_={};
     }
+    if(docking_.phase==TagDockTask::Phase::Complete) {
+      armed_requested_=false;arm_pending_=false;disarm_pending_=true;motion_={};
+    }
     if(dock_last_phase_!=docking_.name()){
-      if(docking_.phase==TagDockTask::Phase::Hold){
+      if(docking_.phase==TagDockTask::Phase::Hold||docking_.phase==TagDockTask::Phase::Complete){
         dock_evidence_frame_=dock_candidate_frame_;dock_evidence_observation_=dock_down_;
       }
+      if(docking_.phase==TagDockTask::Phase::Down){
+        std::ostringstream detail;detail<<"id="<<dock_down_.id<<" camera=down frame="<<dock_down_.sequence
+          <<" frame_steady_sec="<<dock_down_.stamp<<" tag_body_x_m="<<dock_down_.tag_forward
+          <<" tag_body_y_m="<<dock_down_.tag_left<<" tag_body_z_m="<<dock_down_.tag_up
+          <<" reprojection_px="<<dock_down_.reprojection;
+        event("TAG_IDENTIFIED",detail.str());
+      }
+      if(docking_.phase==TagDockTask::Phase::Hold){
+        event("TAG_ABOVE_CONFIRMED","id="+std::to_string(cfg_.docking.id)+" down_frame="+
+          std::to_string(dock_down_.sequence)+" center_error_px="+std::to_string(dock_down_.pixel_error));
+        if(cfg_.docking.observation_sec>0)
+          event("OBSERVATION_START","onboard front/down raw recording already active; timed hold="+
+            std::to_string(cfg_.docking.observation_sec)+"s");
+      }
+      if(cfg_.docking.observation_sec>0&&dock_last_phase_=="HOVER"&&docking_.phase!=TagDockTask::Phase::Hold)
+        event("OBSERVATION_END","timed observation interrupted or completed; see next phase");
+      if(docking_.phase==TagDockTask::Phase::Return)
+        event("RETURN_START","measured route to run origin");
+      if(docking_.phase==TagDockTask::Phase::Complete&&dock_last_phase_=="RETURN_TO_FINISH")
+        event("RETURN_COMPLETE",docking_.reason);
+      if(docking_.phase==TagDockTask::Phase::Complete)
+        event("TASK_COMPLETE",docking_.reason);
       dock_last_phase_=docking_.name();event("TAG_DOCK_PHASE",dock_last_phase_+": "+docking_.reason);
+    }
+    if(!run_end_logged_ && (docking_.phase==TagDockTask::Phase::Complete ||
+       (!fault_.empty() && (cfg_.auto_start || dock_task_started_)))) {
+      run_end_logged_=true;
+      event("RUN_END", "task_result="+std::string(fault_.empty()?"complete":"fault")+
+        " disarm_requested=true reason="+(fault_.empty()?docking_.reason:fault_));
     }
     if(docking_.active()&&now-dock_last_report_time_>=.2) {
       dock_last_report_time_=now;
@@ -625,8 +744,89 @@ class Runtime {
       event("TAG_DOCK_TRACE",data.str());
     }
   }
+  void boot_route_control_locked(double now) {
+    const auto pose=localization_->snapshot(now);
+    const bool cameras=frame_time_>0&&now-frame_time_<=cfg_.frame_timeout&&
+      front_time_>0&&now-front_time_<=cfg_.frame_timeout&&processed_time_>0&&
+      now-processed_time_<=cfg_.frame_timeout;
+    const bool attitude=std::isfinite(status_.roll)&&std::isfinite(status_.pitch)&&
+      std::abs(status_.roll)<=cfg_.docking.max_tilt&&std::abs(status_.pitch)<=cfg_.docking.max_tilt;
+    if(boot_route_.phase==BootTagRoute::Phase::WaitDepth&&
+       now-boot_time_>cfg_.startup_timeout&&!autonomous_start_attempted_){
+      autonomous_start_attempted_=true;
+      set_fault_locked("boot route underwater readiness timeout");
+      boot_route_.fail(fault_);
+    }
+    BootTagRoute::Input input;
+    input.now=now;input.depth=depth_sample_.depth_m;input.yaw=status_.yaw;
+    input.depth_sequence=depth_sample_.sensor_sequence;
+    input.depth_fresh=depth_sample_fresh(now);input.status_safe=safe_status(now)&&attitude&&fault_.empty();
+    input.cameras_fresh=cameras;input.recording_ready=recording_ready(now)&&!log_degraded_;
+    input.armed=armed_requested_&&arm_ack_&&status_.armed;
+    input.pose_valid=pose.valid&&pose.continuous&&now>=pose.stamp&&now-pose.stamp<=cfg_.pose_timeout;
+    input.x=pose.x;input.y=pose.y;
+    input.front_tag=boot_front_seen_.detected&&now>=boot_front_seen_.stamp&&
+      now-boot_front_seen_.stamp<=cfg_.docking.frame_timeout;
+    input.down_tag=boot_down_seen_.detected&&now>=boot_down_seen_.stamp&&
+      now-boot_down_seen_.stamp<=cfg_.docking.frame_timeout;
+    auto output=boot_route_.step(input);
+    if(arm_ack_&&status_.armed&&!boot_arm_confirmed_logged_){
+      boot_arm_confirmed_logged_=true;
+      event("ARM_CONFIRMED","STM32 ACK and armed STATUS both observed; boot tag route");
+    }
+    if(output.start){
+      autonomous_start_attempted_=true;
+      if(now-boot_time_<cfg_.startup_delay||!claim_autonomous_run_locked()){
+        boot_route_.fail("autonomous start latch or delay rejected");
+        set_fault_locked(boot_route_.fault_reason);
+      }else{
+        event("DEPTH_STABLE", "depth_m="+std::to_string(boot_route_.stable_depth)+
+          " stable_sec="+std::to_string(cfg_.boot_route.stable_sec));
+        event("AUTO_START","boot tag route; explicit_motion_authorization=true; calibration flags unchanged");
+        if(arm_gate_ready(now))request_arm_locked("autonomous boot tag route");
+        else{boot_route_.fail("ARM safety gate rejected");set_fault_locked(boot_route_.fault_reason);}
+      }
+    }else if(output.transition&&output.event=="FAULT")set_fault_locked(output.detail);
+    else if(output.transition){
+      event(output.event,output.detail);
+      if(output.event=="ASCEND_DONE")event("FORWARD_START","yaw_locked_rad="+std::to_string(output.target_yaw)+
+        " target="+std::to_string(cfg_.boot_route.forward_target));
+      if(output.event=="FORWARD_END"){
+        if(input.front_tag||input.down_tag){const auto& tag=input.front_tag?boot_front_seen_:boot_down_seen_;
+          event("TAG_SEEN","id="+std::to_string(tag.id)+" camera="+(input.front_tag?"front":"down")+
+            " frame="+std::to_string(tag.sequence)+" frame_steady_sec="+std::to_string(tag.stamp)+
+            " pose_valid="+(tag.metric_valid?"true":"false")+
+            " tag_body_x_m="+std::to_string(tag.tag_forward)+
+            " tag_body_y_m="+std::to_string(tag.tag_left)+
+            " tag_body_z_m="+std::to_string(tag.tag_up));}
+        event("RETURN_START",boot_route_.open_loop_return?"open_loop_duration_estimate":"measured_origin");
+      }
+    }
+    if(!fault_.empty()&&boot_route_.phase!=BootTagRoute::Phase::Fault)boot_route_.fail(fault_);
+    motion_={};
+    if(boot_route_.active()&&fault_.empty()){
+      motion_.depth=hold_depth_=static_cast<float>(output.target_depth);
+      motion_.yaw=hold_yaw_=static_cast<float>(output.target_yaw);
+      motion_.vx=static_cast<float>(output.surge);
+    }
+    if(boot_route_.phase==BootTagRoute::Phase::Fault||boot_route_.phase==BootTagRoute::Phase::Done){
+      armed_requested_=false;arm_pending_=false;disarm_pending_=true;motion_={};
+      if(!run_end_logged_){run_end_logged_=true;event("RUN_END",std::string("task_result=")+
+        (boot_route_.phase==BootTagRoute::Phase::Done?"complete":"fault")+
+        " disarm_requested=true reason="+boot_route_.fault_reason);}
+    }
+    if(boot_route_.active()&&now-last_state_log_sec_>=.5){
+      last_state_log_sec_=now;
+      event("BOOT_ROUTE_TRACE","phase="+std::string(boot_route_.name())+
+        " depth_m="+std::to_string(input.depth)+" target_depth_m="+std::to_string(output.target_depth)+
+        " yaw_rad="+std::to_string(input.yaw)+" target_yaw_rad="+std::to_string(output.target_yaw)+
+        " cmd_vx="+std::to_string(output.surge)+" x_m="+std::to_string(input.x)+
+        " y_m="+std::to_string(input.y)+" pose_valid="+(input.pose_valid?"true":"false"));
+    }
+  }
   void dock_vision_loop() {
     auv_vision::AprilTagDetector detector(cfg_.apriltag_family);
+    YellowEdgeWatch yellow_watch;
     std::uint64_t down_seen=0,front_seen=0;
     while(running) {
       try {
@@ -637,15 +837,34 @@ class Runtime {
           front=front_preview_frame_;fs=front_sequence_;ft=front_time_;front_seen=fs;}}
         auto observe=[&](const cv::Mat& image,std::uint64_t sequence,double stamp,bool is_front) {
           DockObservation o;o.stamp=stamp;o.sequence=sequence;
+          DockObservation probe=o;
+          bool allowed=false;
+          {std::lock_guard<std::mutex> lock(state_mutex_);allowed=cfg_.operation_mode=="debug"&&!cfg_.motion_enabled&&!status_.armed&&
+            (docking_.phase==TagDockTask::Phase::Idle||docking_.phase==TagDockTask::Phase::Fault);}
+          if(!allowed)probe.quality_reason="diagnostic_requires_disarmed_observation_mode";
           const auto tags=detector.detect(image);
           const auto tag=std::find_if(tags.begin(),tags.end(),[this](const auto& t){return t.id==cfg_.docking.id;});
-          if(tag!=tags.end())o=dock_observation(*tag,sequence,stamp,image.size(),
-            is_front?cfg_.front_camera_matrix:cfg_.camera_matrix,cfg_.camera_matrix,cfg_.docking,is_front);
-          return o;
+          if(tag!=tags.end()) {
+            o=dock_observation(*tag,sequence,stamp,image.size(),
+              is_front?cfg_.front_camera_matrix:cfg_.camera_matrix,cfg_.camera_matrix,cfg_.docking,is_front);
+            if(allowed)probe=dock_geometry_probe(*tag,sequence,stamp,image.size(),
+              is_front?cfg_.front_camera_matrix:cfg_.camera_matrix,cfg_.camera_matrix,cfg_.docking,is_front);
+          }
+          return std::make_pair(o,probe);
         };
-        if(!front.empty()){const auto o=observe(front,fs,ft,true);std::lock_guard<std::mutex> lock(state_mutex_);dock_front_=o;}
+        if(!front.empty()){const auto o=observe(front,fs,ft,true);std::lock_guard<std::mutex> lock(state_mutex_);dock_front_=o.first;dock_probe_front_=o.second;
+          if(cfg_.mission_profile=="boot_tag_route"&&o.first.detected)boot_front_seen_=o.first;}
         if(!down.empty()) {
-          auto o=observe(down,ds,dt,false);bool evidence=false;
+          bool mission_active=false;
+          {std::lock_guard<std::mutex> lock(state_mutex_);mission_active=docking_.active();}
+          const auto yellow=mission_active?
+            yellow_watch.update(down,cfg_.grid.hsv_lower,cfg_.grid.hsv_upper):YellowEdgeWatch::Result{};
+          if(yellow.newly_confirmed){
+            std::ostringstream detail;detail<<"camera=down frame="<<ds<<" length_px="<<yellow.length_px
+              <<" cue_only=true grid_orientation_unverified=true";
+            event("YELLOW_EDGE_CANDIDATE",detail.str());
+          }
+          const auto observations=observe(down,ds,dt,false);auto o=observations.first;bool evidence=false;
           {std::lock_guard<std::mutex> lock(state_mutex_);
             const double finished=seconds();
             if(processed_time_>0&&finished>processed_time_)vision_hz_=vision_hz_<=0 ?
@@ -653,21 +872,26 @@ class Runtime {
             processed_time_=finished;++processed_frames_;
             latency_ms_[latency_index_++%latency_ms_.size()]=(finished-dt)*1000;
             latency_count_=std::min(latency_count_+1,latency_ms_.size());
-            dock_down_=o;dock_candidate_frame_=down;
-            evidence=docking_.phase==TagDockTask::Phase::Hold&&!dock_evidence_saved_&&!dock_evidence_frame_.empty();
+            dock_down_=o;dock_probe_down_=observations.second;dock_candidate_frame_=down;
+            if(cfg_.mission_profile=="boot_tag_route"&&o.detected)boot_down_seen_=o;
+            if(mission_active)dock_yellow_candidate_=yellow.confirmed;
+            evidence=(docking_.phase==TagDockTask::Phase::Hold||docking_.phase==TagDockTask::Phase::Complete)&&
+                     !dock_evidence_saved_&&!dock_evidence_frame_.empty();
             if(evidence){down=dock_evidence_frame_;o=dock_evidence_observation_;ds=o.sequence;dt=o.stamp;}}
           if(evidence) {
             std::filesystem::create_directories(cfg_.debug_dir);
-            const auto path=cfg_.debug_dir+"/tag18-down-centered.jpg";
+            const auto stem=cfg_.docking.approach_only?"tag18-down-confirmed":"tag18-down-centered";
+            const auto path=cfg_.debug_dir+"/"+stem+".jpg";
             if(!cv::imwrite(path,down))throw std::runtime_error("cannot save tag docking completion evidence");
             YAML::Node meta;meta["family"]=cfg_.apriltag_family;meta["id"]=cfg_.docking.id;
             meta["size_m"]=cfg_.docking.size_m;meta["image_space"]="rectified";
             meta["frame_sequence"]=ds;meta["steady_sec"]=dt;meta["center_error_px"]=o.pixel_error;
             meta["calibration_id"]=cfg_.down_calibration_id;
-            std::ofstream file(cfg_.debug_dir+"/tag18-down-centered.yaml");file<<meta;file.flush();
+            std::ofstream file(cfg_.debug_dir+"/"+stem+".yaml");file<<meta;file.flush();
             if(!file)throw std::runtime_error("cannot save centered tag provenance");
             {std::lock_guard<std::mutex> lock(state_mutex_);dock_evidence_saved_=true;}
-            event("TAG_DOCK_HOVER","center evidence="+path+"; active depth/yaw/visual position hold; explicit abort to stop");
+            if(cfg_.docking.approach_only)event("TAG_APPROACH_EVIDENCE","down tag evidence="+path+"; see phase for hold/return outcome");
+            else event("TAG_DOCK_HOVER","center evidence="+path+"; active depth/yaw/visual position hold; explicit abort to stop");
           }
         }
       }catch(const std::exception& e){fault(std::string("tag docking vision: ")+e.what());}
@@ -675,7 +899,7 @@ class Runtime {
     }
   }
   void vision_loop() {
-    if(cfg_.mission_profile=="tag_docking"){dock_vision_loop();return;}
+    if(cfg_.mission_profile=="tag_docking"||cfg_.mission_profile=="boot_tag_route"){dock_vision_loop();return;}
     auv_vision::AprilTagDetector tags(cfg_.apriltag_family);
     auv_mapping::GridMapper mapper(cfg_.grid);
     auv_mapping::LocalMappingPipeline local_pipeline(cfg_.cone,cfg_.grid,cfg_.local_floor);
@@ -1058,13 +1282,13 @@ class Runtime {
             if (!auv_core::decode_status(frame.payload,status)) continue;
             std::lock_guard<std::mutex> lock(state_mutex_);
             status_ = std::move(status); status_time_ = seconds(); serial_connected_ = true;
-          } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH && (cfg_.traversal.enabled||cfg_.mission_profile=="tag_docking")) {
+          } else if (frame.message_type == AUV_PROTOCOL_MSG_DEPTH && (cfg_.traversal.enabled||cfg_.mission_profile=="tag_docking"||cfg_.mission_profile=="boot_tag_route")) {
             const auto sample=auv_stm32_bridge::decode_depth_sample(frame.payload);
             std::lock_guard<std::mutex> lock(state_mutex_);depth_sample_=sample;depth_sample_received_=seconds();
           } else if (frame.message_type == AUV_PROTOCOL_MSG_ACK && frame.payload.size() == 6) {
             std::lock_guard<std::mutex> lock(state_mutex_);
             const auto acknowledged_sequence=auv_protocol_read_u32_le(frame.payload.data()+2);
-            if((cfg_.search.enabled||cfg_.mission_profile=="tag_docking") && frame.payload[0]==AUV_PROTOCOL_MSG_MOTION_TARGET &&
+            if((cfg_.search.enabled||cfg_.mission_profile=="tag_docking"||cfg_.mission_profile=="boot_tag_route") && frame.payload[0]==AUV_PROTOCOL_MSG_MOTION_TARGET &&
                frame.payload[1]!=0 && frame.payload[1]!=2) {
               set_fault_locked("STM32 rejected autonomous motion target");
               armed_requested_=false;disarm_pending_=true;
@@ -1124,7 +1348,7 @@ class Runtime {
           if (gripper_command_time_ > 0 && !gripper_ack_ && now-gripper_command_time_ > 0.5)
             set_fault_locked("gripper command acknowledgement timeout");
           send_motion = cfg_.motion_enabled && armed_requested_ && arm_ack_ && status_.armed &&
-            safe_status(now) && (cfg_.mission_profile=="tag_docking" ? docking_.active() :
+            safe_status(now) && (cfg_.mission_profile=="boot_tag_route" ? boot_route_.active() : cfg_.mission_profile=="tag_docking" ? docking_.active() :
               propulsion_phase(mission_.snapshot().phase,cfg_.traversal.enabled)) && fault_.empty();
           motion = send_motion ? motion_ : auv_stm32_bridge::MotionTarget{};
         }
@@ -1200,7 +1424,9 @@ class Runtime {
           }
           next=Clock::now();
         } else missed_deadlines=0;
-        if(cfg_.mission_profile=="tag_docking") {
+        if(cfg_.mission_profile=="boot_tag_route") {
+          boot_route_control_locked(now);++control_ticks_;last_control_time_=seconds();
+        }else if(cfg_.mission_profile=="tag_docking") {
           dock_control_locked(now);++control_ticks_;last_control_time_=seconds();
         } else {
         auto phase = mission_.snapshot().phase;
@@ -1536,7 +1762,7 @@ class Runtime {
       auto latency=std::vector<double>(latency_ms_.begin(),latency_ms_.begin()+latency_count_);
       std::sort(latency.begin(),latency.end());
       double p99=latency.empty() ? -1.0 : latency[static_cast<std::size_t>(0.99*(latency.size()-1))];
-      s << "{\"pi_boot_id\":\""<<pi_boot_identity()<<"\",\"phase\":\"" << (cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))
+      s << "{\"pi_boot_id\":\""<<pi_boot_identity()<<"\",\"phase\":\"" << (cfg_.mission_profile=="boot_tag_route"?boot_route_.name():cfg_.mission_profile=="tag_docking" ? docking_.name() : auv_mission::mission_phase_name(mission_.snapshot().phase))
         << "\",\"run_id\":\""<<run_id_<<"\",\"recording_directory\":\""<<json_escape(run_dir_)
         << "\",\"recording_enabled\":"<<(cfg_.recording_enabled?"true":"false")
         << ",\"recording_ready\":"<<(recording_ready(now)?"true":"false")
@@ -1547,6 +1773,11 @@ class Runtime {
         << "\",\"mission_profile\":\"" << cfg_.mission_profile
         << "\",\"auto_start\":" << (cfg_.auto_start ? "true":"false")
         << ",\"auto_arm\":" << (cfg_.auto_arm ? "true":"false")
+        << ",\"boot_tag_route\":{\"explicit_motion_authorization\":"
+        << (cfg_.boot_route.explicit_motion_authorization?"true":"false")
+        << ",\"open_loop_return\":" << (boot_route_.open_loop_return?"true":"false")
+        << ",\"forward_duration_sec\":" << boot_route_.forward_duration
+        << ",\"forward_displacement_m\":" << json_number(boot_route_.forward_distance) << "}"
         << ",\"serial\":" << (serial_connected_ ? "true":"false")
         << ",\"armed\":" << (status_.armed ? "true":"false")
         << ",\"motion_enabled\":" << (cfg_.motion_enabled ? "true":"false")
@@ -1584,10 +1815,19 @@ class Runtime {
         <<",\"geometry_verified\":"<<(cfg_.docking.geometry_verified?"true":"false")
         <<",\"corridor_verified\":"<<(cfg_.docking.corridor_verified?"true":"false")
         <<",\"depth_verified\":"<<(cfg_.docking.depth_verified?"true":"false")
+        <<",\"depth_sample_timeout_sec\":"<<cfg_.docking.depth_sample_timeout
+        <<",\"search_enabled\":"<<(docking_.search_enabled()?"true":"false")
+        <<",\"return_to_origin\":"<<(cfg_.docking.return_to_origin?"true":"false")
+        <<",\"finish_waypoints\":"<<cfg_.docking.finish_waypoints.size()
+        <<",\"startup_blockers\":"<<dock_blockers_json(now)
+        <<",\"geometry_probe\":{\"front\":"<<dock_probe_json(dock_probe_front_,now)
+        <<",\"down\":"<<dock_probe_json(dock_probe_down_,now)<<",\"model\":"<<dock_probe_model_json()<<'}'
         <<",\"startup_ready\":"<<(cfg_.mission_profile=="tag_docking"&&docking_.phase==TagDockTask::Phase::Idle&&
-          cfg_.motion_enabled&&fault_.empty()&&!status_.armed&&dock_ready(now)&&dock_front_ready(now)&&
+          cfg_.motion_enabled&&fault_.empty()&&!status_.armed&&dock_ready(now)&&
+          (dock_front_ready(now)||docking_.search_enabled())&&
           depth_sample_.depth_m>=cfg_.docking.min_depth&&depth_sample_.depth_m<=cfg_.docking.max_depth ? "true":"false")
         <<",\"front_detected\":"<<(dock_front_.detected?"true":"false")
+        <<",\"yellow_edge_candidate\":"<<(dock_yellow_candidate_?"true":"false")
         <<",\"front_metric_valid\":"<<(dock_front_.metric_valid?"true":"false")
         <<",\"front_quality_reason\":\""<<json_escape(dock_front_.quality_reason)<<"\""
         <<",\"down_detected\":"<<(dock_down_.detected?"true":"false")
@@ -1685,6 +1925,7 @@ class Runtime {
     if (cmd == "arm") return "ERR use arm --confirm SAFE_TO_ARM\n";
     if (cmd == "disarm") {
       if(cfg_.mission_profile=="tag_docking")docking_.fail("operator DISARM");
+      if(cfg_.mission_profile=="boot_tag_route")boot_route_.fail("operator emergency DISARM");
       event("DISARM", "operator");
       if (cfg_.operation_mode == "autonomous") {
         set_fault_locked("emergency DISARM requested");
@@ -1697,9 +1938,9 @@ class Runtime {
       if(cmd=="start") {
         if(!cfg_.motion_enabled)return "ERR tag docking motion disabled; commission configuration first\n";
         if(!fault_.empty()||status_.armed||!dock_ready(now))return "ERR tag docking startup safety gate\n";
-        if(!dock_front_ready(now))return "ERR fresh calibrated front tag 18 required at start\n";
+        if(!dock_front_ready(now)&&!docking_.search_enabled())return "ERR fresh calibrated front tag 18 or measured search corridor required at start\n";
         if(!docking_.start(now,depth_sample_.depth_m,localization_->snapshot(now)))return "ERR task already started or invalid depth/origin\n";
-        event("TAG_DOCK_START","explicit start; waiting for explicit ARM");return "OK task started; explicit ARM required\n";
+        dock_task_started_=true;event("TAG_DOCK_START","explicit start; waiting for explicit ARM");return "OK task started; explicit ARM required\n";
       }
       return "ERR tag docking requires a new process/run_id after termination\n";
     }
@@ -1859,6 +2100,21 @@ class Runtime {
       res.set_content(command("status"),"application/json");
       res.set_header("Cache-Control","no-store");
     });
+    server.Get("/api/run/events.ndjson",[this](const httplib::Request&,httplib::Response& res){
+      std::error_code error;
+      const auto bytes=std::filesystem::file_size(cfg_.log,error);
+      if(error){res.status=404;return;}
+      if(bytes>25'000'000){res.status=413;return;}
+      std::ifstream input(cfg_.log,std::ios::binary);
+      if(!input){res.status=503;return;}
+      std::string data(static_cast<std::size_t>(bytes),'\0');
+      input.read(data.data(),static_cast<std::streamsize>(bytes));
+      data.resize(static_cast<std::size_t>(input.gcount()));
+      const auto last=data.find_last_of('\n');
+      if(last==std::string::npos)data.clear();else data.resize(last+1);
+      res.set_content(data,"application/x-ndjson");
+      res.set_header("Cache-Control","no-store");
+    });
     auto cached=[this](bool front,bool raw,std::vector<std::uint8_t>& jpeg,double& stamp) {
       if(front) { std::lock_guard<std::mutex> lock(front_mutex_); jpeg=raw?front_raw_jpeg_:front_jpeg_; stamp=front_time_.load(); }
       else { std::lock_guard<std::mutex> lock(frame_mutex_); jpeg=raw?down_raw_jpeg_:down_jpeg_; stamp=frame_time_.load(); }
@@ -1970,12 +2226,12 @@ class Runtime {
   }
   Config cfg_;
   TagDockTask docking_;
-  DockObservation dock_front_,dock_down_;
+  DockObservation dock_front_,dock_down_,dock_probe_front_,dock_probe_down_,boot_front_seen_,boot_down_seen_;
   cv::Mat dock_candidate_frame_,dock_evidence_frame_;
   DockObservation dock_evidence_observation_;
   std::string dock_last_phase_;
   double dock_last_report_time_{};
-  bool dock_evidence_saved_{};
+  bool dock_evidence_saved_{},dock_yellow_candidate_{},dock_arm_confirmed_logged_{},dock_front_identified_logged_{};
   auv_control::ObservationSearch search_;
   auv_control::ControlledAscent ascent_;
   auv_control::SurfaceRouteExecutor surface_route_;
@@ -2029,6 +2285,7 @@ class Runtime {
   double last_state_log_sec_{};
   std::uint64_t frame_sequence_{},processed_frames_{};
   auv_mission::MissionFsm mission_;
+  BootTagRoute boot_route_;
   auv_control::RouteExecutor route_;
   auv_planning::GridPlanner planner_;
   auv_core::SemanticMap map_;
@@ -2049,7 +2306,8 @@ class Runtime {
   std::size_t waypoint_index_{};
   std::unique_ptr<Localization> localization_;
   bool tag_found_{},pose_valid_{},route_ready_{},all_visited_{},serial_connected_{},armed_requested_{},arm_ack_{},arm_pending_{},disarm_pending_{true};
-  bool autonomous_start_attempted_{},autonomous_arm_attempted_{};
+  bool autonomous_start_attempted_{},autonomous_arm_attempted_{},run_end_logged_{},dock_task_started_{};
+  bool boot_arm_confirmed_logged_{};
   bool gripper_ack_{},gripper_close_requested_{},gripper_open_requested_{},gripper_stop_requested_{};
   std::optional<auv_stm32_bridge::GripperAction> gripper_pending_;
   float row_{},col_{};

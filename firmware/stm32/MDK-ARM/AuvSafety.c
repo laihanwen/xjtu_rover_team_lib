@@ -74,6 +74,15 @@ AuvSafetyState AuvSafety_GetState(void)
     return safety.state;
 }
 
+uint8_t AuvSafety_ApplyRemoteKill(uint8_t active, uint8_t clear_allowed, uint32_t now_ms)
+{
+    if (active > 1U || (active == 0U && (clear_allowed == 0U || AuvSafety_IsArmed())))
+        return 0U;
+    AuvSafety_SetInputs(active, safety.sensors_valid, now_ms);
+    if (active != 0U) (void)AuvSafety_RequestArm(0U, now_ms);
+    return 1U;
+}
+
 uint8_t AuvSafety_IsArmed(void)
 {
     return (safety.state == AUV_SAFETY_ARMED) ? 1U : 0U;

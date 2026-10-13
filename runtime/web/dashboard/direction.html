@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ID18 前进方向预演</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,'Microsoft YaHei',sans-serif}*{box-sizing:border-box}body{margin:0;background:#09141e;color:#e6eff5}main{max-width:1100px;margin:auto;padding:24px}a{color:#66dfc3}h1{margin:12px 0 4px}p{line-height:1.6}.note{color:#ffc981}.layout{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}.card{background:#12212e;border:1px solid #2a4050;border-radius:12px;padding:18px}img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#000;border-radius:8px}.decision{font-size:34px;font-weight:700;color:#66dfc3;margin:14px 0}.muted{color:#a6bac8}dl{display:grid;grid-template-columns:1fr 1fr;gap:8px}dt{color:#a6bac8}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}.bad{color:#ff8e94}@media(max-width:760px){.layout{grid-template-columns:1fr}}
+</style>
+<main><a href="/">返回驾驶台</a><h1>ID18 前进方向预演</h1>
+<p class="note">只读诊断：不发送 START、ARM 或运动指令。岸上使用水下标定时，只观察识别与方向趋势，距离不可当作实测。当前故障和安全门仍会让真实输出保持零。</p>
+<div class="layout"><section class="card"><h2>前视画面</h2><img id="front" alt="前视实时快照"><p id="vision" class="muted">等待图像与标签状态</p></section>
+<section class="card"><h2>如果安全门全部通过</h2><div id="decision" class="decision">等待标签</div><p id="explain" class="muted">需要 ID18 水平平放、四角完整入镜及有效几何观测。</p>
+<dl><dt>前向修正</dt><dd id="forward">—</dd><dt>侧向修正（左为正）</dt><dd id="left">—</dd><dt>修正距离 / 走廊半径</dt><dd id="corridor">—</dd><dt>重投影误差</dt><dd id="error">—</dd><dt>观测帧 / 年龄</dt><dd id="frame">—</dd></dl>
+<h2>机器此刻实际输出</h2><dl><dt>任务阶段</dt><dd id="phase">—</dd><dt>ARM</dt><dd id="armed">—</dd><dt>推进 / 侧移目标</dt><dd id="actual">—</dd><dt>故障</dt><dd id="fault">—</dd></dl></section></div>
+<p class="muted">方向按机体系 X 前、Y 左解释，来自机载几何诊断的接近修正。诊断不使用它控制推进器；靠近中心时，方向符号容易受像素误差影响。</p></main>
+<script>
+'use strict';const $=id=>document.getElementById(id);const fmt=(x,n=1)=>Number.isFinite(x)?x.toFixed(n):'—';
+const reason={tag_not_detected:'未识别 ID18：检查标签是否完整入镜。',pixel_quality_rejected:'四角贴边或标签过小。',floor_pose_or_reprojection_rejected:'标签平面方向或重投影误差未通过；请水平平放。',diagnostic_transform_invalid:'相机几何参数无效。',diagnostic_requires_disarmed_observation_mode:'需要 DISARM、运动关闭的只读诊断模式。'};
+async function poll(){try{const response=await fetch('/api/status',{cache:'no-store',signal:AbortSignal.timeout(1500)});if(!response.ok)throw Error('HTTP '+response.status);const s=await response.json(),p=s.tag_docking?.geometry_probe?.front;
+ $('phase').textContent=s.phase;$('armed').textContent=s.armed?'是':'否';$('actual').textContent=fmt(s.cmd_vx,3)+' / '+fmt(s.cmd_vy,3);$('fault').textContent=s.fault||'无';
+ $('vision').textContent='ID18 '+(s.tag_docking?.front_detected?'已识别':'未识别')+'；机载控制几何：'+(s.tag_docking?.front_quality_reason||'无数据');
+ const safe=s.mission_profile==='tag_docking'&&!s.armed&&!s.motion_enabled;
+ const valid=safe&&p?.available&&p?.valid&&p.age_sec>=0&&p.age_sec<=.3&&Array.isArray(p.approach_correction_m)&&p.approach_correction_m.length===2&&p.approach_correction_m.every(Number.isFinite);
+ if(valid){const [x,y]=p.approach_correction_m;const fx=Math.abs(x)<.03?'前后接近中心':x>0?'前进':'后退';const fy=Math.abs(y)<.03?'侧向接近中心':y>0?'向左':'向右';const distance=Math.hypot(x,y),radius=s.tag_docking?.geometry_probe?.model?.maximum_radius_m;const beyond=Number.isFinite(radius)&&distance>radius;
+ $('decision').textContent=beyond?'禁止前进：超出安全半径':fx+' · '+fy;$('explain').textContent=beyond?'观测方向为“'+fx+' · '+fy+'”，但修正距离已大于配置的安全半径；当前也未满足生产运动门。':'仅是假设安全门和生产几何均通过后的方向趋势；当前实际命令以右下状态为准。';$('forward').textContent=fmt(x*100)+' cm';$('left').textContent=fmt(y*100)+' cm';$('corridor').textContent=fmt(distance*100)+' / '+fmt(radius*100)+' cm';$('error').textContent=fmt(p.reprojection_px,2)+' px';}
+ else{$('decision').textContent='保持停止';$('explain').textContent=reason[p?.reason]||'等待新鲜的水平标签几何观测。';for(const id of ['forward','left','corridor','error'])$(id).textContent='—';}
+ $('frame').textContent=p?p.sequence+' / '+fmt(p.age_sec,2)+' s':'—';
+}catch(e){$('decision').textContent='状态不可用';$('explain').textContent=e.message;}finally{setTimeout(poll,250);}}
+setInterval(()=>{if(!document.hidden)$('front').src='/api/camera/front.jpg?t='+Date.now();},600);poll();
+</script></html>

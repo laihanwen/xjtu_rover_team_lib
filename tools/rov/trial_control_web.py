@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from Re_control import RemoteControl, load_mapping
 from trial_protocol import manual_frame, centered
+from motion_jog import MotionJog
 from video_recorder import DatasetRecorder
 from telemetry_log import TelemetryLog
 
@@ -29,9 +30,11 @@ def main():
     parser.add_argument('--log-dir', default=str(Path(__file__).resolve().parents[2] / 'logs' / 'rov'))
     parser.add_argument('--diagnostic-log', action='store_true', help='Enable separate 10 Hz rotating diagnostic snapshots')
     parser.add_argument('--observe-only', action='store_true', help='Disable all control and localization reset commands')
+    parser.add_argument('--motion-test', action='store_true', help='Single-axis web jogs; physical controller permission still required')
     parser.add_argument('--dial-min', type=float, help='Measured SI lower endpoint')
     parser.add_argument('--dial-max', type=float, help='Measured SI upper endpoint')
     args = parser.parse_args()
+    jog = MotionJog()
     recorder = DatasetRecorder(f'http://{args.host}:{args.camera_port}',args.record_dir)
     os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = '1'
     mapping = load_mapping(args.mapping_config)
@@ -41,6 +44,7 @@ def main():
                                args.dial_max if args.dial_max is not None else mapping.get('dial_max',-.1),mapping)
     lock = threading.Lock()
     state = {'connected':False,'telemetry':{},'error':'','detail':'等待手柄',
+             'motion_test':args.motion_test,
              'axes':[],'deadman':False,'centered':False,'can_arm':False,
              'speed_control_available':not args.observe_only,'selected_speed':'low'}
     localization_state={'valid':False,'reason':'service_unavailable'}
@@ -91,6 +95,8 @@ def main():
                 name,mime=dashboard_assets[self.path];body=(DASHBOARD_DIR/name).read_bytes()
                 self.send_response(200);self.send_header('Content-Type',mime+'; charset=utf-8')
                 self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+            if self.path=='/' and args.motion_test:
+                return self.reply((WEB_DIR/'motion-test.html').read_text(encoding='utf-8'),html=True)
             if self.path=='/':return self.reply(HTML,html=True)
             if self.path=='/console-config':return self.reply({'camera_base':f'http://{args.host}:{args.camera_port}'})
             assets={'/console.css':('console.css','text/css'),'/console.js':('console.js','text/javascript')}
@@ -140,9 +146,20 @@ def main():
                 if self.path=='/recording':
                     if action not in ('start','stop'):raise ValueError('action')
                     return self.reply(recorder.start() if action=='start' else recorder.stop())
-                if action not in ('arm','stop','level','speed'):raise ValueError('action')
+                if action not in ('arm','stop','level','speed','jog','release'):raise ValueError('action')
                 with lock:
+                    if action in ('jog','release'):
+                        if not args.motion_test:raise ValueError('motion test disabled')
+                        if action=='release':
+                            jog.release();operator['action']='stop'
+                        else:
+                            if not state.get('deadman') or not state.get('connected') or not state['telemetry'].get('armed') or time.monotonic()-state.get('_received_at',0)>.2 or state.get('telemetry_age',999)>.3:
+                                return self.reply({'error':'需要新鲜遥测、实体许可和显式 ARM'},409)
+                            jog.request(request.get('axis'),time.monotonic())
+                        return self.reply({'queued':action})
+                    if action=='stop':jog.release()
                     if action=='speed':
+                        if args.motion_test:raise ValueError('motion test uses low speed only')
                         if state.get('telemetry',{}).get('armed'):
                             return self.reply({'error':'DISARM before changing speed'},409)
                         if request.get('mode') not in ('low','higher'):raise ValueError('speed mode')
@@ -203,6 +220,11 @@ def main():
                     live=now-operator['last_poll']<=.8
                     action=operator['action'] if controller_ok else None;operator['action']=None
                 deadman=physical_deadman and live
+                if args.motion_test:
+                    with lock:
+                        frame,expired=jog.frame(now,deadman and now-last_reply<=.2 and state.get('telemetry_age',999)<.3 and state['telemetry'].get('armed',False))
+                        state['jog']={'axis':jog.axis,'elapsed_s':round(jog.elapsed,3),'reason':jog.reason}
+                        if expired:action='stop'
                 if conn is None:
                     conn=socket.create_connection((args.host,args.port),timeout=.2)
                     conn.settimeout(.005);conn.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)
@@ -236,6 +258,7 @@ def main():
                 if conn:conn.close()
                 conn=None;lease=None
                 with lock:
+                    jog.release();operator['action']=None
                     state.update(connected=False,can_arm=False,deadman=False,error=str(error),
                                  telemetry={},telemetry_age=None,controller_connected=controller_ok)
                     if controller_ok:

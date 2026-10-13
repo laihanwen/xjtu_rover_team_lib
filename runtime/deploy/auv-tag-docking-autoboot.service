@@ -1,0 +1,21 @@
+[Unit]
+Description=AUV tag docking boot recording (DISARM by default)
+After=local-fs.target network-online.target
+Wants=network-online.target
+Conflicts=auv-rov.service auv-runtime.service auv-observation.service auv-task-one.service auv-tag-docking.service
+
+[Service]
+Type=simple
+User=auv
+Group=auv
+SupplementaryGroups=video dialout
+RuntimeDirectory=auv-runtime
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+LogsDirectory=auv-runtime
+ExecStart=/usr/local/bin/auv_runtime /etc/auv-runtime/pi-auv-tag-docking-autoboot.yaml
+Restart=no
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

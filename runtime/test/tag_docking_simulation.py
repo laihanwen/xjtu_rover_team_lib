@@ -66,7 +66,10 @@ def main(binary):
             camera_offset_m=[0, 0, 0], depth_offset_m=[0, 0, 0], imu_signs=[1, 1, 1],
             imu_offsets_deg=[0, 0, 0], pool_depth_m=2, calibration_verified=True)
         # Synthetic rig has two parallel downward cameras; real rig calibration is never altered.
-        cfg['tag_docking'].update(geometry_verified=True, corridor_verified=True, depth_verified=True,
+        cfg['tag_docking'].update(approach_only=False, return_to_origin=False,
+            geometry_verified=True, geometry_user_accepted=False,
+            front_body_bias_m=[0, 0, 0], down_body_bias_m=[0, 0, 0],
+            corridor_verified=True, depth_verified=True,
             front_camera_to_body=rotation, down_camera_to_body=rotation,
             front_camera_offset_m=[0, 0, 0], down_camera_offset_m=[0, 0, 0],
             depth_targets_m=[.61, .60, .605], depth_rate_mps=.1, depth_hold_sec=.2,
@@ -77,13 +80,23 @@ def main(binary):
 
         def emulator():
             pending = bytearray()
+            pressure_sequence = 0
+            pressure_time = 0.0
+            pressure_depth = state['depth']
             while not stop.is_set():
                 try:
                     state['sequence'] += 1
                     seq = state['sequence']
                     os.write(master, frame(0x80, struct.pack('<IBIfffffB', seq, int(state['armed']),
                         0, 12., state['depth'], 0., 0., 0., 0)))
-                    os.write(master, frame(0x82, struct.pack('<IfBII', seq, state['depth'], 1, seq, 0)))
+                    now = time.monotonic()
+                    if now-pressure_time >= .55:
+                        pressure_sequence += 1
+                        pressure_depth = state['depth']
+                        pressure_time = now
+                    if state.get('pressure_enabled', True):
+                        os.write(master, frame(0x82, struct.pack('<IfBII', seq, pressure_depth, 1,
+                            pressure_sequence, int((now-pressure_time)*1000))))
                     readable, _, _ = select.select([master], [], [], .03)
                     if readable:
                         pending.extend(os.read(master, 8192))
@@ -159,6 +172,14 @@ def main(binary):
             assert all(abs(t[1]) <= .08001 and abs(t[2]) <= .08001 and t[3] <= 1.2 for t in targets)
             assert request(socket, 'reset').startswith('ERR')
             assert request(socket, 'start').startswith('ERR')
+            # An actual independent M10 loss must terminate hover and DISARM.
+            state['pressure_enabled'] = False
+            deadline = time.monotonic()+4
+            while time.monotonic()<deadline:
+                status=json.loads(request(socket,'status'))
+                if status['phase']=='FAULT' and not state['armed']:break
+                time.sleep(.05)
+            else:raise AssertionError(('pressure loss did not disarm',status))
             assert request(socket,'abort').startswith('OK')
             deadline=time.monotonic()+2
             while state['armed'] and time.monotonic()<deadline:

@@ -22,8 +22,15 @@ int main(int argc, char** argv) {
   std::strncpy(addr.sun_path,path.c_str(),sizeof(addr.sun_path)-1);
   if (fd < 0 || ::connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))) { perror("control socket"); return 1; }
   ::write(fd,cmd.data(),cmd.size());
-  char b[4096]{}; auto n = ::read(fd,b,sizeof(b));
-  if (n <= 0) { std::cerr << "no response\n"; return 1; }
-  std::string response(b,static_cast<std::size_t>(n)); std::cout << response;
+  char b[4096]{}; std::string response;ssize_t n=0;
+  while ((n=::read(fd,b,sizeof(b)))>0) {
+    if(response.size()+static_cast<std::size_t>(n)>1024*1024) {
+      std::cerr << "response too large\n";::close(fd);return 1;
+    }
+    response.append(b,static_cast<std::size_t>(n));
+  }
+  ::close(fd);
+  if (n<0 || response.empty()) { std::cerr << "no response\n"; return 1; }
+  std::cout << response;
   return response.rfind("ERR",0) == 0 ? 1 : 0;
 }

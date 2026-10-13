@@ -130,7 +130,7 @@ localization:
   camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, -1] # 下视图像右侧为机体前方
   camera_offset_m: [0.09, 0.01, -0.06]  # user measured, metres; camera orientation is a separate field
   depth_offset_m: [-0.16, 0.02, -0.05]  # user-confirmed body-frame metres
-  imu_signs: []  # roll/pitch 已实测 +1；yaw 数值映射待取证，不能填完整三元组
+  imu_signs: [1, 1, 1] # roll/pitch 沿用已有实测；yaw 左右转证据 2026-10-13 确认 +1
   imu_offsets_deg: [0, 0, 0] # MCU 已扣水平参考和首帧 yaw 原点，不重复扣除
   pool_depth_m: 1.4 # 用户确认实际水深，m；作业上限仍独立配置
   depth_zero_m: 0 # AUV 固件先扣 AUV_DEPTH_ZERO_M；定位不重复扣零，非实测零点值
@@ -146,10 +146,10 @@ recording:
 
 # Fill safe relative-origin corridors from real pool measurements. No default patrol.
 observation_search:
-  enabled: false
+  enabled: false # 最短任务启用前必须实测安全走廊和相对原点航点
   corridor_calibrated: false
   maximum_radius_m: 0
-  waypoints_m: []
+  waypoints_m: [] # 起点附近小范围绕行，寻找前视或下视 ID18；相对起点 X前/Y左
   maximum_speed: 0.1
   position_gain: 0.4
   arrival_tolerance_m: 0.1
@@ -170,6 +170,10 @@ release:
 tag_docking:
   id: 18
   size_m: 0.138
+  approach_only: true # 最小任务：前视靠近、短时盲区交接、下视确认后按配置返航
+  observation_sec: 8 # 下视确认后悬停并保留双摄原始帧；运动安全门仍持续生效
+  return_to_origin: true # 本次启动的相对原点即红框终点；下视确认后按实际出航轨迹回退
+  finish_waypoints_m: [] # 可选显式返航航点；为空时沿本次出航轨迹返回原点
   stable_frames: 3
   minimum_depth_m: 0.1
   maximum_depth_m: 1.2
@@ -178,15 +182,20 @@ tag_docking:
   depth_tolerance_m: 0.03
   depth_hold_sec: 2
   depth_stage_timeout_sec: 30
+  depth_sample_timeout_sec: 2.5 # 独立 M10 采样；图像 0.3 秒门控保持不变
   maximum_target: 0.08 # 协议归一化平移目标，不能解释为 m/s
   down_maximum_target: 0.04
+  blind_handoff_maximum_target: 0.02 # 归一化运动目标；仅在前视稳定观测后短时交接
+  blind_handoff_timeout_sec: 1.0
+  blind_handoff_maximum_distance_m: 0.12 # 有效连续定位的位移上限
+  blind_handoff_start_range_m: 0.25 # 前视最后一次有效接近修正的最大距离
   hover_maximum_target: 0.03
   maximum_target_change_per_sec: 0.08 # 归一化目标向量每秒变化上限；丢失/故障立即清零
   hover_resume_error_px: 15 # 10 px 内停止修正，超过 15 px 才重新纠偏
   minimum_tag_edge_px: 8
   tag_border_margin_px: 3
   position_gain: 0.3
-  maximum_radius_m: 0 # 实测无障碍的局部直线接近范围
+  maximum_radius_m: 0.5 # 用户 2026-10-13 给出的约 50 cm 范围；净空验收仍独立门控
   task_timeout_sec: 90
   tag_loss_timeout_sec: 2
   observation_timeout_sec: 0.3
@@ -194,10 +203,13 @@ tag_docking:
   center_tolerance_px: 10
   center_hold_sec: 2
   maximum_tilt_rad: 0.15
-  geometry_verified: false
+  geometry_verified: true # 用户接受该批测距误差；仅标记标签几何，其他运动门仍独立
+  geometry_user_accepted: true # 2026-10-13 用户接受现有误差用于最小靠近任务
   corridor_verified: false
   depth_verified: false
   front_camera_to_body: [0, -0.7071067811865476, 0.7071067811865476, -1, 0, 0, 0, -0.7071067811865476, -0.7071067811865476]
   front_camera_offset_m: [0.15, 0.03, 0.02]
-  down_camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, 0, -1]
+  front_body_bias_m: [-0.00781145555555554, 0.01264229027777778, 0.21651239583333337]
+  down_camera_to_body: [1, 0, 0, 0, -1, 0, 0, 0, -1]
   down_camera_offset_m: [0.09, 0.01, -0.06]
+  down_body_bias_m: [0.019853422222222215, 0.04305282222222222, 0.09923506666666668]

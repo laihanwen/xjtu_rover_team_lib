@@ -42,6 +42,8 @@ AuvArmResult AuvSafety_RequestArm(uint8_t arm, uint32_t now_ms);
 void AuvSafety_SetInputs(uint8_t kill_active,
                          uint8_t sensors_valid,
                          uint32_t now_ms);
+/* Assert always; clearing requires an explicit permitted, disarmed request. */
+uint8_t AuvSafety_ApplyRemoteKill(uint8_t active, uint8_t clear_allowed, uint32_t now_ms);
 AuvSafetyState AuvSafety_GetState(void);
 uint8_t AuvSafety_IsArmed(void);
 const AuvSafetyContext *AuvSafety_GetContext(void);

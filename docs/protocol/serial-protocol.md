@@ -99,6 +99,10 @@ ARM 必须显式请求；运动指令不能隐式 ARM。STM32 必须用 ACK 报�
 Pi OPEN/CLOSE 还要求本次 ARM 周期已经锁定 Pi 控制源；STM32 拒绝重复或过期
 sequence。业务层不得使用中间浮点值直接控制 PWM。
 
+### REMOTE_KILL `0x06`
+
+`REMOTE_KILL (0x06)` 的单字节 payload 为 0/1。ROV 与 AUV 均接受 1 并立即请求 DISARM、保持急停锁定；格式不合法不改变状态。清除值 0 必须在 DISARM 下满足许可：ROV 要求有效手柄安全许可，AUV 要求完整自主标定与水平校准。清除不自动 ARM。它是软件急停，不代表存在物理急停或漏水传感器。
+
 ### ACK `0x7F`
 
 | Offset | 类型 | 字段 |

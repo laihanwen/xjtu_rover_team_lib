@@ -1,0 +1,14 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>最短任务与人工九宫格记录</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,'Microsoft YaHei',sans-serif}*{box-sizing:border-box}body{margin:0;background:#09141e;color:#e6eff5}main{max-width:1080px;margin:auto;padding:24px}h1{margin:10px 0}p{line-height:1.6;color:#b3c6d3}a{color:#67dbbf}.panel{background:#12212e;border:1px solid #2a4050;border-radius:12px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.cell{background:#1b3040;border:1px solid #375061;border-radius:8px;padding:12px}.cell label{display:block}.cell select,input,textarea,button{background:#203849;color:#eef6fa;border:1px solid #547084;border-radius:6px;padding:9px;font:inherit}.cell select{width:100%;margin-top:8px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.row>*{max-width:100%}button{cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.status{font-family:monospace;white-space:pre-wrap;overflow-wrap:anywhere}.warn{color:#ffcd87}.good{color:#73dfc0}textarea{width:100%;min-height:90px}small{color:#9db2c0} @media(max-width:640px){.grid{gap:5px}.cell{padding:7px}.cell select{font-size:13px}main{padding:14px}}
+</style>
+<main><a href="/">← 驾驶台</a><h1>起点 → 标签 → 终点</h1>
+<p>绕行只使用事先测量的安全航点；前视或下视确认 ID18 后进入标签阶段，完成后按已配置的安全航点到终点。此页用于观察和整理证据，不发送 START、ARM 或运动命令。</p>
+<section class="panel"><h2>当前机载状态</h2><div id="live" class="status">正在读取…</div><p class="warn" id="gate"></p></section>
+<section class="panel"><h2>人工填写九宫格</h2><p>选择黄边的真实方位；格位按黄边朝下的规范坐标填写。未观察的格保持“未知”，不要自动当作空格。此处只生成带人工来源的提交地图。</p>
+<div class="row"><label>黄边在现场的方向 <select id="yellow"><option value="unknown">未知</option><option value="north">北</option><option value="east">东</option><option value="south">南</option><option value="west">西</option></select></label><label>观察说明 <input id="note" placeholder="例如：现场人工目视确认"></label></div>
+<div id="grid" class="grid"></div><p id="map-check" class="warn"></p></section>
+<section class="panel"><h2>日志与导出</h2><p>可直接读取当前机载事件日志；如比赛后设备离线，也可导入下载的 events.ndjson。导出文件包含原始日志和追加的 <code>MANUAL_GRID_ANNOTATION</code>，不会改写原始传感器事件。</p>
+<div class="row"><button id="fetch-log">读取当前机载日志</button><label>或导入日志 <input id="file" type="file" accept=".ndjson,.jsonl,.log"></label><button id="export-map">导出人工地图 JSON</button><button id="export-log" disabled>导出注释日志 NDJSON</button></div><p id="log-info" class="status">尚未读取日志</p></section>
+<script src="minimal-task.js"></script></main>

@@ -10,18 +10,18 @@
 #define AUV_AUTONOMY_COMMISSIONED 0
 #endif
 #ifndef AUV_DEPTH_ZERO_CALIBRATED
-#define AUV_DEPTH_ZERO_CALIBRATED 0
+#define AUV_DEPTH_ZERO_CALIBRATED 1 /* 用户 2026-10-13 确认水面原始读数 */
 #endif
 #ifndef AUV_DEPTH_ZERO_M
-#define AUV_DEPTH_ZERO_M 0.0f /* TODO: measured surface gauge reading */
+#define AUV_DEPTH_ZERO_M (-0.05f) /* 校正深度 = 原始读数 - (-0.05 m) */
 #endif
 /* Same conservative output ceiling as the established ROV low-speed profile. */
 #define AUV_AUTONOMY_PWM_LIMIT 100.0f
 #ifndef AUV_AUTONOMY_SURGE_PWM_PER_TARGET
-#define AUV_AUTONOMY_SURGE_PWM_PER_TARGET 0.0f /* TODO: restrained-tank calibration */
+#define AUV_AUTONOMY_SURGE_PWM_PER_TARGET 300.0f /* ROV low-speed 300/255 per stick count; trial feed-forward only */
 #endif
 #ifndef AUV_AUTONOMY_SWAY_PWM_PER_TARGET
-#define AUV_AUTONOMY_SWAY_PWM_PER_TARGET 0.0f
+#define AUV_AUTONOMY_SWAY_PWM_PER_TARGET 300.0f /* Same ROV low-speed mapping; this route commands zero sway */
 #endif
 #ifndef AUV_AUTONOMY_DEPTH_FZ_SIGN
 #define AUV_AUTONOMY_DEPTH_FZ_SIGN 0.0f /* TODO: +1/-1, measured correction direction */

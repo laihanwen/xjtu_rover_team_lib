@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Yaw 符号测试</title>
+<style>body{background:#09141e;color:#e6eff5;font:17px/1.7 system-ui;margin:0}main{max-width:800px;margin:40px auto;padding:24px}section{background:#12212e;border:1px solid #486171;border-radius:12px;padding:24px;margin:20px 0}button,select{font:inherit;background:#203849;color:inherit;border:1px solid #486171;padding:12px;border-radius:6px;margin:6px}strong{color:#61dfbf;font-size:32px}pre{white-space:pre-wrap}a{color:#61dfbf}</style>
+<main><a href="/">返回驾驶台</a><h1>Yaw 符号测试</h1><p>保持 DISARM，手动转动机体。俯视机器人：逆时针左转为机体 Z 向上的正方向。本页只读取遥测，不发送控制命令。</p>
+<section><p id="health">等待遥测</p><strong id="yaw">—</strong><p id="depth">—</p>
+<select id="direction"><option value="1">手动左转（俯视逆时针）</option><option value="-1">手动右转（俯视顺时针）</option></select><br>
+<button id="begin" disabled>记录起点</button><button id="end" disabled>记录终点</button><button id="export" disabled>导出证据 JSON</button>
+<p>建议缓慢转动 30–90°，每次相邻采样转角应小于 45°；完成左转、右转各一次并核对建议符号一致。跨越 ±180° 自动展开。</p><pre id="result">尚未记录</pre></section></main>
+<script src="yaw.js"></script></html>

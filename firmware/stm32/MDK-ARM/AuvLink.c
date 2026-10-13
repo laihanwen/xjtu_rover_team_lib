@@ -163,14 +163,16 @@ static void DispatchFrame(const AuvProtocolFrame *frame, uint32_t now_ms)
         }
 #endif
     } else if (frame->message_type == AUV_MSG_REMOTE_KILL) {
-#if AUV_ROV_MANUAL_TRIAL
         if (frame->payload_length == 1U && frame->payload[0] <= 1U) {
-            if (frame->payload[0] || AuvRcInput_CanArm(now_ms)) {
+#if AUV_ROV_MANUAL_TRIAL
+            const uint8_t clear_allowed = AuvRcInput_CanArm(now_ms);
+#else
+            const uint8_t clear_allowed = AUV_AUTONOMY_READY && imu_level_calibrated;
+#endif
+            if (AuvSafety_ApplyRemoteKill(frame->payload[0], clear_allowed, now_ms)) {
                 external_kill_active = frame->payload[0];
-                if (external_kill_active) (void)AuvSafety_RequestArm(0U,now_ms);
             }
         }
-#endif
     } else if (frame->message_type == AUV_MSG_MOTION_TARGET) {
         uint32_t sequence = (frame->payload_length >= 4U)
             ? AuvProtocol_ReadU32Le(frame->payload) : 0U;
@@ -400,9 +402,13 @@ void AuvLink_Init(void)
     last_imu_ms = last_status_ms;
     last_imu_sequence = imu_sample_sequence;
 
-    external_safety_seen = AUV_ROV_MANUAL_TRIAL ? 1U : 0U;
+    /* This board has no wired external safety sensor. A commissioned AUV
+     * uses its actual depth/IMU/level gates below and the existing KILL command.
+     * Uncommissioned builds remain fail-closed. A later board input supplied
+     * via SetSafetyInputs overrides this policy; never invent a leak input. */
+    external_safety_seen = (AUV_ROV_MANUAL_TRIAL || AUV_AUTONOMY_READY) ? 1U : 0U;
     external_kill_active = AUV_ROV_MANUAL_TRIAL ? 1U : 0U;
-    external_sensors_valid = AUV_ROV_MANUAL_TRIAL ? 1U : 0U;
+    external_sensors_valid = (AUV_ROV_MANUAL_TRIAL || AUV_AUTONOMY_READY) ? 1U : 0U;
     depth_sequence = 0U;
     actuator_sequence = 0U;
     last_actuator_ms = last_status_ms;

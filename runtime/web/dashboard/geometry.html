@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>标签几何验证</title>
+<link rel="stylesheet" href="geometry.css"><main><header><a href="/">返回驾驶台</a><span id="connection" role="status">正在连接</span></header>
+<h1>用尺子验证标签位置</h1><p class="intro">先验证测距与方向，再决定是否通过几何标定门。本页只观察，不控制推进器。</p>
+<nav id="steps" aria-label="验证步骤"></nav><div class="layout"><section class="view"><div class="view-head"><h2 id="camera-title">前视画面</h2><span id="frame">等待新帧</span></div><div class="camera-frame"><img id="image" alt="实时相机预览"></div><p id="quality" role="status">等待标签诊断</p><dl><dt>标签中心相对机体：前 / 左 / 下</dt><dd id="position">—</dd><dt>重投影误差</dt><dd id="reprojection">—</dd><dt>生产几何门</dt><dd id="gate">未通过</dd></dl><p class="small">预览与数值异步更新。记录证据按数值对应的独立帧号保存，不将当前预览当作同帧证据。</p></section>
+<section class="work"><p id="step-number" class="small"></p><h2 id="step-title"></h2><p id="instruction"></p><details open><summary>如何测量</summary><p>保持机体水平、DISARM。量到标签黑色方块中心，并选择实际测量原点。镜头起量时仍沿机体前/左/下方向量取，不沿倾斜光轴量斜距；页面自动计入相机安装偏移。前/左为正，后/右为负，向下为正。</p><p>使用水下参数，须在实际水下成像条件中验证。先受控固定机体与桨区，再手动摆放；本页不要求你驱动推进器。</p></details>
+<p id="correction-note" class="small"></p><label>测量原点<select id="measurement-origin"><option value="lens">当前相机镜头（自动转换到机体中心）</option><option value="body">机体几何中心</option></select></label>
+<label class="confirm"><input id="underwater" type="checkbox">已确认水下成像、机体固定、标签水平且完整入镜</label>
+<fieldset><legend>输入本次实测值（cm）</legend><label>前方 X<input id="x" type="number" step="0.1" placeholder="如 30"></label><label>左侧 Y<input id="y" type="number" step="0.1" placeholder="如 -10"></label><label>向下距离<input id="z" type="number" min="0.1" step="0.1" placeholder="如 40"></label></fieldset>
+<label>评估容差（cm，初始建议，非已验收标准）<input id="tolerance" type="number" min="0.1" max="10" step="0.1" value="3"></label>
+<div class="actions"><button id="capture" disabled>采集 3 秒稳定观测</button><button id="next" disabled>下一位置</button></div><p id="result" role="status">等待机载诊断数据。</p>
+<button id="export" disabled>导出全部验证证据</button><button id="reset">重新开始一组验证</button></section></div>
+<section class="records"><h2>已记录的位置</h2><div class="table-wrap"><table><thead><tr><th>相机 / 位置</th><th>实测 前/左/下 cm</th><th>计算 前/左/下 cm</th><th>误差 cm</th><th>初步评估</th></tr></thead><tbody id="records"></tbody></table></div><p id="conclusion">至少完成前视、下视各三个位置。误差符合所选容差只是本组验证证据；不会自动写回标定或允许 ARM。</p></section><footer>证据保留参数版本、运行会话、帧号及采样数。故障、ARM、数据过期或会话变化会使本次采集作废。</footer></main><script src="geometry.js"></script></html>

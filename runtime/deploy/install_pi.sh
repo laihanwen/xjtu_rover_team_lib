@@ -17,7 +17,7 @@ check_pi_power() {
 }
 check_pi_power
 sudo apt-get update
-sudo apt-get install -y cmake ninja-build g++ pkg-config libopencv-dev libyaml-cpp-dev libcpp-httplib-dev ffmpeg
+sudo apt-get install -y cmake ninja-build g++ pkg-config libopencv-dev libyaml-cpp-dev libcpp-httplib-dev ffmpeg python3-yaml
 if ! command -v rpicam-vid >/dev/null 2>&1; then
   sudo apt-get install -y rpicam-apps
 fi
@@ -57,6 +57,8 @@ sudo chown root:auv /etc/auv-runtime/runtime.yaml
 sudo chmod 0640 /etc/auv-runtime/runtime.yaml
 sudo -u auv /usr/local/bin/auv_runtime --check-config /etc/auv-runtime/runtime.yaml
 sudo cp runtime/deploy/auv-runtime.service /etc/systemd/system/auv-runtime.service
+sudo cp runtime/deploy/auv-tag-docking-autoboot.service /etc/systemd/system/auv-tag-docking-autoboot.service
+sudo cp runtime/deploy/auv-boot-tag-route.service /etc/systemd/system/auv-boot-tag-route.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now auv-runtime.service
 printf '%s\n' 'Service installed. It starts DISARMED. Edit /etc/auv-runtime/runtime.yaml with measured hardware values.'

@@ -29,10 +29,14 @@ install(FILES config/runtime.yaml config/pi-rov.yaml DESTINATION etc/auv-runtime
 install(FILES config/pi-auv-observation.yaml DESTINATION etc/auv-runtime)
 install(FILES config/pi-auv-task-one.yaml DESTINATION etc/auv-runtime)
 install(FILES config/pi-auv-tag-docking.yaml DESTINATION etc/auv-runtime)
+install(FILES config/pi-auv-boot-tag-route.yaml DESTINATION etc/auv-runtime)
 install(FILES deploy/auv-runtime.service DESTINATION lib/systemd/system)
 install(FILES deploy/auv-observation.service DESTINATION lib/systemd/system)
 install(FILES deploy/auv-task-one.service DESTINATION lib/systemd/system)
 install(FILES deploy/auv-tag-docking.service DESTINATION lib/systemd/system)
+install(FILES deploy/auv-tag-docking-autoboot.service DESTINATION lib/systemd/system)
+install(FILES deploy/auv-boot-tag-route.service DESTINATION lib/systemd/system)
+install(PROGRAMS deploy/tag_docking_autoboot.py DESTINATION share/auv-runtime/deploy)
 if(BUILD_TESTING)
   add_executable(auv_runtime_stage_validation test/runtime_stage_validation.cpp)
   target_compile_features(auv_runtime_stage_validation PRIVATE cxx_std_17)
@@ -83,6 +87,9 @@ if(BUILD_TESTING)
       add_test(NAME tag_docking_simulation
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/tag_docking_simulation.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(tag_docking_simulation PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
+      add_test(NAME geometry_probe_readonly
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/geometry_probe.py $<TARGET_FILE:auv_runtime>)
+      set_tests_properties(geometry_probe_readonly PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 25)
       add_test(NAME calibration_profiles
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_calibration_profiles.py)
       add_test(NAME camera_mounting_geometry

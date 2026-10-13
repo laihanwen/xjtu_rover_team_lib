@@ -1,0 +1,19 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>受限运动测试</title>
+<style>body{font:18px system-ui;background:#eef3f5;color:#182b34;max-width:850px;margin:40px auto;padding:20px}section{background:white;padding:24px;border-radius:16px;margin:16px 0}button{font:inherit;padding:18px;margin:6px;border:1px solid #abc;border-radius:10px;touch-action:none}button:disabled{opacity:.4}#stop{background:#a52232;color:white}pre{white-space:pre-wrap;font:16px system-ui}.grid{display:grid;grid-template-columns:1fr 1fr}h1{font-size:30px}</style>
+<h1>受限运动测试 · 显式使能</h1>
+<p>使用独立 ROV 固件和 ROV 串口桥。AUV 固件不能用此页使能。保留 ROV 已有姿态及保持控制，测试的是运动通道响应。</p>
+<section><h2>1 / 连接与校平</h2><pre id="status">正在读取状态…</pre><label><input id="shore" type="checkbox">机体已在岸上放平，当前未 ARM</label><br><button id="level">采集校平</button></section>
+<section><h2>2 / 使能</h2><p>保持遥控器实体安全许可开关，确认机体受控且桨区无人，再点 ARM。页面不会自动使能。</p><button id="arm" disabled>显式 ARM</button><button id="stop">停止并 DISARM</button></section>
+<section><h2>3 / 按住点动</h2><p>固定低速、单次最多 1 秒；松手即 DISARM。每次测试重新 ARM。正负为控制通道方向，实际运动由你观察记录。</p><div class="grid" id="jogs"></div><pre id="message"></pre></section>
+<script>
+const $=id=>document.getElementById(id);let active=null,timer=null,busy=false;
+async function action(data){const r=await fetch('/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||r.status);return v}
+function report(e){$('message').textContent=e.message||String(e)}
+function release(){active=null;clearInterval(timer);timer=null;action({action:'release'}).catch(report)}
+async function refresh(){if(!active||busy)return;busy=true;try{await action({action:'jog',axis:active})}catch(e){release();report(e)}finally{busy=false}}
+for(const [axis,label] of [['surge+','前后 +'],['surge-','前后 −'],['sway+','横移 +'],['sway-','横移 −'],['heave+','升沉 +'],['heave-','升沉 −'],['yaw+','偏航 +'],['yaw-','偏航 −']]){const b=document.createElement('button');b.textContent=label;b.disabled=true;b.className='jog';b.onpointerdown=e=>{if(active)return;e.preventDefault();b.setPointerCapture(e.pointerId);active=axis;refresh();timer=setInterval(refresh,70)};b.onpointerup=release;b.onpointercancel=release;b.onlostpointercapture=()=>{if(active)release()};$('jogs').append(b)}
+$('arm').onclick=()=>action({action:'arm'}).catch(report);$('stop').onclick=()=>{release();action({action:'stop'}).catch(report)};
+$('level').onclick=()=>action({action:'level',shore_confirmed:$('shore').checked}).catch(report);
+window.addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release()});window.addEventListener('pagehide',()=>navigator.sendBeacon('/action',new Blob([JSON.stringify({action:'stop'})],{type:'application/json'})));
+async function poll(){try{const r=await fetch('/state');if(!r.ok)throw Error('状态连接失败');const s=await r.json(),t=s.telemetry||{};$('status').textContent=`${s.detail||''}\n链路：${s.connected?'已连接':'未连接'} / 实体许可：${s.deadman?'有效':'未保持'}\n固件模式：${t.operating_mode||'未知'} / ARM：${t.armed?'已使能':'未使能'}\n校平：${t.level_calibrated?'已完成':'未完成'} / 深度：${t.depth_m??'无读数'}\n${s.error||''}`;$('message').textContent=JSON.stringify({点动:s.jog,MCU输出:t.outputs},null,2);$('arm').disabled=!s.can_arm;const ready=s.connected&&s.deadman&&t.armed&&s.telemetry_age<.3;document.querySelectorAll('.jog').forEach(b=>b.disabled=!ready);if(!ready&&active)release()}catch(e){$('arm').disabled=true;document.querySelectorAll('.jog').forEach(b=>b.disabled=true);if(active)release();report(e)}setTimeout(poll,100)}poll();
+</script></html>
