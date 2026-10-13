@@ -9,19 +9,21 @@
 // not metres per second. The time-based fallback is explicitly open loop.
 struct BootTagRouteConfig {
   bool explicit_motion_authorization{};
-  double stable_sec{10}, stable_span_m{.03}, min_start_depth_m{.35}, max_depth_m{1.2};
+  double stable_sec{10}, stable_span_m{.03}, min_start_depth_m{.35};
+  double min_operating_depth_m{.1}, max_depth_m{1.2};
   double ascend_m{.2}, depth_tolerance_m{.04}, ascend_timeout_sec{30};
   double forward_target{.04}, forward_sec{15}, max_displacement_m{.5};
   double return_timeout_sec{25}, arrival_tolerance_m{.12}, hold_sec{2}, hold_timeout_sec{12};
   double yaw_limit_rad{.35}, arm_timeout_sec{5};
   void validate() const {
-    for(double v:{stable_sec,stable_span_m,min_start_depth_m,max_depth_m,ascend_m,
+    for(double v:{stable_sec,stable_span_m,min_start_depth_m,min_operating_depth_m,max_depth_m,ascend_m,
       depth_tolerance_m,ascend_timeout_sec,forward_target,forward_sec,max_displacement_m,
       return_timeout_sec,arrival_tolerance_m,hold_sec,hold_timeout_sec,yaw_limit_rad,arm_timeout_sec})
       if(!std::isfinite(v))throw std::runtime_error("nonfinite boot route limit");
     if(stable_sec<10||stable_span_m<=0||stable_span_m>.05||min_start_depth_m<.3||
-       max_depth_m>1.2||min_start_depth_m>=max_depth_m||ascend_m!=.2||
-       min_start_depth_m-ascend_m<.1||depth_tolerance_m<=0||depth_tolerance_m>.05||
+       min_operating_depth_m<.1||max_depth_m>1.2||min_start_depth_m>=max_depth_m||ascend_m!=.2||
+       min_start_depth_m-ascend_m<min_operating_depth_m+depth_tolerance_m||
+       depth_tolerance_m<=0||depth_tolerance_m>.05||
        ascend_timeout_sec<=0||forward_target<=0||forward_target>.08||
        forward_sec<=0||forward_sec>15||max_displacement_m<=0||max_displacement_m>.5||
        return_timeout_sec<=forward_sec||return_timeout_sec>45||
@@ -62,10 +64,15 @@ class BootTagRoute {
   Output step(const Input& in) {
     Output out;out.target_depth=target_depth_;out.target_yaw=yaw_target_;
     if(phase==Phase::Done||phase==Phase::Fault)return out;
+    const bool depth_outside=std::isfinite(in.depth)&&
+      (in.depth<0||in.depth>cfg_.max_depth_m||
+       (phase!=Phase::WaitDepth&&in.depth<cfg_.min_operating_depth_m));
     if(!std::isfinite(in.now)||!std::isfinite(in.depth)||!std::isfinite(in.yaw)||
+       (in.pose_valid&&(!std::isfinite(in.x)||!std::isfinite(in.y)))||
        !in.depth_fresh||!in.status_safe||!in.cameras_fresh||!in.recording_ready||
-       in.depth<0||in.depth>cfg_.max_depth_m){
-      if(phase!=Phase::WaitDepth) return fail("sensor, status, camera, recording or depth invalid");
+       depth_outside){
+      if(phase!=Phase::WaitDepth)return fail(depth_outside?"depth outside operating envelope":
+        "sensor, status, camera, recording or pose invalid");
       reset_stability();return out;
     }
     if(phase==Phase::WaitDepth){
@@ -79,7 +86,8 @@ class BootTagRoute {
       }
       if(stable_samples_>=5&&stable_since_&&in.now-stable_since_>=cfg_.stable_sec){
         stable_depth=in.depth;target_depth_=stable_depth-cfg_.ascend_m;
-        if(target_depth_<.1)return fail("ascent target shallower than envelope");
+        if(target_depth_<cfg_.min_operating_depth_m+cfg_.depth_tolerance_m)
+          return fail("ascent target shallower than envelope");
         yaw_target_=in.yaw;start_x_=in.x;start_y_=in.y;pose_at_start_=in.pose_valid;
         phase=Phase::WaitArm;entered_=in.now;
         out.start=out.arm=true;out.transition=true;out.event="DEPTH_STABLE";

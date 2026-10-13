@@ -255,9 +255,7 @@ class Runtime {
   }
   bool arm_gate_ready(double now) const {
     if(cfg_.mission_profile=="boot_tag_route")return boot_route_.phase==BootTagRoute::Phase::WaitArm&&
-      cfg_.boot_route.explicit_motion_authorization&&cfg_.motion_enabled&&
-      cfg_.directions_calibrated&&cfg_.limits_calibrated&&!cfg_.serial.empty()&&
-      cfg_.docking.corridor_verified&&cfg_.docking.depth_verified&&
+      cfg_.boot_route.explicit_motion_authorization&&cfg_.motion_enabled&&!cfg_.serial.empty()&&
       fault_.empty()&&safe_status(now)&&!status_.armed&&depth_sample_fresh(now)&&
       depth_sample_.depth_m>=cfg_.boot_route.min_start_depth_m&&recording_ready(now)&&
       frame_time_>0&&now-frame_time_<=cfg_.frame_timeout&&front_time_>0&&
@@ -784,7 +782,7 @@ class Runtime {
       }else{
         event("DEPTH_STABLE", "depth_m="+std::to_string(boot_route_.stable_depth)+
           " stable_sec="+std::to_string(cfg_.boot_route.stable_sec));
-        event("AUTO_START","boot tag route; explicit_motion_authorization=true; calibration flags unchanged");
+        event("AUTO_START","boot tag route; explicit_motion_authorization=true; per-task calibration exception; MCU safety gates retained");
         if(arm_gate_ready(now))request_arm_locked("autonomous boot tag route");
         else{boot_route_.fail("ARM safety gate rejected");set_fault_locked(boot_route_.fault_reason);}
       }
@@ -798,10 +796,12 @@ class Runtime {
           event("TAG_SEEN","id="+std::to_string(tag.id)+" camera="+(input.front_tag?"front":"down")+
             " frame="+std::to_string(tag.sequence)+" frame_steady_sec="+std::to_string(tag.stamp)+
             " pose_valid="+(tag.metric_valid?"true":"false")+
-            " tag_body_x_m="+std::to_string(tag.tag_forward)+
-            " tag_body_y_m="+std::to_string(tag.tag_left)+
-            " tag_body_z_m="+std::to_string(tag.tag_up));}
+            (tag.metric_valid?" tag_body_x_m="+std::to_string(tag.tag_forward)+
+              " tag_body_y_m="+std::to_string(tag.tag_left)+
+              " tag_body_z_m="+std::to_string(tag.tag_up):" pose_unavailable=true"));}
         event("RETURN_START",boot_route_.open_loop_return?"open_loop_duration_estimate":"measured_origin");
+        if(boot_route_.open_loop_return)
+          event("RETURN_OPEN_LOOP","no continuous measured origin; reverse duration estimates outbound travel");
       }
     }
     if(!fault_.empty()&&boot_route_.phase!=BootTagRoute::Phase::Fault)boot_route_.fail(fault_);

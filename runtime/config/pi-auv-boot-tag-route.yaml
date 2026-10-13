@@ -35,11 +35,11 @@ serial:
 control:
   socket: /run/auv-runtime/control.sock
 operation:
-  # Commission the route before changing mode or enabling one-shot startup.
-  mode: debug
+  # Dedicated one-shot route: MCU safety gates and the 10 s depth gate still apply.
+  mode: autonomous
   auto_origin: true
-  auto_start: false
-  auto_arm: false
+  auto_start: true
+  auto_arm: true
   startup_delay_sec: 5.0
   startup_timeout_sec: 300.0
   startup_stable_sec: 1.0
@@ -88,7 +88,7 @@ safety:
   control_watchdog_timeout_sec: 0.25
   actuator_status_timeout_sec: 0.5
 motion:
-  motion_commands_enabled: false
+  motion_commands_enabled: true
   directions_calibrated: false
   limits_calibrated: false
   surge_from_row: 0.0
@@ -214,14 +214,15 @@ tag_docking:
   down_camera_offset_m: [0.09, 0.01, -0.06]
   down_body_bias_m: [0.019853422222222215, 0.04305282222222222, 0.09923506666666668]
 
-# Dedicated one-shot boot trial. Set this authorization only after the real
-# direction, limit, depth and hardware gates have been commissioned.
+# Project-owner authorization applies only to this bounded one-shot route;
+# the unverified calibration flags above remain false. MCU gates still apply.
 # Replace serial.device using the real Pi symlink before --check-config/enable.
 boot_tag_route:
-  explicit_motion_authorization: false
+  explicit_motion_authorization: true
   depth_stable_sec: 10
   depth_stable_span_m: 0.03
   minimum_start_depth_m: 0.35
+  minimum_operating_depth_m: 0.1
   maximum_depth_m: 1.2
   ascent_m: 0.2
   depth_tolerance_m: 0.04

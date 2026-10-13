@@ -87,6 +87,9 @@ if(BUILD_TESTING)
       add_test(NAME tag_docking_simulation
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/tag_docking_simulation.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(tag_docking_simulation PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
+      add_test(NAME boot_tag_route_simulation
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/boot_tag_route_simulation.py $<TARGET_FILE:auv_runtime>)
+      set_tests_properties(boot_tag_route_simulation PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 75)
       add_test(NAME geometry_probe_readonly
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/geometry_probe.py $<TARGET_FILE:auv_runtime>)
       set_tests_properties(geometry_probe_readonly PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 25)

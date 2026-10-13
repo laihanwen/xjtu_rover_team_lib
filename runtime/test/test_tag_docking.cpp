@@ -294,42 +294,17 @@ int main(int argc,char** argv) {
   bool rejected=false;try{load();}catch(const std::exception&){rejected=true;}
   check(rejected,"template cannot bypass commissioning");
   auto boot_yaml=YAML::LoadFile((std::filesystem::path(argv[1])/"runtime/config/pi-auv-boot-tag-route.yaml").string());
-  y=boot_yaml;
-  check(!y["operation"]["auto_start"].as<bool>()&&!y["operation"]["auto_arm"].as<bool>()&&
-        !y["motion"]["motion_commands_enabled"].as<bool>()&&
-        !y["boot_tag_route"]["explicit_motion_authorization"].as<bool>(),
-        "boot route template remains disarmed and unauthorized");
-  y["operation"]["mode"]="autonomous";
-  y["operation"]["auto_start"]=true;y["operation"]["auto_arm"]=true;
-  y["motion"]["motion_commands_enabled"]=true;
-  y["boot_tag_route"]["explicit_motion_authorization"]=true;
-  bool uncalibrated_rejected=false;try{load();}catch(const std::exception&){uncalibrated_rejected=true;}
-  check(uncalibrated_rejected,"boot route rejects unverified direction and limits");
-  y["motion"]["directions_calibrated"]=true;
-  bool limits_rejected=false;try{load();}catch(const std::exception&){limits_rejected=true;}
-  check(limits_rejected,"boot route rejects unverified limits");
-  y["motion"]["limits_calibrated"]=true;
-  bool depth_rejected=false;try{load();}catch(const std::exception&){depth_rejected=true;}
-  check(depth_rejected,"boot route rejects unverified depth and corridor");
-  y["tag_docking"]["depth_verified"]=true;
-  bool corridor_rejected=false;try{load();}catch(const std::exception&){corridor_rejected=true;}
-  check(corridor_rejected,"boot route rejects unverified corridor");
-  y["tag_docking"]["corridor_verified"]=true;
-  auto boot_config=load();
+  y=boot_yaml;auto boot_config=load();
   check(boot_config.mission_profile=="boot_tag_route"&&boot_config.auto_arm&&boot_config.motion_enabled&&
-        boot_config.boot_route.explicit_motion_authorization&&boot_config.directions_calibrated&&
-        boot_config.limits_calibrated&&boot_config.docking.depth_verified&&
-        boot_config.docking.corridor_verified,"commissioned boot route configuration is accepted");
-  y["tag_docking"]["depth_verified"]=false;
-  bool depth_only_rejected=false;try{load();}catch(const std::exception&){depth_only_rejected=true;}
-  check(depth_only_rejected,"boot route rejects unverified depth with verified corridor");
-  y["tag_docking"]["depth_verified"]=true;
-  y["motion"]["directions_calibrated"]=false;
-  bool directions_rejected=false;try{load();}catch(const std::exception&){directions_rejected=true;}
-  check(directions_rejected,"boot route rejects unverified direction with verified limits");
-  y["motion"]["directions_calibrated"]=true;
+        boot_config.boot_route.explicit_motion_authorization&&!boot_config.directions_calibrated&&
+        !boot_config.limits_calibrated&&!boot_config.docking.depth_verified&&
+        !boot_config.docking.corridor_verified,
+        "dedicated boot route authorizes one trial without falsifying calibration flags");
   y["boot_tag_route"]["explicit_motion_authorization"]=false;
   bool unauthorized_rejected=false;try{load();}catch(const std::exception&){unauthorized_rejected=true;}
   check(unauthorized_rejected,"boot motion requires dedicated authorization");
+  y=boot_yaml;y["operation"]["auto_arm"]=false;
+  bool auto_arm_rejected=false;try{load();}catch(const std::exception&){auto_arm_rejected=true;}
+  check(auto_arm_rejected,"boot route cannot silently omit its one-shot ARM request");
   std::filesystem::remove(temp);std::cout<<"tag docking regression passed\n";
 }

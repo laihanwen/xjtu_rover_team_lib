@@ -114,6 +114,7 @@ static Config load_config(const std::string& path) {
     b.stable_sec=t["depth_stable_sec"].as<double>(10);
     b.stable_span_m=t["depth_stable_span_m"].as<double>(.03);
     b.min_start_depth_m=t["minimum_start_depth_m"].as<double>(.35);
+    b.min_operating_depth_m=t["minimum_operating_depth_m"].as<double>(.1);
     b.max_depth_m=t["maximum_depth_m"].as<double>(1.2);
     b.ascend_m=t["ascent_m"].as<double>(.2);
     b.depth_tolerance_m=t["depth_tolerance_m"].as<double>(.04);
@@ -493,16 +494,14 @@ static Config load_config(const std::string& path) {
     c.boot_route.validate();
     if(!c.boot_route.explicit_motion_authorization||!c.auto_start||!c.auto_arm||
        c.operation_mode!="autonomous"||!c.motion_enabled||!c.recording_required||
-       !c.docking.corridor_verified||!c.docking.depth_verified||
-       c.docking.radius<c.boot_route.max_displacement_m||
        !c.front_enabled||c.apriltag_family!="tag16h5"||c.apriltag_ids!=std::vector<int>{18}||
        !c.down_preview_rectify||!c.front_preview_rectify||
        c.startup_timeout<=c.startup_delay+c.boot_route.stable_sec||
        c.route.maximum_speed<c.boot_route.forward_target)
-      throw std::runtime_error("boot tag route needs authorization, verified corridor/depth, auto mode, dual cameras and recording");
+      throw std::runtime_error("boot tag route needs explicit authorization, auto mode, dual cameras and recording");
     c.docking.validate(false);
   }
-  if (c.motion_enabled && (c.serial.empty() || !c.directions_calibrated || !c.limits_calibrated ||
+  if (c.motion_enabled && (c.serial.empty() || (!boot_trial&&(!c.directions_calibrated || !c.limits_calibrated)) ||
       c.route.maximum_speed <= 0 || c.route.maximum_speed > 0.2 ||
       c.camera_matrix.size() != 9 || c.distortion.empty() ||
       (!c.search.enabled && c.mission_profile!="tag_docking" && !boot_trial && (!std::isfinite(c.route.surge_from_row*c.route.sway_from_col-
