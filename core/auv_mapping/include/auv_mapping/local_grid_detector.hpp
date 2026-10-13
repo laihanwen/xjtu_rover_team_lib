@@ -100,6 +100,7 @@ class LocalGridDetector {
       if(std::abs(u)<.08*std::abs(v))xs.push_back(float((ca*(l[0]+l[2])+sa*(l[1]+l[3]))/2));
     }
     xs=cluster(xs);ys=cluster(ys);
+    xs=lattice_consensus(xs);ys=lattice_consensus(ys);
     if(xs.size()<2||ys.size()<2||xs.size()>4||ys.size()>4||!pitch_valid(xs)||!pitch_valid(ys)) {
       out.reason="pipe pitch does not match measured cell spacing";return out;
     }
@@ -152,6 +153,22 @@ class LocalGridDetector {
   }
  private:
   GridMapperConfig config_;
+  static std::vector<float> lattice_consensus(std::vector<float> v) {
+    // Keeps the largest subset of clustered line positions that lies on the
+    // measured 100 px cell lattice (a missing line yields an integer multiple
+    // of the pitch). A clipped boundary segment near the bird's-eye edge or a
+    // spurious Hough fragment must not veto an otherwise consistent lattice;
+    // the surviving subset is still re-checked by pitch_valid at 8 px.
+    if(v.size()<=2)return v;
+    std::sort(v.begin(),v.end());
+    std::size_t best_count=0;std::vector<float> best;
+    for(std::size_t base=0;base<v.size();++base) {
+      std::vector<float> kept;
+      for(double p:v){const double n=(p-v[base])/100.0;if(std::abs(n-std::round(n))*100.0<=8.0)kept.push_back(float(p));}
+      if(kept.size()>best_count){best_count=kept.size();best=std::move(kept);}
+    }
+    return best_count>=2?best:v;
+  }
   static std::vector<float> cluster(std::vector<float> input) {
     std::sort(input.begin(),input.end());std::vector<float> out;
     for(std::size_t i=0;i<input.size();) {

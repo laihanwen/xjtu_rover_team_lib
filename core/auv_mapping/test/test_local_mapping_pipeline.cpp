@@ -54,6 +54,11 @@ int main() {
   check(found.geometry.valid,"cropped yellow boundary topology must resolve");
   check(found.pose.valid,"local landmark PnP must resolve");
   check(std::abs(found.pose.row-2.4)<.08&&std::abs(found.pose.col-1.5)<.08,"metric local body position");
+  auto stray_pipe=image.clone();
+  cv::line(stray_pipe,pixel(.75,0),pixel(.75,1.5),{255,255,255},5);
+  const auto filtered=pipeline.process(stray_pipe,c,sensor,2,1,0);
+  check(filtered.geometry.valid&&filtered.pose.valid,
+    "one off-lattice pipe fragment cannot veto the measured grid");
   auto cone_image=image.clone();cv::circle(cone_image,pixel(1.25,1.25),15,{0,80,255},-1);
   cv::Mat partial(image.size(),CV_8U,cv::Scalar(255));partial(cv::Rect(209,84,5,5))=0;
   const auto partial_cone=pipeline.process(cone_image,c,sensor,2,1,0,partial);
