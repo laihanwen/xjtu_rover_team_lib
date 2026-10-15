@@ -9,6 +9,16 @@
 #ifndef AUV_AUTONOMY_COMMISSIONED
 #define AUV_AUTONOMY_COMMISSIONED 0
 #endif
+/* AUV-only boot level reference. Requires fresh, near-level IMU samples over
+ * a continuous stationary interval while DISARM; never grants ARM itself. */
+#ifndef AUV_AUTONOMY_AUTO_LEVEL_ON_BOOT
+#define AUV_AUTONOMY_AUTO_LEVEL_ON_BOOT 1
+#endif
+#define AUV_AUTONOMY_AUTO_LEVEL_WINDOW_MS 30000U
+#define AUV_AUTONOMY_AUTO_LEVEL_STABLE_MS 2000U
+#define AUV_AUTONOMY_AUTO_LEVEL_MIN_SAMPLES 18U
+#define AUV_AUTONOMY_AUTO_LEVEL_MAX_ABS_DEG 5.0f
+#define AUV_AUTONOMY_AUTO_LEVEL_MAX_SPREAD_DEG 0.5f
 #ifndef AUV_DEPTH_ZERO_CALIBRATED
 #define AUV_DEPTH_ZERO_CALIBRATED 1 /* 用户 2026-10-13 确认水面原始读数 */
 #endif

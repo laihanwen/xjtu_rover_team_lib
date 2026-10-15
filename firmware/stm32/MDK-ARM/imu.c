@@ -3,6 +3,8 @@
 #include "usart.h"
 #include "AuvAngles.h"
 #include "AuvH30Frame.h"
+#include "AuvAutonomyConfig.h"
+#include <math.h>
 #include <string.h>
 
 //主要负责读取和解析陀螺仪
@@ -27,10 +29,21 @@ uint8_t imu_data_ready = 0;
 volatile uint32_t imu_sample_sequence = 0U;
 
 // 陀螺仪漂移补偿相关
-FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // Manual pitch/roll reference; first-frame yaw origin
+FLOAT_Angle imu_offset = {0.0f, 0.0f, 0.0f};  // Boot or manual pitch/roll reference; first-frame yaw origin
 uint8_t imu_offset_calibrated = 0;  // 标志位：是否已经校准偏移量
 volatile uint8_t imu_level_calibrated = 0U;
 static FLOAT_Angle raw_angle;
+static uint32_t auto_level_last_sequence;
+static uint32_t auto_level_stable_since;
+static uint32_t auto_level_sample_count;
+static float auto_level_pitch_min, auto_level_pitch_max;
+static float auto_level_roll_min, auto_level_roll_max;
+
+static void imu_auto_level_reset_candidate(void)
+{
+    auto_level_sample_count = 0U;
+    auto_level_stable_since = 0U;
+}
 
 static AuvH30Frame h30_frame;
 volatile uint32_t imu_last_sample_ms;
@@ -179,7 +192,7 @@ void h30_parse_data(uint8_t *data, uint16_t len) {
             raw_angle.pit = pitch_raw_deg;
             raw_angle.rol = roll_raw_deg;
             raw_angle.yaw = yaw_raw_deg;
-            // Pitch/roll remain raw until an explicit shore calibration.
+            // Pitch/roll remain raw until the guarded boot or manual reference.
             Angle_Measure.pit = pitch_raw_deg - imu_offset.pit;
             Angle_Measure.yaw = yaw_raw_deg - imu_offset.yaw;
 			Angle_Measure.rol = roll_raw_deg - imu_offset.rol;
@@ -224,6 +237,8 @@ void imu_reset_offset(void) {
     imu_offset.pit = 0.0f;
     imu_offset.rol = 0.0f;
     imu_offset.yaw = 0.0f;
+    imu_auto_level_reset_candidate();
+    auto_level_last_sequence = 0U;
     __set_PRIMASK(mask);
 }
 
@@ -258,4 +273,53 @@ uint8_t imu_calibrate_level(void)
     }
     __set_PRIMASK(mask);
     return ok;
+}
+
+uint8_t imu_auto_level_tick(uint8_t disarmed)
+{
+#if AUV_AUTONOMOUS_PROFILE && AUV_AUTONOMY_AUTO_LEVEL_ON_BOOT
+    FLOAT_Angle angle;
+    uint32_t sequence, stamp;
+    uint32_t now = HAL_GetTick();
+    if (imu_level_calibrated || !disarmed ||
+        now > AUV_AUTONOMY_AUTO_LEVEL_WINDOW_MS ||
+        !imu_copy_fresh(&angle, &sequence, &stamp)) {
+        imu_auto_level_reset_candidate();
+        return 0U;
+    }
+    if (sequence == auto_level_last_sequence) return 0U;
+    auto_level_last_sequence = sequence;
+    if (!isfinite(angle.pit) || !isfinite(angle.rol) ||
+        fabsf(angle.pit) > AUV_AUTONOMY_AUTO_LEVEL_MAX_ABS_DEG ||
+        fabsf(angle.rol) > AUV_AUTONOMY_AUTO_LEVEL_MAX_ABS_DEG) {
+        imu_auto_level_reset_candidate();
+        return 0U;
+    }
+    if (auto_level_sample_count == 0U) {
+        auto_level_stable_since = stamp;
+        auto_level_pitch_min = auto_level_pitch_max = angle.pit;
+        auto_level_roll_min = auto_level_roll_max = angle.rol;
+    } else {
+        if (angle.pit < auto_level_pitch_min) auto_level_pitch_min = angle.pit;
+        if (angle.pit > auto_level_pitch_max) auto_level_pitch_max = angle.pit;
+        if (angle.rol < auto_level_roll_min) auto_level_roll_min = angle.rol;
+        if (angle.rol > auto_level_roll_max) auto_level_roll_max = angle.rol;
+        if (auto_level_pitch_max - auto_level_pitch_min > AUV_AUTONOMY_AUTO_LEVEL_MAX_SPREAD_DEG ||
+            auto_level_roll_max - auto_level_roll_min > AUV_AUTONOMY_AUTO_LEVEL_MAX_SPREAD_DEG) {
+            imu_auto_level_reset_candidate();
+            auto_level_stable_since = stamp;
+            auto_level_pitch_min = auto_level_pitch_max = angle.pit;
+            auto_level_roll_min = auto_level_roll_max = angle.rol;
+        }
+    }
+    ++auto_level_sample_count;
+    if (auto_level_sample_count < AUV_AUTONOMY_AUTO_LEVEL_MIN_SAMPLES ||
+        (uint32_t)(stamp - auto_level_stable_since) < AUV_AUTONOMY_AUTO_LEVEL_STABLE_MS)
+        return 0U;
+    imu_auto_level_reset_candidate();
+    return imu_calibrate_level();
+#else
+    (void)disarmed;
+    return 0U;
+#endif
 }

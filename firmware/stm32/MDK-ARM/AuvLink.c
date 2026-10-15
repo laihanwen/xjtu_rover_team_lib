@@ -468,6 +468,8 @@ void AuvLink_Task(void)
     uint32_t now_ms = HAL_GetTick();
     uint32_t primask = __get_PRIMASK();
     AuvDepthSample depth;
+    /* AUV boot reference never requests ARM or bypasses depth validity. */
+    (void)imu_auto_level_tick((uint8_t)!AuvSafety_IsArmed());
     __disable_irq();
     now_ms = HAL_GetTick();
     if (LinkUart()->RxState == HAL_UART_STATE_READY) {

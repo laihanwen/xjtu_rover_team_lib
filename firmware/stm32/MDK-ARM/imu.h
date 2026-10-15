@@ -40,6 +40,7 @@ extern FLOAT_Angle imu_offset;  // 存储第一次有效数据的偏移量
 extern uint8_t imu_offset_calibrated;  // 标志位：是否已经校准偏移量
 extern volatile uint8_t imu_level_calibrated;
 uint8_t imu_calibrate_level(void); /* Explicit shore action, caller must ensure DISARM. */
+uint8_t imu_auto_level_tick(uint8_t disarmed); /* One-shot AUV boot reference. */
 uint8_t imu_copy_fresh(FLOAT_Angle *angle, uint32_t *sequence, uint32_t *stamp);
 void imu_reset_offset(void);  // 重置偏移量校准（可选功能）
 

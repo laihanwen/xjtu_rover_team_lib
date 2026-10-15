@@ -1,6 +1,6 @@
 # 开机单次「上升—直行—见标签返航」试验
 
-状态：源码、便携状态机测试和 Ubuntu 虚拟双摄/STM32 回放已完成；设备部署、固件烧录和水下运动尚未验证。`pi-auv-boot-tag-route.yaml` 是本任务专用的自主模板，明确启用一次性自动 START/ARM 与运动，但仍保留未验证的标定标志为 false；不覆盖 `/etc/auv-runtime/runtime.yaml`。模板串口是占位路径，不能直接用于真机。现场必须核对当前固件、Pi 服务和串口占用。
+状态：源码、便携状态机测试和 Ubuntu 虚拟双摄/STM32 回放已完成。10 月 14 日已烧录开机自动校平修改之前的 AUV_TAG_DOCK 固件，Pi 已安装任务二进制但未启用开机路线服务；随后新增的自动校平已完成软件验证和 Keil 构建，尚未烧录或实机验收。水下运动仍未验收。`pi-auv-boot-tag-route.yaml` 是本任务专用的自主模板，明确启用一次性自动 START/ARM 与运动，但仍保留未验证的标定标志为 false；不覆盖 `/etc/auv-runtime/runtime.yaml`。模板串口是占位路径，不能直接用于真机。现场必须核对当前固件、Pi 服务和串口占用。
 
 ## 任务与证据
 
@@ -10,8 +10,8 @@
 
 ## 现场顺序与硬件阻断
 
-1. 岸上断推进器动力、机体水平固定；烧录/读回核对 **AUV 固件**，不能使用独立 ROV 固件。核对 Pi 实际运行的是 AUV Runtime 而非 ROV 桥，确认两者不会同时占 UART 或相机。接通 STM32 后显式执行水平基准校准；该基准仅在 MCU RAM，**每次 STM32 重启都要重做**。Pi 自动服务不能替代这一步，因此真正无人值守的「整机上电立刻任务」在当前硬件上不成立。
-2. 本地源码 `AuvAutonomyConfig.h` 已将自主前进/横移前馈设为有 ROV 映射依据的 300，但尚未编译烧录到 STM32。定深方向和最大深度仍为 0，`AUV_DEPTH_CONTROL_CALIBRATED` 与自主 commissioned 标志仍未通过；现有 AUV 固件会拒绝 ARM，不能用 Pi 配置强行跨越。需先在无桨/断推进器动力条件验证 STM32 源选择、目标方向、定深与航向环，再经受控水池实测符号和限幅，形成可读回的专用固件。
+1. 岸上断推进器动力、机体水平固定；烧录/读回核对 **AUV 固件**，不能使用独立 ROV 固件。核对 Pi 实际运行的是 AUV Runtime 而非 ROV 桥，确认两者不会同时占 UART 或相机。当前源码新增 AUV 开机自动校平：上电后 30 秒内保持 DISARM、近水平且 IMU 连续稳定至少 2 秒，观察 STATUS bit3 置位；若未置位，在岸上通过独占串口的驾驶台显式补做。水平基准仅在 MCU RAM，**每次 STM32 重启都要重新建立**。这项源码改动尚未烧录/实机验收，当前设备是否具有该行为以烧录版本和新鲜 STATUS 为准。
+2. `AuvAutonomyConfig.h` 的自主前进/横移前馈使用有 ROV 映射依据的 300；AUV_TAG_DOCK 构建额外指定最大深度 1.2 m。定深方向仍为 0，`AUV_DEPTH_CONTROL_CALIBRATED` 与自主 commissioned 标志仍未通过；现有 AUV 固件会拒绝 ARM，不能用 Pi 配置强行跨越。岸上负表压深度本身不表示 M10 损坏，但换算后明显负的读数不能作为有效入水深度。需先在无桨/断推进器动力条件验证 STM32 源选择、目标方向、定深与航向环，再经受控水池实测符号和限幅，形成可读回的专用固件。
 3. 本任务经项目负责人授权，不要求把 `directions_calibrated`、`limits_calibrated`、`depth_verified`、`corridor_verified` 逐项伪造为 true；专用 `explicit_motion_authorization: true` 仅放宽 Pi 对该路线的这些软件标志，不放宽 MCU、STATUS、深度和录像门控。现场先在断推进器动力条件确认 MCU 可以安全接受目标，并核对实际方向及输出限幅。单独准备 `/etc/auv-runtime/pi-auv-boot-tag-route.yaml`，只把占位串口改为真实设备路径，不修改 `/etc/auv-runtime/runtime.yaml`。保持 `/etc/auv-runtime/pi-auv-tag-docking.yaml` 为 DISARM 手动基线。确认 MCU 就绪后用 `sudo python3 /usr/local/share/auv-runtime/deploy/tag_docking_autoboot.py enable-route` 切换；脚本检查真实 STM32 串口、配置解析和 DISARM。回手动：同脚本 `disable`。不要删除 `/run/auv-runtime/control.sock.autonomous-started` 来重试。
 4. 顺序为**岸上校平 → 保持 MCU 供电并放入水中（入水深度至少 0.35 m，预留上升及机体净空）→ 启动/已运行的 Pi 自动服务等待稳定判据并执行一次序列 → 回传**。如果「开机」指 MCU 从断电重新启动，则必须先在岸上重做校平，不得用任务自动 ARM 绕过；可让 Pi 服务预先运行并保持等待，或校平后再启用路线。现场复测岸上曾出现的 `error_flags=0x0A`（传感器无效 + kill）是否已清零，观察 STATUS、深度、yaw、推进方向、视频写盘与任务事件。任何异常立即 `auvctl disarm`，并用实体 kill 或切断推进器动力。故障后不再自动 ARM。用 `python3 tools/auv/collect_mission_run.py --evidence-only ...` 按该工具帮助填写目标和输出目录，保存证据后再断电。
 5. 需要再做一次时，必须是真实整机重新上电：读取新 `/proc/sys/kernel/random/boot_id`，确认先前运行锁存因新启动自然消失；STM32 再次岸上水平校准，先无动力核对 STATUS/kill/传感器和锁存行为，再进行下一次受控水池试验。单纯重启 Pi 服务不得清除锁存，也不得触发第二次 ARM。
@@ -34,8 +34,8 @@ cmake --build build/boot-route-portable --target test_boot_tag_route test_tag_do
 ctest --test-dir build/boot-route-portable -R '^(boot_tag_route|tag_docking)$' --output-on-failure
 
 cmake -S firmware/stm32/test -B build/boot-route-firmware -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/boot-route-firmware --target test_auv_safety test_auv_autonomy -j 3
-ctest --test-dir build/boot-route-firmware -R '^(auv_safety|auv_autonomy_defaults)$' --output-on-failure
+cmake --build build/boot-route-firmware --target test_auv_safety test_auv_autonomy test_imu_auto_level test_imu_level test_auv_depth -j 3
+ctest --test-dir build/boot-route-firmware -R '^(auv_safety|auv_autonomy_defaults|imu_auto_level|imu_manual_level|auv_depth)$' --output-on-failure
 python3 -m unittest tools.auv.test_collect_mission_run
 ```
 
@@ -44,3 +44,7 @@ python3 -m unittest tools.auv.test_collect_mission_run
 ## 2026-10-14 Ubuntu 增量复测
 
 在独立工作区对本轮门控与测试修复重新构建 `auv_runtime`、`test_tag_docking`、`test_boot_tag_route`，构建通过；便携标签状态机与配置门控 2/2 通过。Ubuntu Runtime 相关回归 4/4 通过，包含新增开机路线虚拟双摄/串口回放。模板 `--check-config` 通过，标定标志保持 false；`--check-config` 只检查配置语义，不证明占位串口存在。测试检查关闭专用授权或自动 ARM 会拒绝启动。固件源码、实机服务与已烧录镜像未修改，本次没有执行设备或水池验证，也未运行全仓库测试。
+
+## 2026-10-14 开机自动校平软件验证
+
+后续自动校平修改在 Windows 主机增量构建中通过 `imu_auto_level`、`imu_manual_level`、`auv_depth` 和 `auv_autonomy_defaults` 共 4 项测试；覆盖缺失/陈旧 IMU、ARM 状态拒绝、近水平稳定采样、姿态变化重置、启动窗口超时及手动后备，ROV 保持显式校平。实际 ARMClang 对改动源文件编译通过，AUV_TAG_DOCK 的 Keil 镜像构建为 0 错误、0 警告；HEX SHA256 为 `f181f86d9b28e4cde417e2f71bc004f6e065db4aca3c161b037ec6873d574d08`。机器随后已关机，等待调试器的命令已停止，未进入烧录步骤；自动校平尚未部署，PID、水中判据和运动效果未实测。构建产物与诊断证据留在被忽略的本地目录，不随源码提交。

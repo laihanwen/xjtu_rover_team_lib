@@ -21,6 +21,8 @@ int main(void)
     assert(!imu_calibrate_level());
     sample(10000000,-5000000,30000000);
     assert(!imu_level_calibrated);
+    assert(!imu_auto_level_tick(1U)); /* ROV profile keeps explicit leveling. */
+    assert(!imu_level_calibrated);
     assert(Angle_Measure.pit==10 && Angle_Measure.rol==-5);
     assert(imu_calibrate_level());
     assert(imu_level_calibrated);
